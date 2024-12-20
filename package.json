@@ -1,0 +1,16 @@
+{
+  "name": "select_start_bot",
+  "version": "1.0.0",
+  "description": "Discord bot for Select Start gaming community",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1"
+  },
+  "engines": {
+    "node": ">=16.9.0"
+  }
+}
