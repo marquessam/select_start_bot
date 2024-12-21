@@ -25,8 +25,7 @@ client.on('messageCreate', async message => {
         await message.reply('Pong!');
     }
 
-    // Challenge command
-  // Challenge command
+// Challenge command
     if (message.content === '!challenge') {
         // First send a console-style prefix
         await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
@@ -34,6 +33,8 @@ client.on('messageCreate', async message => {
         const embed = new EmbedBuilder()
             .setColor('#00FF00')
             .setTitle('████ SELECT START MONTHLY CHALLENGE ████')
+            .setURL('https://retroachievements.org/game/3236')  // Link to game page
+            .setThumbnail('https://retroachievements.org/Images/017657.png')  // Game icon
             .setDescription('```ansi\n\x1b[32m[CHALLENGE STATUS: ACTIVE]\n[PERIOD: 12.01.2024 - 12.31.2024]\x1b[0m```')
             .addFields(
                 { 
@@ -43,8 +44,16 @@ client.on('messageCreate', async message => {
                 { 
                     name: '`PARAMETERS`', 
                     value: '```\n- Hardcore mode required\n- All achievements eligible\n- Progress tracked via RetroAchievements.org\n- Multiplayer tiebreaker system active```' 
+                },
+                {
+                    name: '`REWARD STRUCTURE`',
+                    value: '```\n🥇 First Place: 10 points\n🥈 Second Place: 6 points\n🥉 Third Place: 3 points\n⭐ Bonus achievements may award additional points```'
                 }
-            );
+            )
+            .setFooter({ 
+                text: '[TERMINAL SESSION: SS-012024]' 
+            })
+            .setTimestamp();
             
         await message.channel.send({ embeds: [embed] });
 
