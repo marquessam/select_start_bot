@@ -34,7 +34,7 @@ client.on('messageCreate', async message => {
             .setColor('#00FF00')
             .setTitle('████ SELECT START MONTHLY CHALLENGE ████')
             .setURL('https://retroachievements.org/game/3236')  // Link to game page
-            .setThumbnail('https://retroachievements.org/Images/017657.png')  // Game icon
+            .setThumbnail('https://media.retroachievements.org/Images/074335.png')  // Game icon
             .setDescription('```ansi\n\x1b[32m[CHALLENGE STATUS: ACTIVE]\n[PERIOD: 12.01.2024 - 12.31.2024]\x1b[0m```')
             .addFields(
                 { 
