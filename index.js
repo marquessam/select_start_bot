@@ -1,7 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 
 const client = new Client({
     intents: [
@@ -12,42 +10,31 @@ const client = new Client({
     ]
 });
 
-// Create a collection for commands
-client.commands = new Collection();
-
-// Load commands
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-
-for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
-    client.commands.set(command.name, command);
-}
-
+// When the bot is ready, log it to the console
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
 });
 
+// Basic message handler
 client.on('messageCreate', async message => {
-    // Get your admin channel ID from copying it in Discord
-    const ADMIN_CHANNEL_ID = '1304814893857374270';
-    
-    // Ignore messages from bots and messages not in admin channel
+    // Ignore messages from bots
     if (message.author.bot) return;
-    if (message.channelId !== ADMIN_CHANNEL_ID) return;
-    if (!message.content.startsWith('!')) return;
 
-    const args = message.content.slice(1).trim().split(/ +/);
-    const commandName = args.shift().toLowerCase();
+    // Basic command handling
+    if (message.content === '!ping') {
+        await message.reply('Pong!');
+    }
 
-    if (!client.commands.has(commandName)) return;
-
-    try {
-        await client.commands.get(commandName).execute(message, args);
-    } catch (error) {
-        console.error(error);
-        await message.reply('There was an error executing that command!');
+    // Challenge command
+    if (message.content === '!challenge') {
+        const embed = new EmbedBuilder()
+            .setColor('#5c3391')
+            .setTitle('December 2024 Challenge')
+            .setDescription('Final Fantasy Tactics: The War of the Lions');
+            
+        await message.reply({ embeds: [embed] });
     }
 });
+
+// Login to Discord with your client's token
 client.login(process.env.DISCORD_TOKEN);
