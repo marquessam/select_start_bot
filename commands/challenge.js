@@ -4,17 +4,35 @@ module.exports = {
     name: 'challenge',
     description: 'Shows current monthly challenge',
     async execute(message) {
-        const embed = new EmbedBuilder()
-            .setColor('#5c3391')
-            .setTitle('December 2024 Challenge')
-            .setDescription('Final Fantasy Tactics: The War of the Lions')
-            .addFields(
-                { name: 'Game', value: 'Final Fantasy Tactics: The War of the Lions' },
-                { name: 'Period', value: 'December 1st - December 31st, 2024' },
-                { name: 'Rules', value: 'All achievements must be earned in Hardcore mode. Any discrepancies or ties will be settled in multiplayer games.' }
-            )
-            .setFooter({ text: 'Select Start Monthly Challenge' });
+        // First send a console-style prefix
+        await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
 
-        await message.reply({ embeds: [embed] });
+        // Create the main embed
+        const embed = new EmbedBuilder()
+            .setColor('#00FF00')  // Bright green
+            .setTitle('████ SELECT START MONTHLY CHALLENGE ████')
+            .setURL('https://retroachievements.org/game/3236')  // Link to the game
+            .setThumbnail('https://retroachievements.org/Images/017657.png')  // Game icon
+            .setDescription('```ansi\n\x1b[32m[CHALLENGE STATUS: ACTIVE]\n[PERIOD: 12.01.2024 - 12.31.2024]\x1b[0m```')
+            .addFields(
+                { 
+                    name: '`MISSION`', 
+                    value: '```\nComplete achievements in Final Fantasy Tactics: The War of the Lions```' 
+                },
+                { 
+                    name: '`PARAMETERS`', 
+                    value: '```\n- Hardcore mode required\n- All achievements eligible\n- Progress tracked via RetroAchievements.org\n- Multiplayer tiebreaker system active```' 
+                }
+            )
+            .setFooter({ 
+                text: '[TERMINAL SESSION: SS-012024]' 
+            })
+            .setTimestamp();
+
+        // Send the embed
+        await message.channel.send({ embeds: [embed] });
+
+        // Send a follow-up console prompt
+        await message.channel.send('```ansi\n\x1b[32m> Use !leaderboard to view current rankings...\x1b[0m█\n```');
     },
 };
