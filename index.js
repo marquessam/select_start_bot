@@ -30,7 +30,12 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async message => {
+    // Get your admin channel ID from copying it in Discord
+    const ADMIN_CHANNEL_ID = '1304814893857374270';
+    
+    // Ignore messages from bots and messages not in admin channel
     if (message.author.bot) return;
+    if (message.channelId !== ADMIN_CHANNEL_ID) return;
     if (!message.content.startsWith('!')) return;
 
     const args = message.content.slice(1).trim().split(/ +/);
@@ -45,5 +50,4 @@ client.on('messageCreate', async message => {
         await message.reply('There was an error executing that command!');
     }
 });
-
 client.login(process.env.DISCORD_TOKEN);
