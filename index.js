@@ -49,7 +49,7 @@ client.on('messageCreate', async message => {
                 .setThumbnail(`https://retroachievements.org${config.currentChallenge.gameIcon}`)
                 .setDescription('```ansi\n\x1b[32m[STATUS: ACTIVE]\n[DATA VERIFIED]\x1b[0m```')
                 .addFields(
-                    { name: 'MISSION', value: ````ansi\n\x1b[32m${config.currentChallenge.gameName}\x1b[0m```` },
+                    { name: 'CHALLENGE', value: ````ansi\n\x1b[32m${config.currentChallenge.gameName}\x1b[0m```` },
                     { name: 'TIMEFRAME', value: ````ansi\n\x1b[32m${config.currentChallenge.startDate} - ${config.currentChallenge.endDate}\x1b[0m```` },
                     { name: 'PARAMETERS', value: ````ansi\n\x1b[32m${config.currentChallenge.rules.map(rule => `> ${rule}`).join('\n')}\x1b[0m```` },
                     { name: 'REWARD STRUCTURE', value: ````ansi\n\x1b[32m> 🥇 ${config.currentChallenge.points.first} pts\n> 🥈 ${config.currentChallenge.points.second} pts\n> 🥉 ${config.currentChallenge.points.third} pts\x1b[0m```` }
