@@ -59,7 +59,8 @@ client.on('messageCreate', async message => {
             .addFields(
                 { name: '!challenge', value: '```ansi\n\x1b[32mView current monthly challenge\x1b[0m```' },
                 { name: '!leaderboard', value: '```ansi\n\x1b[32mDisplay achievement rankings\x1b[0m```' },
-                { name: '!profile <user>', value: '```ansi\n\x1b[32mAccess user achievement data\x1b[0m```' }
+                { name: '!profile <user>', value: '```ansi\n\x1b[32mAccess user achievement data\x1b[0m```' },
+                { name: '!nominations', value: '```ansi\n\x1b[32mView game nominations\x1b[0m```' }
             )
             .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
             
