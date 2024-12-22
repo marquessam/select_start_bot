@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { fetchLeaderboardData } = require('./raAPI.js');
+const config = require('./config.js');
 
 const client = new Client({
     intents: [
@@ -27,28 +28,27 @@ client.on('messageCreate', async message => {
     }
 
 // Challenge command
-    if (message.content === '!challenge') {
-        // First send a console-style prefix
+     if (message.content === '!challenge') {
         await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
 
         const embed = new EmbedBuilder()
             .setColor('#00FF00')
             .setTitle('████ SELECT START MONTHLY CHALLENGE ████')
-            .setURL('https://retroachievements.org/game/3236')  // Link to game page
-            .setThumbnail('https://media.retroachievements.org/Images/074335.png')  // Game icon
-            .setDescription('```ansi\n\x1b[32m[CHALLENGE STATUS: ACTIVE]\n[PERIOD: 12.01.2024 - 12.31.2024]\x1b[0m```')
+            .setURL(`https://retroachievements.org/game/${config.currentChallenge.gameId}`)
+            .setThumbnail(`https://retroachievements.org${config.currentChallenge.gameIcon}`)
+            .setDescription(`\`\`\`ansi\n\x1b[32m[CHALLENGE STATUS: ACTIVE]\n[PERIOD: ${config.currentChallenge.startDate} - ${config.currentChallenge.endDate}]\x1b[0m\`\`\``)
             .addFields(
                 { 
                     name: '`MISSION`', 
-                    value: '```\nComplete achievements in Final Fantasy Tactics: The War of the Lions```' 
+                    value: `\`\`\`\nComplete achievements in ${config.currentChallenge.gameName}\`\`\`` 
                 },
                 { 
                     name: '`PARAMETERS`', 
-                    value: '```\n- Hardcore mode required\n- All achievements eligible\n- Progress tracked via RetroAchievements.org\n- Multiplayer tiebreaker system active```' 
+                    value: `\`\`\`\n${config.currentChallenge.rules.map(rule => `- ${rule}`).join('\n')}\`\`\`` 
                 },
                 {
                     name: '`REWARD STRUCTURE`',
-                    value: '```\n🥇 First Place: 10 points\n🥈 Second Place: 6 points\n🥉 Third Place: 3 points\n⭐ Bonus achievements may award additional points```'
+                    value: `\`\`\`\n🥇 First Place: ${config.currentChallenge.points.first} points\n🥈 Second Place: ${config.currentChallenge.points.second} points\n🥉 Third Place: ${config.currentChallenge.points.third} points\n⭐ Bonus achievements may award additional points\`\`\``
                 }
             )
             .setFooter({ 
