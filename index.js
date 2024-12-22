@@ -83,7 +83,7 @@ client.on('messageCreate', async message => {
                 .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
                 .setDescription('```ansi\n\x1b[32m[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]\x1b[0m```');
 
-            data.leaderboard.slice(0, 3).forEach((user, index) => {
+          data.leaderboard.slice(0, 3).forEach((user, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 embed.addFields({
                     name: `${medals[index]} OPERATIVE: ${user.username}`,
@@ -93,11 +93,10 @@ client.on('messageCreate', async message => {
 
             if (data.additionalParticipants.length > 0) {
                 embed.addFields({
-                    name: 'ADDITIONAL USERS',
+                    name: 'ADDITIONAL PARTICIPANTS',
                     value: '```ansi\n\x1b[32m' + data.additionalParticipants.join(', ') + '\x1b[0m```'
                 });
             }
-
             embed.setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Type !profile <user> for detailed operative data\n[Ready for input]█\x1b[0m```');
@@ -173,7 +172,7 @@ client.on('messageCreate', async message => {
             embed.setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
             
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !challenge to view current mission\n[Ready for input]█\x1b[0m```');
+            await message.channel.send('```ansi\n\x1b[32m> Type !challenge to view current challenge\n[Ready for input]█\x1b[0m```');
         } catch (error) {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Unable to access nominations\n[Ready for input]█\x1b[0m```');
         }
