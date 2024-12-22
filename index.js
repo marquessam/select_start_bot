@@ -61,39 +61,36 @@ client.on('messageCreate', async message => {
     // Challenge command
     if (message.content === '!challenge') {
         try {
-            await showLoadingAnimation(message.channel, getRandomTechMessage());
-
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
-                .setTitle('██████ SELECT START MONTHLY CHALLENGE ██████')
+                .setTitle('MONTHLY CHALLENGE')
                 .setURL(`https://retroachievements.org/game/${config.currentChallenge.gameId}`)
                 .setThumbnail(`https://retroachievements.org${config.currentChallenge.gameIcon}`)
-                .setDescription('```ansi\n\x1b[32m[CHALLENGE STATUS: ACTIVE]\n[PERIOD: ' + 
-                    config.currentChallenge.startDate + ' - ' + config.currentChallenge.endDate + ']\x1b[0m```')
                 .addFields(
                     { 
-                        name: '`MISSION`', 
-                        value: `\`\`\`ansi\n\x1b[32m${config.currentChallenge.gameName}\x1b[0m\`\`\`` 
+                        name: 'GAME', 
+                        value: config.currentChallenge.gameName
                     },
                     { 
-                        name: '`PARAMETERS`', 
-                        value: `\`\`\`ansi\n\x1b[32m${config.currentChallenge.rules.map(rule => `> ${rule}`).join('\n')}\x1b[0m\`\`\`` 
+                        name: 'PERIOD', 
+                        value: `${config.currentChallenge.startDate} - ${config.currentChallenge.endDate}`
+                    },
+                    { 
+                        name: 'RULES', 
+                        value: config.currentChallenge.rules.map(rule => `• ${rule}`).join('\n')
                     },
                     {
-                        name: '`REWARD STRUCTURE`',
-                        value: `\`\`\`ansi\n\x1b[32m> 🥇 First Place: ${config.currentChallenge.points.first} points\n> 🥈 Second Place: ${config.currentChallenge.points.second} points\n> 🥉 Third Place: ${config.currentChallenge.points.third} points\n> ⭐ Bonus points available for special achievements\x1b[0m\`\`\``
+                        name: 'POINTS',
+                        value: `🥇 ${config.currentChallenge.points.first}\n🥈 ${config.currentChallenge.points.second}\n🥉 ${config.currentChallenge.points.third}`
                     }
-                )
-                .setFooter({ text: `[TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}]` });
+                );
             
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !leaderboard to view current rankings...\x1b[0m█\n```');
         } catch (error) {
-            console.error('Error in challenge command:', error);
-            await message.channel.send('```ansi\n\x1b[32m[FATAL ERROR] \x1b[37mCommand execution failed\x1b[0m\n```');
+            await message.channel.send('Error: Could not load challenge data');
         }
     }
-
+    
     // Leaderboard command
     if (message.content === '!leaderboard') {
         try {
