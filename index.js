@@ -1,7 +1,8 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const { fetchLeaderboardData } = require('./raAPI.js');
+const { fetchLeaderboardData, fetchNominations } = require('./raAPI.js');
 const config = require('./config.js');
+
 
 const client = new Client({
     intents: [
