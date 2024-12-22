@@ -83,7 +83,7 @@ client.on('messageCreate', async message => {
                 .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
                 .setDescription('```ansi\n\x1b[32m[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]\x1b[0m```');
 
-           // Display top 3 with medals and detailed stats
+            // Display top 3 with medals and detailed stats
             data.leaderboard.slice(0, 3).forEach((user, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 embed.addFields({
@@ -100,6 +100,14 @@ client.on('messageCreate', async message => {
                     value: '```ansi\n\x1b[32m' + additionalOperatives.join(', ') + '\x1b[0m```'
                 });
             }
+
+            embed.setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type !profile <user> for detailed stats\n[Ready for input]█\x1b[0m```');
+        } catch (error) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Database sync failed\n[Ready for input]█\x1b[0m```');
+        }
+    }
 
     // Profile command
     if (message.content.startsWith('!profile')) {
