@@ -36,6 +36,45 @@ async function fetchNominations() {
         throw error;
     }
 }
+async function fetchNominations() {
+    try {
+        const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSpV_1nLVtIVvXtNVqpzqXV6NQVi8l6pm5wQR41tYm7ooAmxfH0ln__TuEcC9so6KFRanFW0yCiJOM/pub?output=csv';
+        
+        console.log('Fetching nominations from:', SPREADSHEET_URL);
+        const response = await fetch(SPREADSHEET_URL);
+        console.log('Response status:', response.status);
+        
+        const csvText = await response.text();
+        console.log('CSV content (first 100 chars):', csvText.substring(0, 100));
+        
+        const nominations = csvText
+            .split('\n')
+            .slice(1)
+            .map(line => {
+                console.log('Processing line:', line);
+                const [gameTitle, platform] = line.trim().split(',').map(item => item.trim());
+                return { platform, game: gameTitle };
+            })
+            .filter(nom => nom.platform && nom.game);
+
+        console.log('Processed nominations:', nominations);
+
+        const groupedNominations = nominations.reduce((groups, nom) => {
+            if (!groups[nom.platform]) {
+                groups[nom.platform] = [];
+            }
+            groups[nom.platform].push(nom.game);
+            return groups;
+        }, {});
+
+        console.log('Grouped nominations:', groupedNominations);
+
+        return groupedNominations;
+    } catch (error) {
+        console.error('Detailed nominations error:', error);
+        throw error;
+    }
+}
 async function fetchLeaderboardData() {
     try {
         const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
