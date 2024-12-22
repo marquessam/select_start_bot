@@ -2,6 +2,46 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const config = require('./config.js');
 
+async function fetchNominations() {
+    try {
+        const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSpV_1nLVtIVvXtNVqpzqXV6NQVi8l6pm5wQR41tYm7ooAmxfH0ln__TuEcC9so6KFRanFW0yCiJOM/pub?output=csv';
+        
+        const response = await fetch(SPREADSHEET_URL);
+        const csvText = await response.text();
+        
+        // Parse CSV, with "Game Title" and "Platform" columns
+        const nominations = csvText
+            .split('\n')
+            .slice(1) // Remove header row
+            .map(line => {
+                const [gameTitle, platform] = line.trim().split(',').map(item => item.trim());
+                return { platform, game: gameTitle };
+            })
+            .filter(nom => nom.platform && nom.game); // Remove any empty entries
+
+        // Group by platform
+        const groupedNominations = nominations.reduce((groups, nom) => {
+            if (!groups[nom.platform]) {
+                groups[nom.platform] = [];
+            }
+            groups[nom.platform].push(nom.game);
+            return groups;
+        }, {});
+
+        // Sort games within each platform
+        Object.keys(groupedNominations).forEach(platform => {
+            groupedNominations[platform].sort();
+        });
+
+        return groupedNominations;
+    } catch (error) {
+        console.error('Error fetching nominations:', error);
+        throw error;
+    }
+}
+
+module.exports = { fetchLeaderboardData, fetchNominations };
+
 async function fetchLeaderboardData() {
     try {
         const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
