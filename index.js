@@ -94,6 +94,62 @@ client.on('messageCreate', async message => {
         await message.channel.send('```ansi\n\x1b[31mERROR: Unable to fetch leaderboard data\x1b[0m\n```');
     }
 }
+    // Profile command
+    if (message.content.startsWith('!profile')) {
+        try {
+            // Get the username from the command
+            const args = message.content.split(' ');
+            const username = args[1];
+
+            if (!username) {
+                await message.channel.send('```ansi\n\x1b[31mERROR: Username required. Usage: !profile <username>\x1b[0m\n```');
+                return;
+            }
+
+            await message.channel.send('```ansi\n\x1b[32m> Accessing user profile data...\x1b[0m\n```');
+
+            // Fetch the data using your existing function
+            const data = await fetchLeaderboardData('3236');
+            
+            // Find the user in the data
+            const userProgress = data.leaderboard.find(user => 
+                user.username.toLowerCase() === username.toLowerCase()
+            );
+
+            if (!userProgress) {
+                await message.channel.send('```ansi\n\x1b[31mERROR: User not found or no progress recorded\x1b[0m\n```');
+                return;
+            }
+
+            // Create embed for user profile
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle(`████ AGENT PROFILE: ${userProgress.username.toUpperCase()} ████`)
+                .setURL(userProgress.profileUrl)
+                .setThumbnail(userProgress.profileImage)
+                .setDescription('```ansi\n\x1b[32m[PROFILE STATUS: ACTIVE]\n[GAME: Final Fantasy Tactics: WotL]\x1b[0m```')
+                .addFields(
+                    { 
+                        name: '`ACHIEVEMENTS COMPLETED`', 
+                        value: `\`\`\`${userProgress.completedAchievements}/${userProgress.totalAchievements}\`\`\`` 
+                    },
+                    { 
+                        name: '`COMPLETION RATE`', 
+                        value: `\`\`\`${userProgress.completionPercentage}%\`\`\`` 
+                    }
+                )
+                .setFooter({ text: `[DATA RETRIEVED: ${new Date().toLocaleString()}]` });
+
+            await message.channel.send({ embeds: [embed] });
+            
+            // Send follow-up console prompt
+            await message.channel.send('```ansi\n\x1b[32m> Use !leaderboard to view full rankings...\x1b[0m█\n```');
+
+        } catch (error) {
+            console.error('Error in profile command:', error);
+            await message.channel.send('```ansi\n\x1b[31mERROR: Unable to fetch profile data\x1b[0m\n```');
+        }
+    }
 });
 
 // Login to Discord with your client's token
