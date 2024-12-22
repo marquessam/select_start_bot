@@ -1,15 +1,15 @@
 module.exports = {
     currentChallenge: {
         gameId: '3236',
-        gameName: 'Final Fantasy Tactics: The War of the Lions',
+        gameName: 'Final Fantasy Tactics: WotL',
         gameIcon: '/Images/074335.png',
-        startDate: '12.01.2024',
-        endDate: '12.31.2024',
+        startDate: '12/1/24',
+        endDate: '12/31/24',
         rules: [
             'Hardcore mode required',
             'All achievements eligible',
-            'Progress tracked via RetroAchievements.org',
-            'Multiplayer tiebreaker system active'
+            'Progress tracked via RA.org',
+            'MP tiebreaker system'
         ],
         points: {
             first: 10,
