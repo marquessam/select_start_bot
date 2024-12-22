@@ -12,50 +12,24 @@ const client = new Client({
     ]
 });
 
-// Helper function for loading animation
-async function showLoadingAnimation(channel, operation = 'Loading') {
-    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-    let i = 0;
-    const message = await channel.send('```ansi\n\x1b[32m> ' + operation + '...\x1b[0m\n```');
-    
-    for (const frame of frames) {
-        await message.edit('```ansi\n\x1b[32m' + frame + ' ' + operation + '...\x1b[0m\n```');
-        await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    
-    await message.delete();
-}
-
-// Random tech messages
-const techMessages = [
-    'Establishing secure connection',
-    'Verifying credentials',
-    'Accessing achievement database',
-    'Decrypting user data',
-    'Synchronizing achievement cache',
-    'Validating data integrity',
-    'Initializing terminal session'
-];
-
-const getRandomTechMessage = () => techMessages[Math.floor(Math.random() * techMessages.length)];
-
-// When the bot is ready
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
 });
 
-// Message handler
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
     // Help command
     if (message.content === '!help') {
-        try {
-            await showLoadingAnimation(message.channel, 'Accessing help documentation');
-            await message.channel.send('```ansi\n\x1b[32m=== SELECT START TERMINAL V1.0 ===\n\nAVAILABLE COMMANDS:\n\n!challenge   : View current mission parameters\n!leaderboard : Display achievement rankings\n!profile     : Access user achievement data\n!help        : Display this information\n\n[Type command to execute]█\x1b[0m\n```');
-        } catch (error) {
-            console.error('Error in help command:', error);
-        }
+        const embed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setTitle('Commands')
+            .addFields(
+                { name: '!challenge', value: 'View current challenge' },
+                { name: '!leaderboard', value: 'View rankings' },
+                { name: '!profile <name>', value: 'View player stats' }
+            );
+        await message.channel.send({ embeds: [embed] });
     }
 
     // Challenge command
@@ -63,118 +37,90 @@ client.on('messageCreate', async message => {
         try {
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
-                .setTitle('MONTHLY CHALLENGE')
+                .setTitle('Monthly Challenge')
                 .setURL(`https://retroachievements.org/game/${config.currentChallenge.gameId}`)
                 .setThumbnail(`https://retroachievements.org${config.currentChallenge.gameIcon}`)
                 .addFields(
-                    { 
-                        name: 'GAME', 
-                        value: config.currentChallenge.gameName
-                    },
-                    { 
-                        name: 'PERIOD', 
-                        value: `${config.currentChallenge.startDate} - ${config.currentChallenge.endDate}`
-                    },
-                    { 
-                        name: 'RULES', 
-                        value: config.currentChallenge.rules.map(rule => `• ${rule}`).join('\n')
-                    },
-                    {
-                        name: 'POINTS',
-                        value: `🥇 ${config.currentChallenge.points.first}\n🥈 ${config.currentChallenge.points.second}\n🥉 ${config.currentChallenge.points.third}`
-                    }
+                    { name: 'Game', value: config.currentChallenge.gameName },
+                    { name: 'Period', value: `${config.currentChallenge.startDate} - ${config.currentChallenge.endDate}` },
+                    { name: 'Rules', value: config.currentChallenge.rules.map(rule => `• ${rule}`).join('\n') },
+                    { name: 'Points', value: `🥇 ${config.currentChallenge.points.first}\n🥈 ${config.currentChallenge.points.second}\n🥉 ${config.currentChallenge.points.third}` }
                 );
             
             await message.channel.send({ embeds: [embed] });
         } catch (error) {
-            await message.channel.send('Error: Could not load challenge data');
+            await message.channel.send('Error loading challenge data');
         }
     }
-    
+
     // Leaderboard command
     if (message.content === '!leaderboard') {
         try {
-            await showLoadingAnimation(message.channel, getRandomTechMessage());
-            
             const data = await fetchLeaderboardData();
             
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
-                .setTitle('██████ CURRENT RANKINGS ██████')
-                .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
-                .setDescription('```ansi\n\x1b[32m[LEADERBOARD STATUS: ACTIVE]\n[LAST UPDATED: ' + 
-                    new Date().toLocaleString() + ']\x1b[0m```');
+                .setTitle('Rankings')
+                .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`);
 
+            // Add top 3 with medals
             data.leaderboard.slice(0, 3).forEach((user, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 embed.addFields({
                     name: `${medals[index]} ${user.username}`,
-                    value: `\`\`\`ansi\n\x1b[32m${user.completedAchievements}/${user.totalAchievements} (${user.completionPercentage}%)\x1b[0m\`\`\``
+                    value: `${user.completedAchievements}/${user.totalAchievements} (${user.completionPercentage}%)`
                 });
             });
 
+            // Add other participants if any
             if (data.additionalParticipants.length > 0) {
                 embed.addFields({
-                    name: '`ADDITIONAL PARTICIPANTS`',
-                    value: `\`\`\`ansi\n\x1b[32m${data.additionalParticipants.join(', ')}\x1b[0m\`\`\``
+                    name: 'Also Participating',
+                    value: data.additionalParticipants.join(', ')
                 });
             }
 
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !profile <username> to view detailed stats...\x1b[0m█\n```');
         } catch (error) {
-            console.error('Error in leaderboard command:', error);
-            await message.channel.send('```ansi\n\x1b[32m[FATAL ERROR] \x1b[37mUnable to access leaderboard data\x1b[0m\n```');
+            await message.channel.send('Error loading leaderboard');
         }
     }
 
     // Profile command
     if (message.content.startsWith('!profile')) {
         try {
-            const args = message.content.split(' ');
-            const username = args[1];
+            const username = message.content.split(' ')[1];
 
             if (!username) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] \x1b[37mUsername required. Usage: !profile <username>\x1b[0m\n```');
+                await message.channel.send('Usage: !profile <username>');
                 return;
             }
 
-            await showLoadingAnimation(message.channel, getRandomTechMessage());
-            
             const data = await fetchLeaderboardData();
             const userProgress = data.leaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
             );
 
             if (!userProgress) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] \x1b[37mUser not found in database\x1b[0m\n```');
+                await message.channel.send('User not found');
                 return;
             }
 
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
-                .setTitle(`██████ PROFILE: ${userProgress.username.toUpperCase()} ██████`)
+                .setTitle(userProgress.username)
                 .setURL(userProgress.profileUrl)
                 .setThumbnail(userProgress.profileImage)
-                .setDescription('```ansi\n\x1b[32m[STATUS: AUTHENTICATED]\n[CLEARANCE: ACTIVE USER]\n[ACCESSING ACHIEVEMENT DATA...]\x1b[0m```')
                 .addFields(
                     { 
-                        name: '`CURRENT MISSION STATUS`', 
-                        value: `\`\`\`ansi\n\x1b[32m${config.currentChallenge.gameName}\x1b[0m\`\`\`` 
-                    },
-                    { 
-                        name: '`ACHIEVEMENT ANALYSIS`', 
-                        value: `\`\`\`ansi\n\x1b[32mCOMPLETED: ${userProgress.completedAchievements}/${userProgress.totalAchievements}\nPROGRESS: ${userProgress.completionPercentage}%\x1b[0m\`\`\`` 
+                        name: 'Progress', 
+                        value: `${userProgress.completedAchievements}/${userProgress.totalAchievements} (${userProgress.completionPercentage}%)`
                     }
-                )
-                .setFooter({ text: `[TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}]` });
+                );
 
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Connection terminated\n> Type !help for available commands...\x1b[0m█\n```');
-
         } catch (error) {
-            console.error('Error in profile command:', error);
-            await message.channel.send('```ansi\n\x1b[32m[FATAL ERROR] \x1b[37mDatabase connection failed\x1b[0m\n```');
+            await message.channel.send('Error loading profile');
         }
     }
 });
