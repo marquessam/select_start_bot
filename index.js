@@ -18,7 +18,37 @@ client.once('ready', () => {
 
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
+// Nominations command
+    if (message.content === '!nominations') {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Accessing nominations database...\x1b[0m\n```');
+            
+            const nominations = await fetchNominations();
+            
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('NOMINATED GAMES')
+                .setDescription('```ansi\n\x1b[32m[DATABASE ACCESSED]\n[NOMINATIONS SORTED BY PLATFORM]\x1b[0m```');
 
+            // Add each platform as a field
+            for (const [platform, games] of Object.entries(nominations).sort()) {
+                if (games.length > 0) {
+                    embed.addFields({
+                        name: `${platform}`,
+                        value: '```ansi\n\x1b[32m' + games.map(game => `> ${game}`).join('\n') + '\x1b[0m```'
+                    });
+                }
+            }
+
+            embed.setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
+            
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type !challenge to view current challenge\x1b[0m█\n```');
+        } catch (error) {
+            console.error('Error in nominations command:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Unable to access nominations database\x1b[0m\n```');
+        }
+    }
     // Help command
     if (message.content === '!help') {
         await message.channel.send('```ansi\n\x1b[32m> Accessing command database...\x1b[0m\n```');
