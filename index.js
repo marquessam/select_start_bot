@@ -57,23 +57,17 @@ client.on('messageCreate', async message => {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Unable to access nominations database\nDetails: ' + error.message + '\x1b[0m\n```');
         }
     }
-    // Help command
+   // Help command
     if (message.content === '!help') {
-        await message.channel.send('```ansi\n\x1b[32m> Accessing command database...\x1b[0m\n```');
+        await message.channel.send('```ansi\n\x1b[32m> Accessing terminal...\x1b[0m\n```');
         
         const embed = new EmbedBuilder()
             .setColor('#00FF00')
             .setTitle('SELECT START TERMINAL')
-            .addFields(
-                { name: '!challenge', value: '```ansi\n\x1b[32mView current monthly challenge\x1b[0m```' },
-                { name: '!leaderboard', value: '```ansi\n\x1b[32mDisplay achievement rankings\x1b[0m```' },
-                { name: '!profile <user>', value: '```ansi\n\x1b[32mAccess user achievement data\x1b[0m```' },
-                { name: '!nominations', value: '```ansi\n\x1b[32mView game nominations\x1b[0m```' }
-            )
+            .setDescription('```ansi\n\x1b[32mAVAILABLE COMMANDS:\n\n!challenge\nDisplaycurrent challenge\n\n!leaderboard\nDisplay achievement rankings\n\n!profile <user>\nDisplay user achievement data\n\n!nominations\nDisplay nominated games\n\n[Ready for input]█\x1b[0m```')
             .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
             
         await message.channel.send({ embeds: [embed] });
-        await message.channel.send('```ansi\n\x1b[32m> Enter command to proceed\x1b[0m█\n```');
     }
 
     // Challenge command
