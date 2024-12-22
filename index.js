@@ -12,20 +12,6 @@ const client = new Client({
     ]
 });
 
-// When the bot is ready, log it to the console
-client.once('ready', () => {
-    console.log(`Logged in as ${client.user.tag}!`);
-});
-
-// Basic message handler
-client.on('messageCreate', async message => {
-    // Ignore messages from bots
-    if (message.author.bot) return;
-
-    // Basic command handling
-    if (message.content === '!ping') {
-        await message.reply('Pong!');
-    }
 // Helper function for loading animation
 async function showLoadingAnimation(channel, operation = 'Loading') {
     const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -45,7 +31,7 @@ async function showLoadingAnimation(channel, operation = 'Loading') {
     return new Promise(resolve => setTimeout(resolve, frames.length * 100));
 }
 
-// Helper function for random tech messages
+// Random tech messages
 const techMessages = [
     'Establishing secure connection',
     'Verifying credentials',
@@ -57,130 +43,141 @@ const techMessages = [
 ];
 
 const getRandomTechMessage = () => techMessages[Math.floor(Math.random() * techMessages.length)];
-// Challenge command
-     if (message.content === '!challenge') {
+
+// When the bot is ready
+client.once('ready', () => {
+    console.log(`Logged in as ${client.user.tag}!`);
+});
+
+// Message handler
+client.on('messageCreate', async message => {
+    if (message.author.bot) return;
+
+    // Help command
+    if (message.content === '!help') {
+        await message.channel.send('```ansi\n\x1b[32m=== SELECT START TERMINAL V1.0 ===\n\nAVAILABLE COMMANDS:\n\n!challenge   : View current mission parameters\n!leaderboard : Display achievement rankings\n!profile     : Access user achievement data\n!help        : Display this information\n\n[Type command to execute]█\x1b[0m\n```');
+    }
+
+    // Challenge command
+    if (message.content === '!challenge') {
+        await showLoadingAnimation(message.channel, getRandomTechMessage());
         await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
 
         const embed = new EmbedBuilder()
             .setColor('#00FF00')
-            .setTitle('████ SELECT START MONTHLY CHALLENGE ████')
+            .setTitle('██████ SELECT START MONTHLY CHALLENGE ██████')
             .setURL(`https://retroachievements.org/game/${config.currentChallenge.gameId}`)
             .setThumbnail(`https://retroachievements.org${config.currentChallenge.gameIcon}`)
-            .setDescription(`\`\`\`ansi\n\x1b[32m[CHALLENGE STATUS: ACTIVE]\n[PERIOD: ${config.currentChallenge.startDate} - ${config.currentChallenge.endDate}]\x1b[0m\`\`\``)
+            .setDescription('```ansi\n\x1b[32m[CHALLENGE STATUS: ACTIVE]\n[PERIOD: ' + 
+                config.currentChallenge.startDate + ' - ' + config.currentChallenge.endDate + ']\x1b[0m```')
             .addFields(
                 { 
                     name: '`MISSION`', 
-                    value: `\`\`\`\nComplete achievements in ${config.currentChallenge.gameName}\`\`\`` 
+                    value: `\`\`\`ansi\n\x1b[32m${config.currentChallenge.gameName}\x1b[0m\`\`\`` 
                 },
                 { 
                     name: '`PARAMETERS`', 
-                    value: `\`\`\`\n${config.currentChallenge.rules.map(rule => `- ${rule}`).join('\n')}\`\`\`` 
+                    value: `\`\`\`ansi\n\x1b[32m${config.currentChallenge.rules.map(rule => `> ${rule}`).join('\n')}\x1b[0m\`\`\`` 
                 },
                 {
                     name: '`REWARD STRUCTURE`',
-                    value: `\`\`\`\n🥇 First Place: ${config.currentChallenge.points.first} points\n🥈 Second Place: ${config.currentChallenge.points.second} points\n🥉 Third Place: ${config.currentChallenge.points.third} points\n⭐ Bonus achievements may award additional points\`\`\``
+                    value: `\`\`\`ansi\n\x1b[32m> 🥇 First Place: ${config.currentChallenge.points.first} points\n> 🥈 Second Place: ${config.currentChallenge.points.second} points\n> 🥉 Third Place: ${config.currentChallenge.points.third} points\n> ⭐ Bonus points available for special achievements\x1b[0m\`\`\``
                 }
             )
-            .setFooter({ 
-                text: '[TERMINAL SESSION: SS-012024]' 
-            })
-            .setTimestamp();
+            .setFooter({ text: `[TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}]` });
             
         await message.channel.send({ embeds: [embed] });
-
-        // Send a follow-up console prompt
-        await message.channel.send('```ansi\n\x1b[32m> Use !leaderboard to view current rankings...\x1b[0m█\n```');
+        await message.channel.send('```ansi\n\x1b[32m> Type !leaderboard to view current rankings...\x1b[0m█\n```');
     }
+
+    // Leaderboard command
     if (message.content === '!leaderboard') {
-    try {
-        // Send initial message
-        await message.channel.send('```ansi\n\x1b[32m> Accessing leaderboard data...\x1b[0m\n```');
-        
-        // Fetch the data
-        const data = await fetchLeaderboardData('3236');
-        
-        // Create the embed
-        const embed = new EmbedBuilder()
-            .setColor('#00FF00')
-            .setTitle('████ CURRENT RANKINGS ████')
-            .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
-            .setDescription('```ansi\n\x1b[32m[LEADERBOARD STATUS: ACTIVE]\n[LAST UPDATED: ' + new Date().toLocaleString() + ']\x1b[0m```');
+        try {
+            await showLoadingAnimation(message.channel, getRandomTechMessage());
+            await message.channel.send('```ansi\n\x1b[32m> Accessing leaderboard data...\x1b[0m\n```');
+            
+            const data = await fetchLeaderboardData();
+            
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('██████ CURRENT RANKINGS ██████')
+                .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
+                .setDescription('```ansi\n\x1b[32m[LEADERBOARD STATUS: ACTIVE]\n[LAST UPDATED: ' + 
+                    new Date().toLocaleString() + ']\x1b[0m```');
 
-        // Add top 3 players
-        data.leaderboard.slice(0, 3).forEach((user, index) => {
-            const medals = ['🥇', '🥈', '🥉'];
-            embed.addFields({
-                name: `${medals[index]} ${user.username}`,
-                value: `\`\`\`${user.completedAchievements}/${user.totalAchievements} (${user.completionPercentage}%)\`\`\``
+            data.leaderboard.slice(0, 3).forEach((user, index) => {
+                const medals = ['🥇', '🥈', '🥉'];
+                embed.addFields({
+                    name: `${medals[index]} ${user.username}`,
+                    value: `\`\`\`ansi\n\x1b[32m${user.completedAchievements}/${user.totalAchievements} (${user.completionPercentage}%)\x1b[0m\`\`\``
+                });
             });
-        });
 
-        await message.channel.send({ embeds: [embed] });
-        
-        // Send follow-up message
-        await message.channel.send('```ansi\n\x1b[32m> Use !profile <username> to view detailed stats...\x1b[0m█\n```');
-    } catch (error) {
-        console.error('Error in leaderboard command:', error);
-        await message.channel.send('```ansi\n\x1b[31mERROR: Unable to fetch leaderboard data\x1b[0m\n```');
+            if (data.additionalParticipants.length > 0) {
+                embed.addFields({
+                    name: '`ADDITIONAL PARTICIPANTS`',
+                    value: `\`\`\`ansi\n\x1b[32m${data.additionalParticipants.join(', ')}\x1b[0m\`\`\``
+                });
+            }
+
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type !profile <username> to view detailed stats...\x1b[0m█\n```');
+        } catch (error) {
+            console.error('Error in leaderboard command:', error);
+            await message.channel.send('```ansi\n\x1b[32m[FATAL ERROR] \x1b[37mUnable to access leaderboard data\x1b[0m\n```');
+        }
     }
-}
+
     // Profile command
     if (message.content.startsWith('!profile')) {
         try {
-            // Get the username from the command
             const args = message.content.split(' ');
             const username = args[1];
 
             if (!username) {
-                await message.channel.send('```ansi\n\x1b[31mERROR: Username required. Usage: !profile <username>\x1b[0m\n```');
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] \x1b[37mUsername required. Usage: !profile <username>\x1b[0m\n```');
                 return;
             }
 
-            await message.channel.send('```ansi\n\x1b[32m> Accessing user profile data...\x1b[0m\n```');
+            await showLoadingAnimation(message.channel, getRandomTechMessage());
+            await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
-            // Fetch the data using your existing function
-            const data = await fetchLeaderboardData('3236');
-            
-            // Find the user in the data
+            const data = await fetchLeaderboardData();
             const userProgress = data.leaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
             );
 
             if (!userProgress) {
-                await message.channel.send('```ansi\n\x1b[31mERROR: User not found or no progress recorded\x1b[0m\n```');
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] \x1b[37mUser not found in database\x1b[0m\n```');
                 return;
             }
 
-            // Create embed for user profile
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
-                .setTitle(`████ AGENT PROFILE: ${userProgress.username.toUpperCase()} ████`)
+                .setTitle(`██████ PROFILE: ${userProgress.username.toUpperCase()} ██████`)
                 .setURL(userProgress.profileUrl)
                 .setThumbnail(userProgress.profileImage)
-                .setDescription('```ansi\n\x1b[32m[PROFILE STATUS: ACTIVE]\n[GAME: Final Fantasy Tactics: WotL]\x1b[0m```')
+                .setDescription('```ansi\n\x1b[32m[STATUS: AUTHENTICATED]\n[CLEARANCE: ACTIVE USER]\n[ACCESSING ACHIEVEMENT DATA...]\x1b[0m```')
                 .addFields(
                     { 
-                        name: '`ACHIEVEMENTS COMPLETED`', 
-                        value: `\`\`\`${userProgress.completedAchievements}/${userProgress.totalAchievements}\`\`\`` 
+                        name: '`CURRENT MISSION STATUS`', 
+                        value: `\`\`\`ansi\n\x1b[32m${config.currentChallenge.gameName}\x1b[0m\`\`\`` 
                     },
                     { 
-                        name: '`COMPLETION RATE`', 
-                        value: `\`\`\`${userProgress.completionPercentage}%\`\`\`` 
+                        name: '`ACHIEVEMENT ANALYSIS`', 
+                        value: `\`\`\`ansi\n\x1b[32mCOMPLETED: ${userProgress.completedAchievements}/${userProgress.totalAchievements}\nPROGRESS: ${userProgress.completionPercentage}%\x1b[0m\`\`\`` 
                     }
                 )
-                .setFooter({ text: `[DATA RETRIEVED: ${new Date().toLocaleString()}]` });
+                .setFooter({ text: `[TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}]` });
 
             await message.channel.send({ embeds: [embed] });
-            
-            // Send follow-up console prompt
-            await message.channel.send('```ansi\n\x1b[32m> Use !leaderboard to view full rankings...\x1b[0m█\n```');
+            await message.channel.send('```ansi\n\x1b[32m> Connection terminated\n> Type !help for available commands...\x1b[0m█\n```');
 
         } catch (error) {
             console.error('Error in profile command:', error);
-            await message.channel.send('```ansi\n\x1b[31mERROR: Unable to fetch profile data\x1b[0m\n```');
+            await message.channel.send('```ansi\n\x1b[32m[FATAL ERROR] \x1b[37mDatabase connection failed\x1b[0m\n```');
         }
     }
 });
 
-// Login to Discord with your client's token
 client.login(process.env.DISCORD_TOKEN);
