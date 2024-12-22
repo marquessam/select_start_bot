@@ -26,7 +26,37 @@ client.on('messageCreate', async message => {
     if (message.content === '!ping') {
         await message.reply('Pong!');
     }
+// Helper function for loading animation
+async function showLoadingAnimation(channel, operation = 'Loading') {
+    const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+    const message = await channel.send('```ansi\n\x1b[32m' + operation + '...\x1b[0m\n```');
+    
+    let i = 0;
+    const interval = setInterval(async () => {
+        if (i < frames.length) {
+            await message.edit('```ansi\n\x1b[32m' + frames[i] + ' ' + operation + '...\x1b[0m\n```');
+            i++;
+        } else {
+            clearInterval(interval);
+            await message.delete();
+        }
+    }, 100);
 
+    return new Promise(resolve => setTimeout(resolve, frames.length * 100));
+}
+
+// Helper function for random tech messages
+const techMessages = [
+    'Establishing secure connection',
+    'Verifying credentials',
+    'Accessing achievement database',
+    'Decrypting user data',
+    'Synchronizing achievement cache',
+    'Validating data integrity',
+    'Initializing terminal session'
+];
+
+const getRandomTechMessage = () => techMessages[Math.floor(Math.random() * techMessages.length)];
 // Challenge command
      if (message.content === '!challenge') {
         await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
