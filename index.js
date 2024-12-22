@@ -26,7 +26,7 @@ client.on('messageCreate', async message => {
         const embed = new EmbedBuilder()
             .setColor('#00FF00')
             .setTitle('SELECT START TERMINAL')
-            .setDescription('```ansi\n\x1b[32mAVAILABLE COMMANDS:\n\n!challenge\nView current mission parameters\n\n!leaderboard\nDisplay achievement rankings\n\n!profile <user>\nAccess user achievement data\n\n!nominations\nView nominated games\n\n[Ready for input]█\x1b[0m```')
+            .setDescription('```ansi\n\x1b[32mAVAILABLE COMMANDS:\n\n!challenge\nDisplay current challenge\n\n!leaderboard\nDisplay achievement rankings\n\n!profile <user>\nAccess user achievement data\n\n!nominations\nDisplay nominated games\n\n[Ready for input]█\x1b[0m```')
             .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
             
         await message.channel.send({ embeds: [embed] });
@@ -45,15 +45,15 @@ client.on('messageCreate', async message => {
                 .setDescription('```ansi\n\x1b[32m[STATUS: ACTIVE]\n[DATA VERIFIED]\x1b[0m```')
                 .addFields(
                     { 
-                        name: 'CURRENT MISSION',
+                        name: 'CURRENT CHALLENGE',
                         value: '```ansi\n\x1b[32m' + config.currentChallenge.gameName + '\x1b[0m```'
                     },
                     {
-                        name: 'MISSION TIMEFRAME',
+                        name: 'CHALLENGE TIMEFRAME',
                         value: '```ansi\n\x1b[32m' + config.currentChallenge.startDate + ' - ' + config.currentChallenge.endDate + '\x1b[0m```'
                     },
                     {
-                        name: 'MISSION PARAMETERS',
+                        name: 'CHALLENGE PARAMETERS',
                         value: '```ansi\n\x1b[32m' + config.currentChallenge.rules.map(rule => `> ${rule}`).join('\n') + '\x1b[0m```'
                     },
                     {
@@ -79,7 +79,7 @@ client.on('messageCreate', async message => {
             
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
-                .setTitle('OPERATIVE RANKINGS')
+                .setTitle('USER RANKINGS')
                 .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
                 .setDescription('```ansi\n\x1b[32m[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]\x1b[0m```');
 
@@ -93,7 +93,7 @@ client.on('messageCreate', async message => {
 
             if (data.additionalParticipants.length > 0) {
                 embed.addFields({
-                    name: 'ADDITIONAL OPERATIVES',
+                    name: 'ADDITIONAL USERS',
                     value: '```ansi\n\x1b[32m' + data.additionalParticipants.join(', ') + '\x1b[0m```'
                 });
             }
@@ -124,7 +124,7 @@ client.on('messageCreate', async message => {
             );
 
             if (!userProgress) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Operative not found in database\n[Ready for input]█\x1b[0m```');
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in database\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
