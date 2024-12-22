@@ -1,7 +1,8 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const config = require('./config.js');
 
-async function fetchLeaderboardData(gameId) {
+async function fetchLeaderboardData() {
     try {
         const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
 
@@ -24,7 +25,7 @@ async function fetchLeaderboardData(gameId) {
                 const params = new URLSearchParams({
                     z: process.env.RA_USERNAME,
                     y: process.env.RA_API_KEY,
-                    g: gameId,
+                    g: config.currentChallenge.gameId,
                     u: username
                 });
 
@@ -71,8 +72,8 @@ async function fetchLeaderboardData(gameId) {
 
         return {
             gameInfo: validGameInfo || { 
-                Title: "Final Fantasy Tactics: The War of the Lions",
-                ImageIcon: "/Images/074335.png"
+                Title: config.currentChallenge.gameName,
+                ImageIcon: config.currentChallenge.gameIcon
             },
             leaderboard: topTen,
             additionalParticipants: additionalParticipants,
