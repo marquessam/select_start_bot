@@ -1,4 +1,3 @@
-```javascript
 require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { fetchLeaderboardData } = require('./raAPI.js');
@@ -184,4 +183,3 @@ client.on('messageCreate', async message => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
-```
