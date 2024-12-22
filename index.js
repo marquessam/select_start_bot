@@ -3,7 +3,6 @@ const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { fetchLeaderboardData, fetchNominations } = require('./raAPI.js');
 const config = require('./config.js');
 
-
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -19,52 +18,15 @@ client.once('ready', () => {
 
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
-// Nominations command
-    if (message.content === '!nominations') {
-        try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing nominations database...\x1b[0m\n```');
-            
-            const nominations = await fetchNominations();
-            console.log('Nominations data:', nominations); // Debug log
-            
-            // Check if we got data
-            if (!nominations || Object.keys(nominations).length === 0) {
-                throw new Error('No nominations data received');
-            }
-            
-            const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle('NOMINATED GAMES')
-                .setDescription('```ansi\n\x1b[32m[DATABASE ACCESSED]\n[NOMINATIONS SORTED BY PLATFORM]\x1b[0m```');
 
-            // Add each platform as a field
-            for (const [platform, games] of Object.entries(nominations).sort()) {
-                if (games.length > 0) {
-                    console.log(`Adding platform ${platform} with ${games.length} games`); // Debug log
-                    embed.addFields({
-                        name: `${platform}`,
-                        value: '```ansi\n\x1b[32m' + games.map(game => `> ${game}`).join('\n') + '\x1b[0m```'
-                    });
-                }
-            }
-
-            embed.setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
-            
-            await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !challenge to view current challenge\x1b[0m█\n```');
-        } catch (error) {
-            console.error('Error in nominations command:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Unable to access nominations database\nDetails: ' + error.message + '\x1b[0m\n```');
-        }
-    }
-   // Help command
+    // Help command
     if (message.content === '!help') {
         await message.channel.send('```ansi\n\x1b[32m> Accessing terminal...\x1b[0m\n```');
         
         const embed = new EmbedBuilder()
             .setColor('#00FF00')
             .setTitle('SELECT START TERMINAL')
-            .setDescription('```ansi\n\x1b[32mAVAILABLE COMMANDS:\n\n!challenge\nDisplaycurrent challenge\n\n!leaderboard\nDisplay achievement rankings\n\n!profile <user>\nDisplay user achievement data\n\n!nominations\nDisplay nominated games\n\n[Ready for input]█\x1b[0m```')
+            .setDescription('```ansi\n\x1b[32mAVAILABLE COMMANDS:\n\n!challenge\nView current mission parameters\n\n!leaderboard\nDisplay achievement rankings\n\n!profile <user>\nAccess user achievement data\n\n!nominations\nView nominated games\n\n[Ready for input]█\x1b[0m```')
             .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
             
         await message.channel.send({ embeds: [embed] });
@@ -73,7 +35,7 @@ client.on('messageCreate', async message => {
     // Challenge command
     if (message.content === '!challenge') {
         try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing challenge data...\x1b[0m\n```');
+            await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
 
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
@@ -82,17 +44,29 @@ client.on('messageCreate', async message => {
                 .setThumbnail(`https://retroachievements.org${config.currentChallenge.gameIcon}`)
                 .setDescription('```ansi\n\x1b[32m[STATUS: ACTIVE]\n[DATA VERIFIED]\x1b[0m```')
                 .addFields(
-                    { name: 'CHALLENGE', value: '```ansi\n\x1b[32m' + config.currentChallenge.gameName + '\x1b[0m```' },
-                    { name: 'TIMEFRAME', value: '```ansi\n\x1b[32m' + config.currentChallenge.startDate + ' - ' + config.currentChallenge.endDate + '\x1b[0m```' },
-                    { name: 'PARAMETERS', value: '```ansi\n\x1b[32m' + config.currentChallenge.rules.map(rule => `> ${rule}`).join('\n') + '\x1b[0m```' },
-                    { name: 'REWARD STRUCTURE', value: '```ansi\n\x1b[32m> 🥇 ' + config.currentChallenge.points.first + ' pts\n> 🥈 ' + config.currentChallenge.points.second + ' pts\n> 🥉 ' + config.currentChallenge.points.third + ' pts\x1b[0m```' }
+                    { 
+                        name: 'CURRENT MISSION',
+                        value: '```ansi\n\x1b[32m' + config.currentChallenge.gameName + '\x1b[0m```'
+                    },
+                    {
+                        name: 'MISSION TIMEFRAME',
+                        value: '```ansi\n\x1b[32m' + config.currentChallenge.startDate + ' - ' + config.currentChallenge.endDate + '\x1b[0m```'
+                    },
+                    {
+                        name: 'MISSION PARAMETERS',
+                        value: '```ansi\n\x1b[32m' + config.currentChallenge.rules.map(rule => `> ${rule}`).join('\n') + '\x1b[0m```'
+                    },
+                    {
+                        name: 'REWARD PROTOCOL',
+                        value: '```ansi\n\x1b[32m> 🥇 ' + config.currentChallenge.points.first + ' pts\n> 🥈 ' + config.currentChallenge.points.second + ' pts\n> 🥉 ' + config.currentChallenge.points.third + ' pts\x1b[0m```'
+                    }
                 )
                 .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
             
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !leaderboard to view rankings\x1b[0m█\n```');
+            await message.channel.send('```ansi\n\x1b[32m> Type !leaderboard to view current rankings\n[Ready for input]█\x1b[0m```');
         } catch (error) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Challenge data inaccessible\x1b[0m\n```');
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Mission data inaccessible\n[Ready for input]█\x1b[0m```');
         }
     }
 
@@ -105,15 +79,15 @@ client.on('messageCreate', async message => {
             
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
-                .setTitle('ACHIEVEMENT RANKINGS')
+                .setTitle('OPERATIVE RANKINGS')
                 .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
-                .setDescription('```ansi\n\x1b[32m[DATA SYNCHRONIZED]\x1b[0m```');
+                .setDescription('```ansi\n\x1b[32m[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]\x1b[0m```');
 
             data.leaderboard.slice(0, 3).forEach((user, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 embed.addFields({
-                    name: `${medals[index]} ${user.username}`,
-                    value: '```ansi\n\x1b[32m' + user.completedAchievements + '/' + user.totalAchievements + ' (' + user.completionPercentage + '%)\x1b[0m```'
+                    name: `${medals[index]} OPERATIVE: ${user.username}`,
+                    value: '```ansi\n\x1b[32mACHIEVEMENTS: ' + user.completedAchievements + '/' + user.totalAchievements + '\nPROGRESS: ' + user.completionPercentage + '%\x1b[0m```'
                 });
             });
 
@@ -126,9 +100,9 @@ client.on('messageCreate', async message => {
 
             embed.setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !profile <user> for detailed stats\x1b[0m█\n```');
+            await message.channel.send('```ansi\n\x1b[32m> Type !profile <user> for detailed operative data\n[Ready for input]█\x1b[0m```');
         } catch (error) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Database sync failed\x1b[0m\n```');
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Database sync failed\n[Ready for input]█\x1b[0m```');
         }
     }
 
@@ -138,11 +112,11 @@ client.on('messageCreate', async message => {
             const username = message.content.split(' ')[1];
 
             if (!username) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Syntax: !profile <username>\x1b[0m\n```');
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid query\nSyntax: !profile <username>\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
-            await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
+            await message.channel.send('```ansi\n\x1b[32m> Accessing operative records...\x1b[0m\n```');
 
             const data = await fetchLeaderboardData();
             const userProgress = data.leaderboard.find(user => 
@@ -150,28 +124,58 @@ client.on('messageCreate', async message => {
             );
 
             if (!userProgress) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in database\x1b[0m\n```');
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Operative not found in database\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
-                .setTitle(`USER: ${userProgress.username}`)
+                .setTitle(`OPERATIVE DATA: ${userProgress.username}`)
                 .setURL(userProgress.profileUrl)
                 .setThumbnail(userProgress.profileImage)
-                .setDescription('```ansi\n\x1b[32m[STATUS: AUTHENTICATED]\n[ACCESS GRANTED]\x1b[0m```')
+                .setDescription('```ansi\n\x1b[32m[STATUS: AUTHENTICATED]\n[CLEARANCE: GRANTED]\x1b[0m```')
                 .addFields(
                     { 
-                        name: 'ACHIEVEMENT STATUS',
-                        value: '```ansi\n\x1b[32mCompleted: ' + userProgress.completedAchievements + '/' + userProgress.totalAchievements + '\nProgress: ' + userProgress.completionPercentage + '%\x1b[0m```'
+                        name: 'MISSION PROGRESS',
+                        value: '```ansi\n\x1b[32mACHIEVEMENTS: ' + userProgress.completedAchievements + '/' + userProgress.totalAchievements + '\nCOMPLETION: ' + userProgress.completionPercentage + '%\x1b[0m```'
                     }
                 )
                 .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
 
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Connection secure\x1b[0m█\n```');
+            await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
         } catch (error) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Database connection failed\x1b[0m\n```');
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Database connection failed\n[Ready for input]█\x1b[0m```');
+        }
+    }
+
+    // Nominations command
+    if (message.content === '!nominations') {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Accessing nominations database...\x1b[0m\n```');
+            
+            const nominations = await fetchNominations();
+            
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('NOMINATED TITLES')
+                .setDescription('```ansi\n\x1b[32m[DATABASE ACCESS GRANTED]\n[DISPLAYING NOMINATIONS BY PLATFORM]\x1b[0m```');
+
+            for (const [platform, games] of Object.entries(nominations).sort()) {
+                if (games.length > 0) {
+                    embed.addFields({
+                        name: `PLATFORM: ${platform.toUpperCase()}`,
+                        value: '```ansi\n\x1b[32m' + games.map(game => `> ${game}`).join('\n') + '\x1b[0m```'
+                    });
+                }
+            }
+
+            embed.setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
+            
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type !challenge to view current mission\n[Ready for input]█\x1b[0m```');
+        } catch (error) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Unable to access nominations\n[Ready for input]█\x1b[0m```');
         }
     }
 });
