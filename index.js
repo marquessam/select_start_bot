@@ -83,7 +83,8 @@ client.on('messageCreate', async message => {
                 .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
                 .setDescription('```ansi\n\x1b[32m[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]\x1b[0m```');
 
-          data.leaderboard.slice(0, 3).forEach((user, index) => {
+           // Display top 3 with medals and detailed stats
+            data.leaderboard.slice(0, 3).forEach((user, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 embed.addFields({
                     name: `${medals[index]} OPERATIVE: ${user.username}`,
@@ -91,19 +92,14 @@ client.on('messageCreate', async message => {
                 });
             });
 
-            if (data.additionalParticipants.length > 0) {
+            // Get additional participants (4th place and beyond)
+            const additionalOperatives = data.leaderboard.slice(3).map(user => user.username);
+            if (additionalOperatives.length > 0) {
                 embed.addFields({
                     name: 'ADDITIONAL PARTICIPANTS',
-                    value: '```ansi\n\x1b[32m' + data.additionalParticipants.join(', ') + '\x1b[0m```'
+                    value: '```ansi\n\x1b[32m' + additionalOperatives.join(', ') + '\x1b[0m```'
                 });
             }
-            embed.setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
-            await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !profile <user> for detailed operative data\n[Ready for input]█\x1b[0m```');
-        } catch (error) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Database sync failed\n[Ready for input]█\x1b[0m```');
-        }
-    }
 
     // Profile command
     if (message.content.startsWith('!profile')) {
