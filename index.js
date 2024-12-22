@@ -27,7 +27,7 @@ client.on('messageCreate', async message => {
             .setColor('#00FF00')
             .setTitle('SELECT START TERMINAL')
             .addFields(
-                { name: '!challenge', value: '```ansi\n\x1b[32mView current mission parameters\x1b[0m```' },
+                { name: '!challenge', value: '```ansi\n\x1b[32mView current monthly challenge\x1b[0m```' },
                 { name: '!leaderboard', value: '```ansi\n\x1b[32mDisplay achievement rankings\x1b[0m```' },
                 { name: '!profile <user>', value: '```ansi\n\x1b[32mAccess user achievement data\x1b[0m```' }
             )
