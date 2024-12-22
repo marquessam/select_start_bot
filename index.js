@@ -1,3 +1,4 @@
+```javascript
 require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { fetchLeaderboardData } = require('./raAPI.js');
@@ -15,20 +16,15 @@ const client = new Client({
 // Helper function for loading animation
 async function showLoadingAnimation(channel, operation = 'Loading') {
     const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-    const message = await channel.send('```ansi\n\x1b[32m' + operation + '...\x1b[0m\n```');
-    
     let i = 0;
-    const interval = setInterval(async () => {
-        if (i < frames.length) {
-            await message.edit('```ansi\n\x1b[32m' + frames[i] + ' ' + operation + '...\x1b[0m\n```');
-            i++;
-        } else {
-            clearInterval(interval);
-            await message.delete();
-        }
-    }, 100);
-
-    return new Promise(resolve => setTimeout(resolve, frames.length * 100));
+    const message = await channel.send('```ansi\n\x1b[32m> ' + operation + '...\x1b[0m\n```');
+    
+    for (const frame of frames) {
+        await message.edit('```ansi\n\x1b[32m' + frame + ' ' + operation + '...\x1b[0m\n```');
+        await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
+    await message.delete();
 }
 
 // Random tech messages
@@ -55,46 +51,54 @@ client.on('messageCreate', async message => {
 
     // Help command
     if (message.content === '!help') {
-        await message.channel.send('```ansi\n\x1b[32m=== SELECT START TERMINAL V1.0 ===\n\nAVAILABLE COMMANDS:\n\n!challenge   : View current mission parameters\n!leaderboard : Display achievement rankings\n!profile     : Access user achievement data\n!help        : Display this information\n\n[Type command to execute]█\x1b[0m\n```');
+        try {
+            await showLoadingAnimation(message.channel, 'Accessing help documentation');
+            await message.channel.send('```ansi\n\x1b[32m=== SELECT START TERMINAL V1.0 ===\n\nAVAILABLE COMMANDS:\n\n!challenge   : View current mission parameters\n!leaderboard : Display achievement rankings\n!profile     : Access user achievement data\n!help        : Display this information\n\n[Type command to execute]█\x1b[0m\n```');
+        } catch (error) {
+            console.error('Error in help command:', error);
+        }
     }
 
     // Challenge command
     if (message.content === '!challenge') {
-        await showLoadingAnimation(message.channel, getRandomTechMessage());
-        await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
+        try {
+            await showLoadingAnimation(message.channel, getRandomTechMessage());
 
-        const embed = new EmbedBuilder()
-            .setColor('#00FF00')
-            .setTitle('██████ SELECT START MONTHLY CHALLENGE ██████')
-            .setURL(`https://retroachievements.org/game/${config.currentChallenge.gameId}`)
-            .setThumbnail(`https://retroachievements.org${config.currentChallenge.gameIcon}`)
-            .setDescription('```ansi\n\x1b[32m[CHALLENGE STATUS: ACTIVE]\n[PERIOD: ' + 
-                config.currentChallenge.startDate + ' - ' + config.currentChallenge.endDate + ']\x1b[0m```')
-            .addFields(
-                { 
-                    name: '`MISSION`', 
-                    value: `\`\`\`ansi\n\x1b[32m${config.currentChallenge.gameName}\x1b[0m\`\`\`` 
-                },
-                { 
-                    name: '`PARAMETERS`', 
-                    value: `\`\`\`ansi\n\x1b[32m${config.currentChallenge.rules.map(rule => `> ${rule}`).join('\n')}\x1b[0m\`\`\`` 
-                },
-                {
-                    name: '`REWARD STRUCTURE`',
-                    value: `\`\`\`ansi\n\x1b[32m> 🥇 First Place: ${config.currentChallenge.points.first} points\n> 🥈 Second Place: ${config.currentChallenge.points.second} points\n> 🥉 Third Place: ${config.currentChallenge.points.third} points\n> ⭐ Bonus points available for special achievements\x1b[0m\`\`\``
-                }
-            )
-            .setFooter({ text: `[TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}]` });
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('██████ SELECT START MONTHLY CHALLENGE ██████')
+                .setURL(`https://retroachievements.org/game/${config.currentChallenge.gameId}`)
+                .setThumbnail(`https://retroachievements.org${config.currentChallenge.gameIcon}`)
+                .setDescription('```ansi\n\x1b[32m[CHALLENGE STATUS: ACTIVE]\n[PERIOD: ' + 
+                    config.currentChallenge.startDate + ' - ' + config.currentChallenge.endDate + ']\x1b[0m```')
+                .addFields(
+                    { 
+                        name: '`MISSION`', 
+                        value: `\`\`\`ansi\n\x1b[32m${config.currentChallenge.gameName}\x1b[0m\`\`\`` 
+                    },
+                    { 
+                        name: '`PARAMETERS`', 
+                        value: `\`\`\`ansi\n\x1b[32m${config.currentChallenge.rules.map(rule => `> ${rule}`).join('\n')}\x1b[0m\`\`\`` 
+                    },
+                    {
+                        name: '`REWARD STRUCTURE`',
+                        value: `\`\`\`ansi\n\x1b[32m> 🥇 First Place: ${config.currentChallenge.points.first} points\n> 🥈 Second Place: ${config.currentChallenge.points.second} points\n> 🥉 Third Place: ${config.currentChallenge.points.third} points\n> ⭐ Bonus points available for special achievements\x1b[0m\`\`\``
+                    }
+                )
+                .setFooter({ text: `[TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}]` });
             
-        await message.channel.send({ embeds: [embed] });
-        await message.channel.send('```ansi\n\x1b[32m> Type !leaderboard to view current rankings...\x1b[0m█\n```');
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type !leaderboard to view current rankings...\x1b[0m█\n```');
+        } catch (error) {
+            console.error('Error in challenge command:', error);
+            await message.channel.send('```ansi\n\x1b[32m[FATAL ERROR] \x1b[37mCommand execution failed\x1b[0m\n```');
+        }
     }
 
     // Leaderboard command
     if (message.content === '!leaderboard') {
         try {
             await showLoadingAnimation(message.channel, getRandomTechMessage());
-            await message.channel.send('```ansi\n\x1b[32m> Accessing leaderboard data...\x1b[0m\n```');
             
             const data = await fetchLeaderboardData();
             
@@ -140,8 +144,7 @@ client.on('messageCreate', async message => {
             }
 
             await showLoadingAnimation(message.channel, getRandomTechMessage());
-            await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
-
+            
             const data = await fetchLeaderboardData();
             const userProgress = data.leaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
@@ -181,3 +184,4 @@ client.on('messageCreate', async message => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+```
