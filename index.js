@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { fetchLeaderboardData } = require('./raAPI.js');
 
 const client = new Client({
     intents: [
@@ -60,6 +61,39 @@ client.on('messageCreate', async message => {
         // Send a follow-up console prompt
         await message.channel.send('```ansi\n\x1b[32m> Use !leaderboard to view current rankings...\x1b[0m█\n```');
     }
+    if (message.content === '!leaderboard') {
+    try {
+        // Send initial message
+        await message.channel.send('```ansi\n\x1b[32m> Accessing leaderboard data...\x1b[0m\n```');
+        
+        // Fetch the data
+        const data = await fetchLeaderboardData('3236');
+        
+        // Create the embed
+        const embed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setTitle('████ CURRENT RANKINGS ████')
+            .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
+            .setDescription('```ansi\n\x1b[32m[LEADERBOARD STATUS: ACTIVE]\n[LAST UPDATED: ' + new Date().toLocaleString() + ']\x1b[0m```');
+
+        // Add top 3 players
+        data.leaderboard.slice(0, 3).forEach((user, index) => {
+            const medals = ['🥇', '🥈', '🥉'];
+            embed.addFields({
+                name: `${medals[index]} ${user.username}`,
+                value: `\`\`\`${user.completedAchievements}/${user.totalAchievements} (${user.completionPercentage}%)\`\`\``
+            });
+        });
+
+        await message.channel.send({ embeds: [embed] });
+        
+        // Send follow-up message
+        await message.channel.send('```ansi\n\x1b[32m> Use !profile <username> to view detailed stats...\x1b[0m█\n```');
+    } catch (error) {
+        console.error('Error in leaderboard command:', error);
+        await message.channel.send('```ansi\n\x1b[31mERROR: Unable to fetch leaderboard data\x1b[0m\n```');
+    }
+}
 });
 
 // Login to Discord with your client's token
