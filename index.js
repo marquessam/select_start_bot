@@ -24,6 +24,12 @@ client.on('messageCreate', async message => {
             await message.channel.send('```ansi\n\x1b[32m> Accessing nominations database...\x1b[0m\n```');
             
             const nominations = await fetchNominations();
+            console.log('Nominations data:', nominations); // Debug log
+            
+            // Check if we got data
+            if (!nominations || Object.keys(nominations).length === 0) {
+                throw new Error('No nominations data received');
+            }
             
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
@@ -33,6 +39,7 @@ client.on('messageCreate', async message => {
             // Add each platform as a field
             for (const [platform, games] of Object.entries(nominations).sort()) {
                 if (games.length > 0) {
+                    console.log(`Adding platform ${platform} with ${games.length} games`); // Debug log
                     embed.addFields({
                         name: `${platform}`,
                         value: '```ansi\n\x1b[32m' + games.map(game => `> ${game}`).join('\n') + '\x1b[0m```'
@@ -46,7 +53,7 @@ client.on('messageCreate', async message => {
             await message.channel.send('```ansi\n\x1b[32m> Type !challenge to view current challenge\x1b[0m█\n```');
         } catch (error) {
             console.error('Error in nominations command:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Unable to access nominations database\x1b[0m\n```');
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Unable to access nominations database\nDetails: ' + error.message + '\x1b[0m\n```');
         }
     }
     // Help command
