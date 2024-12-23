@@ -87,7 +87,7 @@ if (message.content === '!leaderboard') {
         data.leaderboard.slice(0, 3).forEach((user, index) => {
             const medals = ['🥇', '🥈', '🥉'];
             embed.addFields({
-                name: `${medals[index]} OPERATIVE: ${user.username}`,
+                name: `${medals[index]} ${user.username}`,
                 value: '```ansi\n\x1b[32mACHIEVEMENTS: ' + user.completedAchievements + '/' + user.totalAchievements + '\nPROGRESS: ' + user.completionPercentage + '%\x1b[0m```'
             });
         });
@@ -95,13 +95,16 @@ if (message.content === '!leaderboard') {
         // Get additional participants (4th place and beyond)
         const additionalOperatives = data.leaderboard.slice(3);
         if (additionalOperatives.length > 0) {
-            // Split into multiple fields if needed while keeping comma-separated format
-            const operativesPerField = 20; // Adjust this number based on username lengths
-            for (let i = 0; i < additionalOperatives.length; i += operativesPerField) {
-                const groupOperatives = additionalOperatives.slice(i, i + operativesPerField);
+            // Create multiple smaller fields if needed
+            const chunkSize = 10; // Smaller chunk size to handle Discord's limits
+            let allUsers = additionalOperatives.map(user => user.username);
+            
+            // Split the users into chunks and create separate fields
+            while (allUsers.length > 0) {
+                const chunk = allUsers.splice(0, chunkSize);
                 embed.addFields({
-                    name: i === 0 ? 'ADDITIONAL PARTICIPANTS' : 'CONTINUED',
-                    value: '```ansi\n\x1b[32m' + groupOperatives.map(user => user.username).join(', ') + '\x1b[0m```'
+                    name: 'ADDITIONAL PARTICIPANTS',
+                    value: '```ansi\n\x1b[32m' + chunk.join(', ') + '\x1b[0m```'
                 });
             }
         }
