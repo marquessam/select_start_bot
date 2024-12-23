@@ -1,0 +1,28 @@
+{
+  "currentShadowGame": {
+    "active": true,
+    "currentProgress": 0,
+    "puzzles": [
+      {
+        "error": "ERROR 0xF7A2: Memory address FFT_0x4322 corrupted\nExpected value 'highpotion_price' not found\nAttempting recovery...",
+        "solution": "!200gp",
+        "completion_message": "[RECOVERED] Price index restored\n[WARNING] New corruption detected in job_matrix..."
+      },
+      {
+        "error": "ERROR 0xF7B1: job_matrix.ramza_base_class.attribute_0 undefined\nExpected value 'bravery_default' missing\nAttempting recovery...",
+        "solution": "!70",
+        "completion_message": "[RECOVERED] Character attribute table restored\n[WARNING] Battle calculation error detected..."
+      },
+      {
+        "error": "ERROR 0xF7C4: battle_calc.critical.multiplier_overflow\nExpected value 'weapon_bonus_cap' corrupted\nAttempting recovery...",
+        "solution": "!x2",
+        "completion_message": "[RECOVERED] Battle calculations restored\n[ALERT] Hidden data packet detected..."
+      }
+    ],
+    "finalReward": {
+      "gameId": "1234",
+      "gameName": "[REDACTED TITLE]",
+      "points": 2
+    }
+  }
+}
