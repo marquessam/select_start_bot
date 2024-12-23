@@ -19,20 +19,22 @@ class ShadowGame {
         }
     }
 
-    async tryShowError(message) {
-        if (!this.config.currentShadowGame.active) return;
-        if (Math.random() > this.errorChance) return;
+  async tryShowError(message) {
+    console.log('Attempting to show error...');  // Add this line
+    if (!this.config.currentShadowGame.active) return;
+    if (Math.random() > this.errorChance) return;
 
-        const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentProgress];
-        
-        const embed = new EmbedBuilder()
-            .setColor('#FF0000')
-            .setTitle('SYSTEM ERROR')
-            .setDescription('```ansi\n\x1b[31m' + currentPuzzle.error + '\x1b[0m```')
-            .setFooter({ text: `ERROR_ID: ${Date.now().toString(36).toUpperCase()}` });
+    console.log('Passed random check, should show error...'); // Add this line
+    const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentProgress];
+    
+    const embed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('SYSTEM ERROR')
+        .setDescription('```ansi\n\x1b[31m' + currentPuzzle.error + '\x1b[0m```')
+        .setFooter({ text: `ERROR_ID: ${Date.now().toString(36).toUpperCase()}` });
 
-        await message.channel.send({ embeds: [embed] });
-    }
+    await message.channel.send({ embeds: [embed] });
+}
 
  async checkMessage(message) {
     if (!this.config || !this.config.currentShadowGame || !this.config.currentShadowGame.active) return;
