@@ -19,17 +19,31 @@ class ShadowGame {
         }
     }
 
-  async tryShowError(message) {
-    // Temporary test - always show an error
+ async tryShowError(message) {
+    console.log('Config status:', this.config); // Add this to see what's loaded
+    if (!this.config || !this.config.currentShadowGame) {
+        console.log('No config or currentShadowGame found');
+        return;
+    }
+    if (!this.config.currentShadowGame.active) {
+        console.log('Shadow game not active');
+        return;
+    }
+    if (Math.random() > this.errorChance) {
+        console.log('Random check failed');
+        return;
+    }
+
+    const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentProgress];
+    
     const embed = new EmbedBuilder()
         .setColor('#FF0000')
-        .setTitle('TEST ERROR')
-        .setDescription('```ansi\n\x1b[31mThis is a test error\x1b[0m```')
+        .setTitle('SYSTEM ERROR')
+        .setDescription('```ansi\n\x1b[31m' + currentPuzzle.error + '\x1b[0m```')
         .setFooter({ text: `ERROR_ID: ${Date.now().toString(36).toUpperCase()}` });
 
     await message.channel.send({ embeds: [embed] });
 }
-
  async checkMessage(message) {
     if (!this.config || !this.config.currentShadowGame || !this.config.currentShadowGame.active) return;
     if (!message.content.startsWith('!')) return;
