@@ -14,9 +14,11 @@ const client = new Client({
     ]
 });
 
-client.once('ready', async () => {
+client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    await shadowGame.loadConfig();
+    shadowGame.loadConfig().catch(error => {
+        console.error('Error loading shadow game config:', error);
+    });
 });
 
 client.on('messageCreate', async message => {
