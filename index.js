@@ -2,6 +2,8 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { fetchLeaderboardData, fetchNominations } = require('./raAPI.js');
 const { getCurrentChallenge } = require('./challengeConfig.js');
+const ShadowGame = require('./shadowGame.js');
+const shadowGame = new ShadowGame();
 
 const client = new Client({
     intents: [
@@ -12,12 +14,16 @@ const client = new Client({
     ]
 });
 
-client.once('ready', () => {
+client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
+    await shadowGame.loadConfig();
 });
 
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
+
+    // Check for shadow game solutions
+    await shadowGame.checkMessage(message);
 
     // Help command
     if (message.content === '!help') {
@@ -30,96 +36,99 @@ client.on('messageCreate', async message => {
             .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
             
         await message.channel.send({ embeds: [embed] });
+        await shadowGame.tryShowError(message);
     }
 
-   // Challenge command
-if (message.content === '!challenge') {
-    try {
-        await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
+    // Challenge command
+    if (message.content === '!challenge') {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
 
-        const currentChallenge = await getCurrentChallenge();
+            const currentChallenge = await getCurrentChallenge();
 
-        const embed = new EmbedBuilder()
-            .setColor('#00FF00')
-            .setTitle('MONTHLY CHALLENGE')
-            .setURL(`https://retroachievements.org/game/${currentChallenge.gameId}`)
-            .setThumbnail(`https://retroachievements.org${currentChallenge.gameIcon}`)
-            .setDescription('```ansi\n\x1b[32m[STATUS: ACTIVE]\n[DATA VERIFIED]\x1b[0m```')
-            .addFields(
-                { 
-                    name: 'CURRENT CHALLENGE',
-                    value: '```ansi\n\x1b[32m' + currentChallenge.gameName + '\x1b[0m```'
-                },
-                {
-                    name: 'CHALLENGE TIMEFRAME',
-                    value: '```ansi\n\x1b[32m' + currentChallenge.startDate + ' - ' + currentChallenge.endDate + '\x1b[0m```'
-                },
-                {
-                    name: 'CHALLENGE PARAMETERS',
-                    value: '```ansi\n\x1b[32m' + currentChallenge.rules.map(rule => `> ${rule}`).join('\n') + '\x1b[0m```'
-                },
-                {
-                    name: 'REWARD PROTOCOL',
-                    value: '```ansi\n\x1b[32m> 🥇 ' + currentChallenge.points.first + ' pts\n> 🥈 ' + currentChallenge.points.second + ' pts\n> 🥉 ' + currentChallenge.points.third + ' pts\x1b[0m```'
-                }
-            )
-            .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
-        
-        await message.channel.send({ embeds: [embed] });
-        await message.channel.send('```ansi\n\x1b[32m> Type !leaderboard to view current rankings\n[Ready for input]█\x1b[0m```');
-    } catch (error) {
-        console.error('Challenge Error:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Mission data inaccessible\n[Ready for input]█\x1b[0m```');
-    }
-}
-
-// Leaderboard command
-if (message.content === '!leaderboard') {
-    try {
-        await message.channel.send('```ansi\n\x1b[32m> Accessing achievement database...\x1b[0m\n```');
-        
-        const data = await fetchLeaderboardData();
-        
-        const embed = new EmbedBuilder()
-            .setColor('#00FF00')
-            .setTitle('USER RANKINGS')
-            .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
-            .setDescription('```ansi\n\x1b[32m[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]\x1b[0m```');
-
-        // Display top 3 with medals and detailed stats
-        data.leaderboard.slice(0, 3).forEach((user, index) => {
-            const medals = ['🥇', '🥈', '🥉'];
-            embed.addFields({
-                name: `${medals[index]} ${user.username}`,
-                value: '```ansi\n\x1b[32mACHIEVEMENTS: ' + user.completedAchievements + '/' + user.totalAchievements + '\nPROGRESS: ' + user.completionPercentage + '%\x1b[0m```'
-            });
-        });
-
-        // Get additional participants (4th place and beyond)
-        const additionalOperatives = data.leaderboard.slice(3);
-        if (additionalOperatives.length > 0) {
-            // Create multiple smaller fields if needed
-            const chunkSize = 10; // Smaller chunk size to handle Discord's limits
-            let allUsers = additionalOperatives.map(user => user.username);
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('MONTHLY CHALLENGE')
+                .setURL(`https://retroachievements.org/game/${currentChallenge.gameId}`)
+                .setThumbnail(`https://retroachievements.org${currentChallenge.gameIcon}`)
+                .setDescription('```ansi\n\x1b[32m[STATUS: ACTIVE]\n[DATA VERIFIED]\x1b[0m```')
+                .addFields(
+                    { 
+                        name: 'CURRENT CHALLENGE',
+                        value: '```ansi\n\x1b[32m' + currentChallenge.gameName + '\x1b[0m```'
+                    },
+                    {
+                        name: 'CHALLENGE TIMEFRAME',
+                        value: '```ansi\n\x1b[32m' + currentChallenge.startDate + ' - ' + currentChallenge.endDate + '\x1b[0m```'
+                    },
+                    {
+                        name: 'CHALLENGE PARAMETERS',
+                        value: '```ansi\n\x1b[32m' + currentChallenge.rules.map(rule => `> ${rule}`).join('\n') + '\x1b[0m```'
+                    },
+                    {
+                        name: 'REWARD PROTOCOL',
+                        value: '```ansi\n\x1b[32m> 🥇 ' + currentChallenge.points.first + ' pts\n> 🥈 ' + currentChallenge.points.second + ' pts\n> 🥉 ' + currentChallenge.points.third + ' pts\x1b[0m```'
+                    }
+                )
+                .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
             
-            // Split the users into chunks and create separate fields
-            while (allUsers.length > 0) {
-                const chunk = allUsers.splice(0, chunkSize);
-                embed.addFields({
-                    name: 'ADDITIONAL PARTICIPANTS',
-                    value: '```ansi\n\x1b[32m' + chunk.join(', ') + '...\x1b[0m```'
-                });
-            }
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type !leaderboard to view current rankings\n[Ready for input]█\x1b[0m```');
+            await shadowGame.tryShowError(message);
+        } catch (error) {
+            console.error('Challenge Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Mission data inaccessible\n[Ready for input]█\x1b[0m```');
         }
-
-        embed.setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
-        await message.channel.send({ embeds: [embed] });
-        await message.channel.send('```ansi\n\x1b[32m> Type !profile <user> for detailed stats\n[Ready for input]█\x1b[0m```');
-    } catch (error) {
-        console.error('Leaderboard Error:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Database sync failed\n[Ready for input]█\x1b[0m```');
     }
-}
+
+    // Leaderboard command
+    if (message.content === '!leaderboard') {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Accessing achievement database...\x1b[0m\n```');
+            
+            const data = await fetchLeaderboardData();
+            
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('USER RANKINGS')
+                .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
+                .setDescription('```ansi\n\x1b[32m[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]\x1b[0m```');
+
+            // Display top 3 with medals and detailed stats
+            data.leaderboard.slice(0, 3).forEach((user, index) => {
+                const medals = ['🥇', '🥈', '🥉'];
+                embed.addFields({
+                    name: `${medals[index]} ${user.username}`,
+                    value: '```ansi\n\x1b[32mACHIEVEMENTS: ' + user.completedAchievements + '/' + user.totalAchievements + '\nPROGRESS: ' + user.completionPercentage + '%\x1b[0m```'
+                });
+            });
+
+            // Get additional participants (4th place and beyond)
+            const additionalOperatives = data.leaderboard.slice(3);
+            if (additionalOperatives.length > 0) {
+                // Create multiple smaller fields if needed
+                const chunkSize = 10; // Smaller chunk size to handle Discord's limits
+                let allUsers = additionalOperatives.map(user => user.username);
+                
+                // Split the users into chunks and create separate fields
+                while (allUsers.length > 0) {
+                    const chunk = allUsers.splice(0, chunkSize);
+                    embed.addFields({
+                        name: 'ADDITIONAL PARTICIPANTS',
+                        value: '```ansi\n\x1b[32m' + chunk.join(', ') + '...\x1b[0m```'
+                    });
+                }
+            }
+
+            embed.setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type !profile <user> for detailed stats\n[Ready for input]█\x1b[0m```');
+            await shadowGame.tryShowError(message);
+        } catch (error) {
+            console.error('Leaderboard Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Database sync failed\n[Ready for input]█\x1b[0m```');
+        }
+    }
     
     // Profile command
     if (message.content.startsWith('!profile')) {
@@ -159,6 +168,7 @@ if (message.content === '!leaderboard') {
 
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
+            await shadowGame.tryShowError(message);
         } catch (error) {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Database connection failed\n[Ready for input]█\x1b[0m```');
         }
@@ -189,6 +199,7 @@ if (message.content === '!leaderboard') {
             
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Type !challenge to view current challenge\n[Ready for input]█\x1b[0m```');
+            await shadowGame.tryShowError(message);
         } catch (error) {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Unable to access nominations\n[Ready for input]█\x1b[0m```');
         }
