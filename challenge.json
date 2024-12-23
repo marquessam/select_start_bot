@@ -1,0 +1,20 @@
+{
+  "currentChallenge": {
+    "gameId": "3236",
+    "gameName": "Final Fantasy Tactics: War of the Lions",
+    "gameIcon": "/Images/074335.png",
+    "startDate": "2024-12-01",
+    "endDate": "2024-12-31",
+    "rules": [
+      "Hardcore mode must be enabled",
+      "All achievements are eligible",
+      "Progress tracked via retroachievements",
+      "No hacks/save states/cheats allowed"
+    ],
+    "points": {
+      "first": 10,
+      "second": 6,
+      "third": 3
+    }
+  }
+}
