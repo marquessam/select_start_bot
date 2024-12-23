@@ -70,7 +70,7 @@ client.on('messageCreate', async message => {
         }
     }
 
-  // Leaderboard command
+// Leaderboard command
 if (message.content === '!leaderboard') {
     try {
         await message.channel.send('```ansi\n\x1b[32m> Accessing achievement database...\x1b[0m\n```');
@@ -95,14 +95,13 @@ if (message.content === '!leaderboard') {
         // Get additional participants (4th place and beyond)
         const additionalOperatives = data.leaderboard.slice(3);
         if (additionalOperatives.length > 0) {
-            // Split additional participants into groups of 10 to stay within Discord's field value limit
-            for (let i = 0; i < additionalOperatives.length; i += 10) {
-                const groupOperatives = additionalOperatives.slice(i, i + 10);
+            // Split into multiple fields if needed while keeping comma-separated format
+            const operativesPerField = 20; // Adjust this number based on username lengths
+            for (let i = 0; i < additionalOperatives.length; i += operativesPerField) {
+                const groupOperatives = additionalOperatives.slice(i, i + operativesPerField);
                 embed.addFields({
                     name: i === 0 ? 'ADDITIONAL PARTICIPANTS' : 'CONTINUED',
-                    value: '```ansi\n\x1b[32m' + groupOperatives.map((user, index) => 
-                        `${index + i + 4}. ${user.username}`
-                    ).join('\n') + '\x1b[0m```'
+                    value: '```ansi\n\x1b[32m' + groupOperatives.map(user => user.username).join(', ') + '\x1b[0m```'
                 });
             }
         }
@@ -115,7 +114,6 @@ if (message.content === '!leaderboard') {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Database sync failed\n[Ready for input]█\x1b[0m```');
     }
 }
-
     // Profile command
     if (message.content.startsWith('!profile')) {
         try {
