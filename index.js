@@ -104,7 +104,7 @@ if (message.content === '!leaderboard') {
                 const chunk = allUsers.splice(0, chunkSize);
                 embed.addFields({
                     name: 'ADDITIONAL PARTICIPANTS',
-                    value: '```ansi\n\x1b[32m' + chunk.join(', ') + '\x1b[0m```'
+                    value: '```ansi\n\x1b[32m' + chunk.join(', ') + '...\x1b[0m```'
                 });
             }
         }
@@ -117,6 +117,7 @@ if (message.content === '!leaderboard') {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Database sync failed\n[Ready for input]█\x1b[0m```');
     }
 }
+    
     // Profile command
     if (message.content.startsWith('!profile')) {
         try {
