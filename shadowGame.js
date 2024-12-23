@@ -34,30 +34,31 @@ class ShadowGame {
         await message.channel.send({ embeds: [embed] });
     }
 
-    async checkMessage(message) {
-        if (!this.config.currentShadowGame.active) return;
-        if (!message.content.startsWith('!')) return;
+ async checkMessage(message) {
+    if (!this.config || !this.config.currentShadowGame || !this.config.currentShadowGame.active) return;
+    if (!message.content.startsWith('!')) return;
 
-        const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentProgress];
+    const currentPuzzle = this.config.currentShadowGame.puzzles?.[this.config.currentProgress];
+    if (!currentPuzzle) return; // Add this safety check
         
-        if (message.content.toLowerCase() === currentPuzzle.solution.toLowerCase()) {
-            const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle('ERROR RESOLVED')
-                .setDescription('```ansi\n\x1b[32m' + currentPuzzle.completion_message + '\x1b[0m```')
-                .setFooter({ text: `REPAIR_ID: ${Date.now().toString(36).toUpperCase()}` });
+    if (message.content.toLowerCase() === currentPuzzle.solution.toLowerCase()) {
+        const embed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setTitle('ERROR RESOLVED')
+            .setDescription('```ansi\n\x1b[32m' + currentPuzzle.completion_message + '\x1b[0m```')
+            .setFooter({ text: `REPAIR_ID: ${Date.now().toString(36).toUpperCase()}` });
 
-            await message.channel.send({ embeds: [embed] });
+        await message.channel.send({ embeds: [embed] });
 
-            // Move to next puzzle or reveal shadow challenge
-            if (this.config.currentProgress < this.config.currentShadowGame.puzzles.length - 1) {
-                this.config.currentProgress++;
-                await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
-            } else {
-                await this.revealShadowChallenge(message);
-            }
+        // Move to next puzzle or reveal shadow challenge
+        if (this.config.currentProgress < this.config.currentShadowGame.puzzles.length - 1) {
+            this.config.currentProgress++;
+            await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
+        } else {
+            await this.revealShadowChallenge(message);
         }
     }
+}
 
     async revealShadowChallenge(message) {
         const reward = this.config.currentShadowGame.finalReward;
