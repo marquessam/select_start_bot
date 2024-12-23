@@ -32,43 +32,46 @@ client.on('messageCreate', async message => {
         await message.channel.send({ embeds: [embed] });
     }
 
-    // Challenge command
-    if (message.content === '!challenge') {
-        try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
+   // Challenge command
+if (message.content === '!challenge') {
+    try {
+        await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
 
-            const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle('MONTHLY CHALLENGE')
-                .setURL(`https://retroachievements.org/game/${config.currentChallenge.gameId}`)
-                .setThumbnail(`https://retroachievements.org${config.currentChallenge.gameIcon}`)
-                .setDescription('```ansi\n\x1b[32m[STATUS: ACTIVE]\n[DATA VERIFIED]\x1b[0m```')
-                .addFields(
-                    { 
-                        name: 'CURRENT CHALLENGE',
-                        value: '```ansi\n\x1b[32m' + config.currentChallenge.gameName + '\x1b[0m```'
-                    },
-                    {
-                        name: 'CHALLENGE TIMEFRAME',
-                        value: '```ansi\n\x1b[32m' + config.currentChallenge.startDate + ' - ' + config.currentChallenge.endDate + '\x1b[0m```'
-                    },
-                    {
-                        name: 'CHALLENGE PARAMETERS',
-                        value: '```ansi\n\x1b[32m' + config.currentChallenge.rules.map(rule => `> ${rule}`).join('\n') + '\x1b[0m```'
-                    },
-                    {
-                        name: 'REWARD PROTOCOL',
-                        value: '```ansi\n\x1b[32m> 🥇 ' + config.currentChallenge.points.first + ' pts\n> 🥈 ' + config.currentChallenge.points.second + ' pts\n> 🥉 ' + config.currentChallenge.points.third + ' pts\x1b[0m```'
-                    }
-                )
-                .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
-            
-            await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !leaderboard to view current rankings\n[Ready for input]█\x1b[0m```');
-        } catch (error) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Mission data inaccessible\n[Ready for input]█\x1b[0m```');
-        }
+        const currentChallenge = await getCurrentChallenge();
+
+        const embed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setTitle('MONTHLY CHALLENGE')
+            .setURL(`https://retroachievements.org/game/${currentChallenge.gameId}`)
+            .setThumbnail(`https://retroachievements.org${currentChallenge.gameIcon}`)
+            .setDescription('```ansi\n\x1b[32m[STATUS: ACTIVE]\n[DATA VERIFIED]\x1b[0m```')
+            .addFields(
+                { 
+                    name: 'CURRENT CHALLENGE',
+                    value: '```ansi\n\x1b[32m' + currentChallenge.gameName + '\x1b[0m```'
+                },
+                {
+                    name: 'CHALLENGE TIMEFRAME',
+                    value: '```ansi\n\x1b[32m' + currentChallenge.startDate + ' - ' + currentChallenge.endDate + '\x1b[0m```'
+                },
+                {
+                    name: 'CHALLENGE PARAMETERS',
+                    value: '```ansi\n\x1b[32m' + currentChallenge.rules.map(rule => `> ${rule}`).join('\n') + '\x1b[0m```'
+                },
+                {
+                    name: 'REWARD PROTOCOL',
+                    value: '```ansi\n\x1b[32m> 🥇 ' + currentChallenge.points.first + ' pts\n> 🥈 ' + currentChallenge.points.second + ' pts\n> 🥉 ' + currentChallenge.points.third + ' pts\x1b[0m```'
+                }
+            )
+            .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
+        
+        await message.channel.send({ embeds: [embed] });
+        await message.channel.send('```ansi\n\x1b[32m> Type !leaderboard to view current rankings\n[Ready for input]█\x1b[0m```');
+    } catch (error) {
+        console.error('Challenge Error:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Mission data inaccessible\n[Ready for input]█\x1b[0m```');
     }
+}
 
 // Leaderboard command
 if (message.content === '!leaderboard') {
