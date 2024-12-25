@@ -65,29 +65,30 @@ async tryShowError(message) {
 
 async checkMessage(message) {
     try {
-        // Add debug logs
         console.log('Checking message:', message.content);
+        console.log('Current progress before check:', this.config.currentProgress);
 
-        // Check if config is loaded
         if (!this.config) {
             await this.loadConfig();
         }
 
-        if (!this.config || !this.config.currentShadowGame || !this.config.currentShadowGame.active) {
-            return;
-        }
-
-        // Access first puzzle directly like in tryShowError
-        const currentPuzzle = this.config.currentShadowGame.puzzles[0];
-        if (!currentPuzzle) {
-            return;
-        }
-
-        // Debug log for comparison
-        console.log('Comparing:', message.content.toLowerCase(), 'with:', currentPuzzle.solution.toLowerCase());
-
+        const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentProgress];
+        
         if (message.content.toLowerCase() === currentPuzzle.solution.toLowerCase()) {
             console.log('Solution matched!');
+            
+            // Update progress
+            this.config.currentProgress = (this.config.currentProgress || 0) + 1;
+            console.log('New progress:', this.config.currentProgress);
+
+            // Save updated progress to file
+            try {
+                await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
+                console.log('Progress saved to file');
+            } catch (writeError) {
+                console.error('Error saving progress:', writeError);
+            }
+
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
                 .setTitle('ERROR RESOLVED')
@@ -96,10 +97,6 @@ async checkMessage(message) {
 
             await message.channel.send({ embeds: [embed] });
 
-            // Increment progress
-            this.config.currentProgress++;
-            await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
-            
             if (this.config.currentProgress >= this.config.currentShadowGame.puzzles.length) {
                 await this.revealShadowChallenge(message);
             }
