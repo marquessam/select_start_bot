@@ -21,10 +21,13 @@ class ShadowGame {
         }
     }
 
-  async tryShowError(message) {
+async tryShowError(message) {
     try {
         console.log('tryShowError called');
-        console.log('Config:', this.config);
+        
+        // Get current progress from config
+        const progress = this.config.currentProgress || 0;
+        console.log('Current progress:', progress);
 
         // Verify configuration
         if (!this.config || !this.config.currentShadowGame || !this.config.currentShadowGame.active) {
@@ -34,18 +37,17 @@ class ShadowGame {
 
         // Random chance check
         const roll = Math.random();
-        console.log('Random roll:', roll, 'vs chance:', this.errorChance);
         if (roll > this.errorChance) {
             console.log('Random check failed');
             return;
         }
 
-        // Access the first puzzle directly for testing
-        const currentPuzzle = this.config.currentShadowGame.puzzles[0];  // Changed this line
-        console.log('Current puzzle:', currentPuzzle);  // Added this line
+        // Get puzzle based on current progress
+        const currentPuzzle = this.config.currentShadowGame.puzzles[progress];
+        console.log('Current puzzle:', currentPuzzle);
         
         if (!currentPuzzle) {
-            console.log('No puzzle found');
+            console.log('No puzzle found or all puzzles complete');
             return;
         }
 
