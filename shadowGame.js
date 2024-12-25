@@ -61,46 +61,51 @@ class ShadowGame {
     }
 }
 
-    async checkMessage(message) {
-        try {
-            // Check if config is loaded
-            if (!this.config) {
-                await this.loadConfig();
-            }
+async checkMessage(message) {
+    try {
+        // Add debug logs
+        console.log('Checking message:', message.content);
 
-            if (!this.config || !this.config.currentShadowGame || !this.config.currentShadowGame.active) {
-                return;
-            }
-
-            if (!message.content.startsWith('!')) {
-                return;
-            }
-
-            const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentProgress];
-            if (!currentPuzzle) {
-                return;
-            }
-
-            if (message.content.toLowerCase() === currentPuzzle.solution.toLowerCase()) {
-                const embed = new EmbedBuilder()
-                    .setColor('#00FF00')
-                    .setTitle('ERROR RESOLVED')
-                    .setDescription('```ansi\n\x1b[32m' + currentPuzzle.completion_message + '\x1b[0m```')
-                    .setFooter({ text: `REPAIR_ID: ${Date.now().toString(36).toUpperCase()}` });
-
-                await message.channel.send({ embeds: [embed] });
-
-                if (this.config.currentProgress < this.config.currentShadowGame.puzzles.length - 1) {
-                    this.config.currentProgress++;
-                    await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
-                } else {
-                    await this.revealShadowChallenge(message);
-                }
-            }
-        } catch (error) {
-            console.error('Error in checkMessage:', error);
+        // Check if config is loaded
+        if (!this.config) {
+            await this.loadConfig();
         }
+
+        if (!this.config || !this.config.currentShadowGame || !this.config.currentShadowGame.active) {
+            return;
+        }
+
+        // Access first puzzle directly like in tryShowError
+        const currentPuzzle = this.config.currentShadowGame.puzzles[0];
+        if (!currentPuzzle) {
+            return;
+        }
+
+        // Debug log for comparison
+        console.log('Comparing:', message.content.toLowerCase(), 'with:', currentPuzzle.solution.toLowerCase());
+
+        if (message.content.toLowerCase() === currentPuzzle.solution.toLowerCase()) {
+            console.log('Solution matched!');
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('ERROR RESOLVED')
+                .setDescription('```ansi\n\x1b[32m' + currentPuzzle.completion_message + '\x1b[0m```')
+                .setFooter({ text: `REPAIR_ID: ${Date.now().toString(36).toUpperCase()}` });
+
+            await message.channel.send({ embeds: [embed] });
+
+            // Increment progress
+            this.config.currentProgress++;
+            await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
+            
+            if (this.config.currentProgress >= this.config.currentShadowGame.puzzles.length) {
+                await this.revealShadowChallenge(message);
+            }
+        }
+    } catch (error) {
+        console.error('Error in checkMessage:', error);
     }
+}
 
     async revealShadowChallenge(message) {
         try {
