@@ -25,13 +25,21 @@ async tryShowError(message) {
     try {
         console.log('tryShowError called');
         
-        // Get current progress from config
-        const progress = this.config.currentProgress || 0;
-        console.log('Current progress:', progress);
+        if (!this.config || !this.config.currentShadowGame) {
+            console.log('No valid config found');
+            return;
+        }
 
-        // Verify configuration
-        if (!this.config || !this.config.currentShadowGame || !this.config.currentShadowGame.active) {
-            console.log('Invalid config state:', this.config);
+        // Initialize progress if undefined
+        if (typeof this.config.currentShadowGame.currentProgress === 'undefined') {
+            this.config.currentShadowGame.currentProgress = 0;
+        }
+
+        console.log('Current progress:', this.config.currentShadowGame.currentProgress);
+
+        const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentShadowGame.currentProgress];
+        if (!currentPuzzle) {
+            console.log('No puzzle found or all puzzles complete');
             return;
         }
 
@@ -39,15 +47,6 @@ async tryShowError(message) {
         const roll = Math.random();
         if (roll > this.errorChance) {
             console.log('Random check failed');
-            return;
-        }
-
-        // Get puzzle based on current progress
-        const currentPuzzle = this.config.currentShadowGame.puzzles[progress];
-        console.log('Current puzzle:', currentPuzzle);
-        
-        if (!currentPuzzle) {
-            console.log('No puzzle found or all puzzles complete');
             return;
         }
 
@@ -66,28 +65,36 @@ async tryShowError(message) {
 async checkMessage(message) {
     try {
         console.log('Checking message:', message.content);
-        console.log('Current progress before check:', this.config.currentProgress);
 
+        // Make sure config is loaded
         if (!this.config) {
             await this.loadConfig();
         }
 
-        const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentProgress];
-        
+        // Safety checks with logging
+        if (!this.config || !this.config.currentShadowGame) {
+            console.log('No valid config found');
+            return;
+        }
+
+        // Initialize progress if undefined
+        if (typeof this.config.currentShadowGame.currentProgress === 'undefined') {
+            console.log('Initializing progress to 0');
+            this.config.currentShadowGame.currentProgress = 0;
+        }
+
+        console.log('Current progress:', this.config.currentShadowGame.currentProgress);
+
+        const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentShadowGame.currentProgress];
+        if (!currentPuzzle) {
+            console.log('No puzzle found for current progress');
+            return;
+        }
+
+        console.log('Comparing:', message.content.toLowerCase(), 'with:', currentPuzzle.solution.toLowerCase());
+
         if (message.content.toLowerCase() === currentPuzzle.solution.toLowerCase()) {
             console.log('Solution matched!');
-            
-            // Update progress
-            this.config.currentProgress = (this.config.currentProgress || 0) + 1;
-            console.log('New progress:', this.config.currentProgress);
-
-            // Save updated progress to file
-            try {
-                await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
-                console.log('Progress saved to file');
-            } catch (writeError) {
-                console.error('Error saving progress:', writeError);
-            }
 
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
@@ -97,7 +104,15 @@ async checkMessage(message) {
 
             await message.channel.send({ embeds: [embed] });
 
-            if (this.config.currentProgress >= this.config.currentShadowGame.puzzles.length) {
+            // Update progress
+            this.config.currentShadowGame.currentProgress++;
+            console.log('New progress:', this.config.currentShadowGame.currentProgress);
+
+            // Save to file
+            await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
+            console.log('Progress saved to file');
+
+            if (this.config.currentShadowGame.currentProgress >= this.config.currentShadowGame.puzzles.length) {
                 await this.revealShadowChallenge(message);
             }
         }
@@ -105,7 +120,6 @@ async checkMessage(message) {
         console.error('Error in checkMessage:', error);
     }
 }
-
     async revealShadowChallenge(message) {
         try {
             const reward = this.config.currentShadowGame.finalReward;
