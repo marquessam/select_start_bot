@@ -66,6 +66,16 @@ async checkMessage(message) {
     try {
         console.log('Checking message:', message.content);
 
+        // Reset command for admins
+        if (message.content === '!shadowreset') {
+            if (message.member.roles.cache.some(role => role.name === 'Admin')) {
+                this.config.currentShadowGame.currentProgress = 0;
+                await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
+                await message.channel.send('```ansi\n\x1b[32m[SYSTEM RESET COMPLETE]\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+        }
+
         // Make sure config is loaded
         if (!this.config) {
             await this.loadConfig();
@@ -84,36 +94,50 @@ async checkMessage(message) {
         }
 
         console.log('Current progress:', this.config.currentShadowGame.currentProgress);
-
         const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentShadowGame.currentProgress];
+        
         if (!currentPuzzle) {
             console.log('No puzzle found for current progress');
             return;
         }
 
         console.log('Comparing:', message.content.toLowerCase(), 'with:', currentPuzzle.solution.toLowerCase());
-
+        
         if (message.content.toLowerCase() === currentPuzzle.solution.toLowerCase()) {
             console.log('Solution matched!');
-
+            
+            // Send success message
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
                 .setTitle('ERROR RESOLVED')
                 .setDescription('```ansi\n\x1b[32m' + currentPuzzle.completion_message + '\x1b[0m```')
                 .setFooter({ text: `REPAIR_ID: ${Date.now().toString(36).toUpperCase()}` });
-
+            
             await message.channel.send({ embeds: [embed] });
-
+            
             // Update progress
             this.config.currentShadowGame.currentProgress++;
             console.log('New progress:', this.config.currentShadowGame.currentProgress);
-
+            
             // Save to file
             await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
             console.log('Progress saved to file');
 
+            // Check if all puzzles are complete
             if (this.config.currentShadowGame.currentProgress >= this.config.currentShadowGame.puzzles.length) {
                 await this.revealShadowChallenge(message);
+            } else {
+                // Show next error after a short delay
+                setTimeout(async () => {
+                    const nextPuzzle = this.config.currentShadowGame.puzzles[this.config.currentShadowGame.currentProgress];
+                    const nextErrorEmbed = new EmbedBuilder()
+                        .setColor('#FF0000')
+                        .setTitle('SYSTEM ERROR')
+                        .setDescription('```ansi\n\x1b[31m' + nextPuzzle.error + '\x1b[0m```')
+                        .setFooter({ text: `ERROR_ID: ${Date.now().toString(36).toUpperCase()}` });
+
+                    await message.channel.send({ embeds: [nextErrorEmbed] });
+                }, 2000); // 2 second delay before showing next error
             }
         }
     } catch (error) {
