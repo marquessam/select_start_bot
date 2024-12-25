@@ -7,6 +7,16 @@
         "error": "ERROR 0xF7A2: Memory address FFT_0x4322 corrupted\nExpected value 'highpotion_price' not found\nAttempting recovery...",
         "solution": "!200gp",
         "completion_message": "[RECOVERED] Price index restored\n[WARNING] New corruption detected in job_matrix..."
+      },
+      {
+        "error": "ERROR 0xF7B3: job_matrix.squire_progression corrupted\nExpected value 'jp_chemist_unlock' missing\nAttempting recovery...",
+        "solution": "!jp300",
+        "completion_message": "[RECOVERED] Job progression restored\n[WARNING] Battle calculation anomaly detected..."
+      },
+      {
+        "error": "ERROR 0xF7C1: battle_calc.zodiac_compatibility corrupted\nExpected value 'max_compatibility_multiplier' missing\nAttempting recovery...",
+        "solution": "!1.5x",
+        "completion_message": "[RECOVERED] Battle calculations restored\n[WARNING] Hidden data packet detected..."
       }
     ],
     "finalReward": {
