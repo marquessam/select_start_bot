@@ -3,6 +3,13 @@ const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { fetchLeaderboardData, fetchNominations } = require('./raAPI.js');
 const { getCurrentChallenge } = require('./challengeConfig.js');
 const ShadowGame = require('./shadowGame.js');
+let shadowGame;
+try {
+    shadowGame = new ShadowGame();
+    console.log('Shadow Game initialized');
+} catch (error) {
+    console.error('Error initializing Shadow Game:', error);
+}
 const shadowGame = new ShadowGame();
 
 const client = new Client({
