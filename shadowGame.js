@@ -68,12 +68,26 @@ async checkMessage(message) {
 
         // Reset command for admins
         if (message.content === '!shadowreset') {
-            if (message.member.roles.cache.some(role => role.name === 'Admin')) {
-                this.config.currentShadowGame.currentProgress = 0;
-                await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
-                await message.channel.send('```ansi\n\x1b[32m[SYSTEM RESET COMPLETE]\n[Ready for input]█\x1b[0m```');
-                return;
-            }
+    console.log('Reset command received');
+    // Reset progress
+    this.config.currentShadowGame.currentProgress = 0;
+    await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
+    console.log('Progress reset to 0');
+    
+    // Send confirmation
+    await message.channel.send('```ansi\n\x1b[32m[SYSTEM RESET COMPLETE]\n[Ready for input]█\x1b[0m```');
+    
+    // Show first error again
+    const firstPuzzle = this.config.currentShadowGame.puzzles[0];
+    const errorEmbed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('SYSTEM ERROR')
+        .setDescription('```ansi\n\x1b[31m' + firstPuzzle.error + '\x1b[0m```')
+        .setFooter({ text: `ERROR_ID: ${Date.now().toString(36).toUpperCase()}` });
+
+    await message.channel.send({ embeds: [errorEmbed] });
+    return;
+}
         }
 
         // Make sure config is loaded
