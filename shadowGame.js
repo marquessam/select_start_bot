@@ -21,13 +21,22 @@ class ShadowGame {
         }
     }
 
-    async tryShowError(message) {
-        try {
-            // Check if config is loaded
-            if (!this.config) {
-                console.log('No config loaded, attempting to load...');
-                await this.loadConfig();
-            }
+  async tryShowError(message) {
+    console.log('tryShowError called');
+    console.log('Config:', this.config);
+    console.log('Random roll:', Math.random(), 'vs chance:', this.errorChance);
+
+    // Test error - remove randomization temporarily
+    const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentProgress];
+    
+    const embed = new EmbedBuilder()
+        .setColor('#FF0000')
+        .setTitle('SYSTEM ERROR')
+        .setDescription('```ansi\n\x1b[31m' + currentPuzzle.error + '\x1b[0m```')
+        .setFooter({ text: `ERROR_ID: ${Date.now().toString(36).toUpperCase()}` });
+
+    await message.channel.send({ embeds: [embed] });
+}
 
             // Verify configuration
             if (!this.config || !this.config.currentShadowGame || !this.config.currentShadowGame.active) {
