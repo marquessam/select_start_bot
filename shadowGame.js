@@ -21,41 +21,45 @@ class ShadowGame {
         }
     }
 
-    async tryShowError(message) {
-        try {
-            console.log('tryShowError called');
-            console.log('Config:', this.config);
-            console.log('Random roll:', Math.random(), 'vs chance:', this.errorChance);
+  async tryShowError(message) {
+    try {
+        console.log('tryShowError called');
+        console.log('Config:', this.config);
 
-            // Verify configuration
-            if (!this.config || !this.config.currentShadowGame || !this.config.currentShadowGame.active) {
-                console.log('Invalid config state:', this.config);
-                return;
-            }
-
-            // Random chance check
-            if (Math.random() > this.errorChance) {
-                console.log('Random check failed');
-                return;
-            }
-
-            const currentPuzzle = this.config.currentShadowGame.puzzles[this.config.currentProgress];
-            if (!currentPuzzle) {
-                console.log('No puzzle found for current progress:', this.config.currentProgress);
-                return;
-            }
-
-            const embed = new EmbedBuilder()
-                .setColor('#FF0000')
-                .setTitle('SYSTEM ERROR')
-                .setDescription('```ansi\n\x1b[31m' + currentPuzzle.error + '\x1b[0m```')
-                .setFooter({ text: `ERROR_ID: ${Date.now().toString(36).toUpperCase()}` });
-
-            await message.channel.send({ embeds: [embed] });
-        } catch (error) {
-            console.error('Error in tryShowError:', error);
+        // Verify configuration
+        if (!this.config || !this.config.currentShadowGame || !this.config.currentShadowGame.active) {
+            console.log('Invalid config state:', this.config);
+            return;
         }
+
+        // Random chance check
+        const roll = Math.random();
+        console.log('Random roll:', roll, 'vs chance:', this.errorChance);
+        if (roll > this.errorChance) {
+            console.log('Random check failed');
+            return;
+        }
+
+        // Access the first puzzle directly for testing
+        const currentPuzzle = this.config.currentShadowGame.puzzles[0];  // Changed this line
+        console.log('Current puzzle:', currentPuzzle);  // Added this line
+        
+        if (!currentPuzzle) {
+            console.log('No puzzle found');
+            return;
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor('#FF0000')
+            .setTitle('SYSTEM ERROR')
+            .setDescription('```ansi\n\x1b[31m' + currentPuzzle.error + '\x1b[0m```')
+            .setFooter({ text: `ERROR_ID: ${Date.now().toString(36).toUpperCase()}` });
+
+        await message.channel.send({ embeds: [embed] });
+    } catch (error) {
+        console.error('Error in tryShowError:', error);
     }
+}
 
     async checkMessage(message) {
         try {
