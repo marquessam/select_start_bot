@@ -4,18 +4,28 @@ const { fetchLeaderboardData, fetchNominations } = require('./raAPI.js');
 const { getCurrentChallenge } = require('./challengeConfig.js');
 const ShadowGame = require('./shadowGame.js');
 let shadowGame;
+
 try {
     shadowGame = new ShadowGame();
     console.log('ShadowGame initialized successfully');
 } catch (error) {
     console.error('Failed to initialize ShadowGame:', error);
 }
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
+    ]
 });
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
     shadowGame.loadConfig().catch(error => {
         console.error('Error loading shadow game config:', error);
+    });
 });
 
 client.on('messageCreate', async message => {
