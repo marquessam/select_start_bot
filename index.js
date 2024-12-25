@@ -6,26 +6,16 @@ const ShadowGame = require('./shadowGame.js');
 let shadowGame;
 try {
     shadowGame = new ShadowGame();
-    console.log('Shadow Game initialized');
+    console.log('ShadowGame initialized successfully');
 } catch (error) {
-    console.error('Error initializing Shadow Game:', error);
+    console.error('Failed to initialize ShadowGame:', error);
 }
-const shadowGame = new ShadowGame();
-
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
-    ]
 });
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
     shadowGame.loadConfig().catch(error => {
         console.error('Error loading shadow game config:', error);
-    });
 });
 
 client.on('messageCreate', async message => {
