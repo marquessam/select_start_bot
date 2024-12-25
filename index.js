@@ -5,13 +5,6 @@ const { getCurrentChallenge } = require('./challengeConfig.js');
 const ShadowGame = require('./shadowGame.js');
 let shadowGame;
 
-try {
-    shadowGame = new ShadowGame();
-    console.log('ShadowGame initialized successfully');
-} catch (error) {
-    console.error('Failed to initialize ShadowGame:', error);
-}
-
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -21,6 +14,16 @@ const client = new Client({
     ]
 });
 
+client.once('ready', async () => {
+    console.log(`Logged in as ${client.user.tag}!`);
+    try {
+        shadowGame = new ShadowGame();
+        await shadowGame.loadConfig();
+        console.log('ShadowGame initialized successfully');
+    } catch (error) {
+        console.error('Error initializing ShadowGame:', error);
+    }
+});
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
     shadowGame.loadConfig().catch(error => {
