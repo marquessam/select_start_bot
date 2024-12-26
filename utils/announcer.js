@@ -40,7 +40,7 @@ class Announcer {
     async announceNewChallenge() {
         const embed = new TerminalEmbed()
             .setTerminalTitle('NEW CHALLENGE INITIATED')
-            .setTerminalDescription('[ALERT: NEW MISSION AVAILABLE]\n[OPERATIVES REQUESTED]')
+            .setTerminalDescription('[ALERT: NEW CHALLENGE AVAILABLE]\n[USERS REQUESTED]')
             .addTerminalField('STATUS UPDATE', 
                 'New monthly challenge has begun!\nCheck !challenge for mission details')
             .setTerminalFooter();
@@ -73,9 +73,9 @@ class Announcer {
                 .setTerminalTitle('CHALLENGE COMPLETE')
                 .setTerminalDescription('[MISSION ACCOMPLISHED]\n[CALCULATING FINAL RESULTS]')
                 .addTerminalField('CHALLENGE WINNERS',
-                    `🥇 ${winners.first || 'None'} - 10 pts\n` +
-                    `🥈 ${winners.second || 'None'} - 6 pts\n` +
-                    `🥉 ${winners.third || 'None'} - 3 pts`)
+                    `🥇 ${winners.first || 'None'} - 6 pts\n` +
+                    `🥈 ${winners.second || 'None'} - 4 pts\n` +
+                    `🥉 ${winners.third || 'None'} - 2 pts`)
                 .addTerminalField('STATUS UPDATE',
                     'Monthly challenge has concluded\nPoints have been awarded\nArchive has been updated')
                 .setTerminalFooter();
@@ -90,7 +90,7 @@ class Announcer {
     async announceNominationsOpen() {
         const embed = new TerminalEmbed()
             .setTerminalTitle('NOMINATIONS OPEN')
-            .setTerminalDescription('[ALERT: MISSION SELECTION PHASE]\n[INPUT REQUESTED]')
+            .setTerminalDescription('[ALERT: CHALLENGE SELECTION PHASE]\n[INPUT REQUESTED]')
             .addTerminalField('STATUS UPDATE',
                 'Nominations for next month\'s challenge are now open!\nSubmit your game suggestions in the nominations channel.')
             .setTerminalFooter();
