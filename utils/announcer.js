@@ -11,18 +11,19 @@ class Announcer {
 
     async initialize() {
         // Schedule monthly events
-        // 1st of each month - New Challenge Start
+        // 1st of each month at midnight
         cron.schedule('0 0 1 * *', () => this.announceNewChallenge());
         
-        // Last day of month - Challenge End
-        cron.schedule('0 0 L * *', () => this.handleChallengeEnd());
+        // Last day of month at midnight - using 28 for now
+        cron.schedule('0 0 28 * *', () => this.handleChallengeEnd());
         
-        // 25th of month - Nominations Open
+        // 25th of month at midnight
         cron.schedule('0 0 25 * *', () => this.announceNominationsOpen());
         
-        // 28th of month - Voting Open
+        // 28th of month at midnight
         cron.schedule('0 0 28 * *', () => this.announceVotingOpen());
     }
+}
 
     async getAnnouncementChannel() {
         return await this.client.channels.fetch(this.announcementChannelId);
