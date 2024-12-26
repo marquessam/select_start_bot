@@ -3,14 +3,8 @@ const TerminalEmbed = require('../../utils/embedBuilder');
 module.exports = {
     name: 'addpoints',
     description: 'Add points to a user',
-    adminOnly: true,
     async execute(message, args, { userStats }) {
         try {
-            if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient clearance level\n[Ready for input]█\x1b[0m```');
-                return;
-            }
-
             if (args.length < 3) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !addpoints <username> <points> <reason>\n[Ready for input]█\x1b[0m```');
                 return;
