@@ -18,8 +18,10 @@ class CommandHandler {
 
             for (const file of commandFiles) {
                 try {
-                    const command = require(path.join(commandsPath, file));
-                    console.log(`Loading command from ${file}:`, command.name);
+                    const filePath = path.join(commandsPath, file);
+                    console.log('Loading file:', filePath);
+                    const command = require(filePath);
+                    console.log('Loaded command:', command.name);
                     this.commands.set(command.name, command);
                 } catch (error) {
                     console.error(`Error loading command ${file}:`, error);
@@ -32,12 +34,14 @@ class CommandHandler {
                 console.log('Loading admin commands from:', adminPath);
                 const adminFiles = fs.readdirSync(adminPath)
                     .filter(file => file.endsWith('.js'));
-                console.log('Found admin command files:', adminFiles);
+                console.log('Found admin files:', adminFiles);
 
                 for (const file of adminFiles) {
                     try {
-                        const command = require(path.join(adminPath, file));
-                        console.log(`Loading admin command from ${file}:`, command.name);
+                        const filePath = path.join(adminPath, file);
+                        console.log('Loading admin file:', filePath);
+                        const command = require(filePath);
+                        console.log('Loaded admin command:', command.name);
                         this.commands.set(command.name, command);
                     } catch (error) {
                         console.error(`Error loading admin command ${file}:`, error);
@@ -45,8 +49,7 @@ class CommandHandler {
                 }
             }
 
-            console.log('Loaded commands:', Array.from(this.commands.keys()));
-            console.log(`Total commands loaded: ${this.commands.size}`);
+            console.log('All loaded commands:', Array.from(this.commands.keys()));
         } catch (error) {
             console.error('Error in loadCommands:', error);
         }
@@ -58,7 +61,7 @@ class CommandHandler {
         const args = message.content.slice(1).split(/ +/);
         const commandName = args.shift().toLowerCase();
         
-        console.log('Attempting to handle command:', commandName);
+        console.log('Received command:', commandName);
         console.log('Available commands:', Array.from(this.commands.keys()));
 
         const command = this.commands.get(commandName);
@@ -68,7 +71,7 @@ class CommandHandler {
         }
 
         try {
-            console.log(`Executing command ${commandName} with args:`, args);
+            console.log('Executing command:', commandName);
             await command.execute(message, args, dependencies);
         } catch (error) {
             console.error(`Error executing command ${commandName}:`, error);
