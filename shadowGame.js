@@ -6,7 +6,7 @@ class ShadowGame {
     constructor() {
         this.configPath = path.join(__dirname, 'shadowGame.json');
         this.config = null;
-        this.errorChance = 0.95; // 95% chance to show error after commands
+        this.errorChance = 0.35; // 35% chance to show error after commands
     }
 
     async loadConfig() {
