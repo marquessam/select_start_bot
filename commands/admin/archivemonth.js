@@ -4,15 +4,8 @@ const { fetchLeaderboardData } = require('../../raAPI.js');
 module.exports = {
     name: 'archivemonth',
     description: 'Archives current leaderboard standings',
-    adminOnly: true,
     async execute(message, args, { userStats }) {
         try {
-            // Check for admin role
-            if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient clearance level\n[Ready for input]█\x1b[0m```');
-                return;
-            }
-
             await message.channel.send('```ansi\n\x1b[32m> Archiving current leaderboard...\x1b[0m\n```');
             
             const data = await fetchLeaderboardData();
