@@ -12,18 +12,25 @@ class Announcer {
     async initialize() {
         // Schedule monthly events
         // 1st of each month at midnight
-        cron.schedule('0 0 1 * *', () => this.announceNewChallenge());
+        cron.schedule('0 0 1 * *', () => {
+            this.announceNewChallenge();
+        });
         
-        // Last day of month at midnight - using 28 for now
-        cron.schedule('0 0 28 * *', () => this.handleChallengeEnd());
+        // Last day of month at midnight
+        cron.schedule('0 0 28 * *', () => {
+            this.handleChallengeEnd();
+        });
         
         // 25th of month at midnight
-        cron.schedule('0 0 25 * *', () => this.announceNominationsOpen());
+        cron.schedule('0 0 25 * *', () => {
+            this.announceNominationsOpen();
+        });
         
         // 28th of month at midnight
-        cron.schedule('0 0 28 * *', () => this.announceVotingOpen());
+        cron.schedule('0 0 28 * *', () => {
+            this.announceVotingOpen();
+        });
     }
-}
 
     async getAnnouncementChannel() {
         return await this.client.channels.fetch(this.announcementChannelId);
@@ -74,9 +81,9 @@ class Announcer {
                 .setTerminalTitle('CHALLENGE COMPLETE')
                 .setTerminalDescription('[MISSION ACCOMPLISHED]\n[CALCULATING FINAL RESULTS]')
                 .addTerminalField('CHALLENGE WINNERS',
-                    `🥇 ${winners.first || 'None'} - 6 pts\n` +
-                    `🥈 ${winners.second || 'None'} - 4 pts\n` +
-                    `🥉 ${winners.third || 'None'} - 2 pts`)
+                    `🥇 ${winners.first || 'None'} - 10 pts\n` +
+                    `🥈 ${winners.second || 'None'} - 6 pts\n` +
+                    `🥉 ${winners.third || 'None'} - 3 pts`)
                 .addTerminalField('STATUS UPDATE',
                     'Monthly challenge has concluded\nPoints have been awarded\nArchive has been updated')
                 .setTerminalFooter();
@@ -91,7 +98,7 @@ class Announcer {
     async announceNominationsOpen() {
         const embed = new TerminalEmbed()
             .setTerminalTitle('NOMINATIONS OPEN')
-            .setTerminalDescription('[ALERT: CHALLENGE SELECTION PHASE]\n[INPUT REQUESTED]')
+            .setTerminalDescription('[ALERT: MISSION SELECTION PHASE]\n[INPUT REQUESTED]')
             .addTerminalField('STATUS UPDATE',
                 'Nominations for next month\'s challenge are now open!\nSubmit your game suggestions in the nominations channel.')
             .setTerminalFooter();
