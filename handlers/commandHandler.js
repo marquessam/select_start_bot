@@ -7,30 +7,49 @@ class CommandHandler {
     }
 
     async loadCommands(dependencies) {
-        const commandsPath = path.join(__dirname, '..', 'commands');
-        
-        // Load regular commands
-        const commandFiles = fs.readdirSync(commandsPath)
-            .filter(file => file.endsWith('.js'));
-
-        for (const file of commandFiles) {
-            const command = require(path.join(commandsPath, file));
-            this.commands.set(command.name, command);
-        }
-
-        // Load admin commands
-        const adminPath = path.join(commandsPath, 'admin');
-        if (fs.existsSync(adminPath)) {
-            const adminFiles = fs.readdirSync(adminPath)
+        try {
+            const commandsPath = path.join(__dirname, '..', 'commands');
+            console.log('Loading commands from:', commandsPath);
+            
+            // Load regular commands
+            const commandFiles = fs.readdirSync(commandsPath)
                 .filter(file => file.endsWith('.js'));
+            console.log('Found command files:', commandFiles);
 
-            for (const file of adminFiles) {
-                const command = require(path.join(adminPath, file));
-                this.commands.set(command.name, command);
+            for (const file of commandFiles) {
+                try {
+                    const command = require(path.join(commandsPath, file));
+                    console.log(`Loading command from ${file}:`, command.name);
+                    this.commands.set(command.name, command);
+                } catch (error) {
+                    console.error(`Error loading command ${file}:`, error);
+                }
             }
-        }
 
-        console.log(`Loaded ${this.commands.size} commands`);
+            // Load admin commands
+            const adminPath = path.join(commandsPath, 'admin');
+            if (fs.existsSync(adminPath)) {
+                console.log('Loading admin commands from:', adminPath);
+                const adminFiles = fs.readdirSync(adminPath)
+                    .filter(file => file.endsWith('.js'));
+                console.log('Found admin command files:', adminFiles);
+
+                for (const file of adminFiles) {
+                    try {
+                        const command = require(path.join(adminPath, file));
+                        console.log(`Loading admin command from ${file}:`, command.name);
+                        this.commands.set(command.name, command);
+                    } catch (error) {
+                        console.error(`Error loading admin command ${file}:`, error);
+                    }
+                }
+            }
+
+            console.log('Loaded commands:', Array.from(this.commands.keys()));
+            console.log(`Total commands loaded: ${this.commands.size}`);
+        } catch (error) {
+            console.error('Error in loadCommands:', error);
+        }
     }
 
     async handleCommand(message, dependencies) {
@@ -38,11 +57,18 @@ class CommandHandler {
 
         const args = message.content.slice(1).split(/ +/);
         const commandName = args.shift().toLowerCase();
+        
+        console.log('Attempting to handle command:', commandName);
+        console.log('Available commands:', Array.from(this.commands.keys()));
 
         const command = this.commands.get(commandName);
-        if (!command) return;
+        if (!command) {
+            console.log('Command not found:', commandName);
+            return;
+        }
 
         try {
+            console.log(`Executing command ${commandName} with args:`, args);
             await command.execute(message, args, dependencies);
         } catch (error) {
             console.error(`Error executing command ${commandName}:`, error);
