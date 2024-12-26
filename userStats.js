@@ -8,7 +8,7 @@ class UserStats {
         this.dbPath = path.join(__dirname, 'userStats.json');
         this.stats = null;
         this.currentYear = new Date().getFullYear();
-        this.SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSpV_1nLVtIVvXtNVqpzqXV6NQVi8l6pm5wQR41tYm7ooAmxfH0ln__TuEcC9so6KFRanFW0yCiJOM/pub?output=csv';
+        this.SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
     }
 
     async loadStats() {
