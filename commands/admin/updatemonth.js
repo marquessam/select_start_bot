@@ -3,15 +3,8 @@ const TerminalEmbed = require('../../utils/embedBuilder');
 module.exports = {
     name: 'updatemonth',
     description: 'Updates monthly rankings and points',
-    adminOnly: true,
     async execute(message, args, { userStats }) {
         try {
-            // Check for admin role
-            if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient clearance level\n[Ready for input]█\x1b[0m```');
-                return;
-            }
-
             if (args.length !== 4) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !updatemonth <month> <first> <second> <third>\n[Ready for input]█\x1b[0m```');
                 return;
