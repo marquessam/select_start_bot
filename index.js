@@ -3,6 +3,7 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const ShadowGame = require('./shadowGame.js');
 const UserStats = require('./userStats.js');
 const CommandHandler = require('./handlers/commandHandler.js');
+const Announcer = require('./utils/announcer');
 
 const client = new Client({
     intents: [
@@ -16,6 +17,8 @@ const client = new Client({
 let shadowGame;
 const userStats = new UserStats();
 const commandHandler = new CommandHandler();
+const ANNOUNCEMENT_CHANNEL_ID = process.env.ANNOUNCEMENT_CHANNEL_ID;
+const announcer = new Announcer(client, userStats, ANNOUNCEMENT_CHANNEL_ID);
 
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
@@ -23,11 +26,13 @@ client.once('ready', async () => {
         shadowGame = new ShadowGame();
         await shadowGame.loadConfig();
         await userStats.loadStats();
+        await announcer.initialize();
 
         // Load commands with dependencies
         await commandHandler.loadCommands({
             shadowGame,
-            userStats
+            userStats,
+            announcer
         });
 
         console.log('Bot initialized successfully');
@@ -45,9 +50,9 @@ client.on('messageCreate', async message => {
     // Handle commands
     await commandHandler.handleCommand(message, {
         shadowGame,
-        userStats
+        userStats,
+        announcer
     });
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
