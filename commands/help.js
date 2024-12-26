@@ -18,10 +18,6 @@ module.exports = {
                 '!profile <user>\nAccess user achievement data\n\n' +
                 '!yearlyboard\nDisplay yearly rankings\n\n' +
                 '!viewarchive <month>\nView historical rankings\n\n' +
-                '=== ADMIN COMMANDS ===\n' +
-                '!addpoints <user> <points> <reason>\nAdd bonus points to user\n\n' +
-                '!updatemonth <month> <first> <second> <third>\nUpdate monthly rankings\n\n' +
-                '!archivemonth\nArchive current rankings\n\n' +
                 '[Ready for input]█'
             )
             .setTerminalFooter();
