@@ -35,14 +35,27 @@ client.on('messageCreate', async message => {
     // Check for shadow game solutions
     await shadowGame.checkMessage(message);
 
-    // Help command
+   // Help command
     if (message.content === '!help') {
         await message.channel.send('```ansi\n\x1b[32m> Accessing terminal...\x1b[0m\n```');
         
         const embed = new EmbedBuilder()
             .setColor('#00FF00')
             .setTitle('SELECT START TERMINAL')
-            .setDescription('```ansi\n\x1b[32mAVAILABLE COMMANDS:\n\n!challenge\nDisplay current challenge\n\n!leaderboard\nDisplay achievement rankings\n\n!profile <user>\nAccess user achievement data\n\n!nominations\nDisplay nominated games\n\n!yearlyboard\nDisplay yearly rankings\n\n!addpoints <user> <points> <reason>\nAdmin only - Add bonus points\n\n[Ready for input]█\x1b[0m```')
+            .setDescription('```ansi\n\x1b[32mAVAILABLE COMMANDS:\n\n' +
+                '=== CHALLENGE INFO ===\n' +
+                '!challenge\nDisplay current challenge\n\n' +
+                '!leaderboard\nDisplay achievement rankings\n\n' +
+                '!nominations\nDisplay nominated games\n\n' +
+                '=== USER STATS ===\n' +
+                '!profile <user>\nAccess user achievement data\n\n' +
+                '!yearlyboard\nDisplay yearly rankings\n\n' +
+                '!viewarchive <month>\nView historical rankings\n\n' +
+                '=== ADMIN COMMANDS ===\n' +
+                '!addpoints <user> <points> <reason>\nAdd bonus points to user\n\n' +
+                '!updatemonth <month> <first> <second> <third>\nUpdate monthly rankings\n\n' +
+                '!archivemonth\nArchive current rankings\n\n' +
+                '[Ready for input]█\x1b[0m```')
             .setFooter({ text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` });
             
         await message.channel.send({ embeds: [embed] });
@@ -373,5 +386,97 @@ client.on('messageCreate', async message => {
         }
     }
 
-  client.login(process.env.DISCORD_TOKEN);
-       
+// Archive current leaderboard (admin only)
+    if (message.content === '!archivemonth') {
+        try {
+            // Check for admin role
+            if (!message.member.roles.cache.some(role => role.name === 'Admin')) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient clearance level\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            await message.channel.send('```ansi\n\x1b[32m> Archiving current leaderboard...\x1b[0m\n```');
+            
+            const data = await fetchLeaderboardData();
+            const archiveResult = await userStats.archiveLeaderboard(data);
+            
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('LEADERBOARD ARCHIVED')
+                .setDescription('```ansi\n\x1b[32m[ARCHIVE COMPLETE]\n[DATA STORED SUCCESSFULLY]\x1b[0m```')
+                .addFields(
+                    {
+                        name: 'ARCHIVE DETAILS',
+                        value: '```ansi\n\x1b[32mMONTH: ' + archiveResult.month +
+                              '\nYEAR: ' + archiveResult.year +
+                              '\nENTRIES: ' + archiveResult.rankings.length + '\x1b[0m```'
+                    }
+                )
+                .setFooter({ text: `ARCHIVE_ID: ${Date.now().toString(36).toUpperCase()}` });
+
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type !viewarchive <month> to view archived data\n[Ready for input]█\x1b[0m```');
+
+        } catch (error) {
+            console.error('Archive Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to archive leaderboard\n[Ready for input]█\x1b[0m```');
+        }
+    }
+
+    // View archived leaderboard
+    if (message.content.startsWith('!viewarchive')) {
+        try {
+            const args = message.content.split(' ');
+            if (args.length < 2) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !viewarchive <month>\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            const month = args[1];
+            await message.channel.send('```ansi\n\x1b[32m> Accessing archived data...\x1b[0m\n```');
+            
+            const archive = await userStats.getMonthlyArchive(month);
+            
+            if (!archive) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] No archive found for ' + month + '\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle(`ARCHIVED RANKINGS: ${month.toUpperCase()}`)
+                .setThumbnail(`https://retroachievements.org${archive.gameInfo.ImageIcon}`)
+                .setDescription('```ansi\n\x1b[32m[ARCHIVE ACCESS GRANTED]\n[DISPLAYING HISTORICAL DATA]\x1b[0m```');
+
+            // Display top 3 with medals
+            archive.rankings.slice(0, 3).forEach((user, index) => {
+                const medals = ['🥇', '🥈', '🥉'];
+                embed.addFields({
+                    name: `${medals[index]} ${user.username}`,
+                    value: '```ansi\n\x1b[32mACHIEVEMENTS: ' + user.completedAchievements + '/' + user.totalAchievements + '\nPROGRESS: ' + user.completionPercentage + '%\x1b[0m```'
+                });
+            });
+
+            // Additional participants
+            const additionalUsers = archive.rankings.slice(3);
+            if (additionalUsers.length > 0) {
+                embed.addFields({
+                    name: 'ADDITIONAL PARTICIPANTS',
+                    value: '```ansi\n\x1b[32m' + additionalUsers.map(user => user.username).join(', ') + '\x1b[0m```'
+                });
+            }
+
+            embed.setFooter({ text: `ARCHIVE_ID: ${new Date(archive.archivedDate).toString(36).toUpperCase()}` });
+            
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Archive data retrieved successfully\n[Ready for input]█\x1b[0m```');
+
+        } catch (error) {
+            console.error('View Archive Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve archive\n[Ready for input]█\x1b[0m```');
+        }
+    }
+}); // Close the messageCreate event handler
+
+// Move client.login outside of the event handler
+client.login(process.env.DISCORD_TOKEN);
