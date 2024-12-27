@@ -11,6 +11,29 @@ class UserStats {
         this.SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
     }
 
+    async resetUserPoints(username) {
+    try {
+        await this.initializeUserIfNeeded(username);
+        
+        const currentYear = new Date().getFullYear().toString();
+        
+        // Reset all point-related data
+        this.stats.users[username] = {
+            totalPoints: 0,
+            yearlyPoints: {
+                [currentYear]: 0
+            },
+            monthlyAchievements: {},
+            bonusPoints: []
+        };
+
+        await this.saveStats();
+        return true;
+    } catch (error) {
+        console.error('Error resetting user points:', error);
+        throw error;
+    }
+}
     async loadStats() {
         try {
             // First load existing stats if they exist
