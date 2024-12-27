@@ -38,6 +38,19 @@ class Announcer {
         }
     }
 
+    async getAnnouncementChannel() {
+        return await this.client.channels.fetch(this.announcementChannelId);
+    }
+
+    async makeAnnouncement(embed) {
+        try {
+            const channel = await this.getAnnouncementChannel();
+            await channel.send({ embeds: [embed] });
+        } catch (error) {
+            console.error('Announcement Error:', error);
+        }
+    }
+
     async switchToNextChallenge() {
         try {
             const nextChallengePath = path.join(__dirname, '../nextChallenge.json');
@@ -90,34 +103,6 @@ class Announcer {
         }
     }
 
-    // ... rest of your existing announcer code ...
-}
-
-module.exports = Announcer;
-    async getAnnouncementChannel() {
-        return await this.client.channels.fetch(this.announcementChannelId);
-    }
-
-    async makeAnnouncement(embed) {
-        try {
-            const channel = await this.getAnnouncementChannel();
-            await channel.send({ embeds: [embed] });
-        } catch (error) {
-            console.error('Announcement Error:', error);
-        }
-    }
-
-    async announceNewChallenge() {
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('NEW CHALLENGE INITIATED')
-            .setTerminalDescription('[ALERT: NEW CHALLENGE AVAILABLE]\n[USERS REQUESTED]')
-            .addTerminalField('STATUS UPDATE', 
-                'New monthly challenge has begun!\nCheck !challenge for mission details')
-            .setTerminalFooter();
-
-        await this.makeAnnouncement(embed);
-    }
-
     async handleChallengeEnd() {
         try {
             // Fetch final standings
@@ -143,9 +128,9 @@ module.exports = Announcer;
                 .setTerminalTitle('CHALLENGE COMPLETE')
                 .setTerminalDescription('[MISSION ACCOMPLISHED]\n[CALCULATING FINAL RESULTS]')
                 .addTerminalField('CHALLENGE WINNERS',
-                    `🥇 ${winners.first || 'None'} - 10 pts\n` +
-                    `🥈 ${winners.second || 'None'} - 6 pts\n` +
-                    `🥉 ${winners.third || 'None'} - 3 pts`)
+                    `🥇 ${winners.first || 'None'} - 6 pts\n` +
+                    `🥈 ${winners.second || 'None'} - 4 pts\n` +
+                    `🥉 ${winners.third || 'None'} - 2 pts`)
                 .addTerminalField('STATUS UPDATE',
                     'Monthly challenge has concluded\nPoints have been awarded\nArchive has been updated')
                 .setTerminalFooter();
@@ -155,6 +140,17 @@ module.exports = Announcer;
         } catch (error) {
             console.error('Challenge End Error:', error);
         }
+    }
+
+    async announceNewChallenge() {
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('NEW CHALLENGE INITIATED')
+            .setTerminalDescription('[ALERT: NEW MISSION AVAILABLE]\n[OPERATIVES REQUESTED]')
+            .addTerminalField('STATUS UPDATE', 
+                'New monthly challenge has begun!\nCheck !challenge for mission details')
+            .setTerminalFooter();
+
+        await this.makeAnnouncement(embed);
     }
 
     async announceNominationsOpen() {
