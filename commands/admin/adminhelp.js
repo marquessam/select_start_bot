@@ -29,6 +29,7 @@ module.exports = {
                 '  - name "<game name>"\n' +
                 '  - icon <path>\n' +
                 '  - dates <start> <end>\n\n' +
+                '!!switchchallenge \nSwitches to challenge defined with setnext command\n' +
                 '=== TESTING ===\n' +
                 '!testmonth\nTest monthly cycle with real data\n\n' +
                 '!testwithoutarchive\nTest announcements without affecting data\n\n' +
