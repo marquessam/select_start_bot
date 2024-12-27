@@ -1,0 +1,20 @@
+{
+    "currentChallenge": {
+        "gameId": "",
+        "gameName": "",
+        "gameIcon": "",
+        "startDate": "",
+        "endDate": "",
+        "rules": [
+            "Hardcore mode must be enabled",
+            "All achievements are eligible",
+            "Progress tracked via retroachievements",
+            "No hacks/save states/cheats allowed"
+        ],
+        "points": {
+            "first": 10,
+            "second": 6,
+            "third": 3
+        }
+    }
+}
