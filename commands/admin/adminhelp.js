@@ -1,5 +1,4 @@
 const TerminalEmbed = require('../../utils/embedBuilder');
-
 module.exports = {
     name: 'adminhelp',
     description: 'Shows all available commands including admin commands',
@@ -33,7 +32,7 @@ module.exports = {
                 '=== TESTING ===\n' +
                 '!testmonth\nTest monthly cycle with real data\n\n' +
                 '!testwithoutarchive\nTest announcements without affecting data\n\n' +
-                '!shadowreset\nReset Shadow Game Progress\n\n'
+                '!shadowreset\nReset Shadow Game Progress\n\n' +
                 '[ADMIN ACCESS GRANTED]█'
             )
             .setTerminalFooter();
