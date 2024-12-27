@@ -51,7 +51,7 @@ module.exports = {
         
         // Add shadow game hint after a short delay
         setTimeout(async () => {
-            await message.channel.send('```ansi\n\x1b[31mERROR 0xF7A2: Memory address FFT_0x4322 corrupted\nExpected value \'highpotion_price\' not found\nAttempting recovery...\x1b[0m```');
+            await message.channel.send('```ansi\n\x1b[31mSYSTEM LOG: Database scan complete\nERROR: ADDITIONAL POINT OPPORTUNITIES not indexed\nWARNING: shadowgame.dat not found in database\nAttempting to recover missing data...\x1b[0m```');
         }, 2000);
     }
 };
