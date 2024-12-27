@@ -33,6 +33,7 @@ module.exports = {
                 '=== TESTING ===\n' +
                 '!testmonth\nTest monthly cycle with real data\n\n' +
                 '!testwithoutarchive\nTest announcements without affecting data\n\n' +
+                '!shadowreset\nReset Shadow Game Progress\n\n'
                 '[ADMIN ACCESS GRANTED]█'
             )
             .setTerminalFooter();
