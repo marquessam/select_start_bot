@@ -9,6 +9,12 @@ class ShadowGame {
         this.errorChance = 0.35; // 35% chance to show error after commands
     }
 
+    async resetProgress() {
+    this.config.currentShadowGame.currentProgress = 0;
+    await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
+    return true;
+}
+    
     async loadConfig() {
         try {
             const configData = await fs.readFile(this.configPath, 'utf8');
