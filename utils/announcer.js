@@ -16,11 +16,11 @@ class Announcer {
         // 1st of each month - New Challenge Start
         cron.schedule('0 0 1 * *', () => this.handleNewMonth());
         
-        // 25th of month - Nominations Open
-        cron.schedule('0 0 25 * *', () => this.announceNominationsOpen());
+        // 15th of month - Nominations Open
+        cron.schedule('0 0 15 * *', () => this.announceNominationsOpen());
         
-        // 28th of month - Voting Open
-        cron.schedule('0 0 28 * *', () => this.announceVotingOpen());
+        // 23rd of month - Voting Open
+        cron.schedule('0 0 23 * *', () => this.announceVotingOpen());
     }
 
     async handleNewMonth() {
