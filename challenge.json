@@ -2,7 +2,7 @@
   "currentChallenge": {
     "gameId": "319",
     "gameName": "Chrono Trigger",
-    "gameIcon": "Images/093950.png",
+    "gameIcon": "/Images/093950.png",
     "startDate": "2025-01-01",
     "endDate": "2025-01-31",
     "rules": [
