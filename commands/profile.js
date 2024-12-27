@@ -14,7 +14,7 @@ module.exports = {
                 return;
             }
 
-            await message.channel.send('```ansi\n\x1b[32m> Accessing operative records...\x1b[0m\n```');
+            await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
             console.log('Fetching leaderboard data for:', username);
 
             try {
@@ -49,7 +49,7 @@ module.exports = {
                     .join('\n');
 
                 const embed = new TerminalEmbed()
-                    .setTerminalTitle(`OPERATIVE DATA: ${userProgress.username}`)
+                    .setTerminalTitle(`USER DATA: ${userProgress.username}`)
                     .setURL(userProgress.profileUrl)
                     .setThumbnail(userProgress.profileImage)
                     .setTerminalDescription('[STATUS: AUTHENTICATED]\n[CLEARANCE: GRANTED]')
