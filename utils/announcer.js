@@ -51,21 +51,46 @@ class Announcer {
         }
     }
 
-    async switchToNextChallenge() {
+async switchToNextChallenge() {
+    try {
+        console.log('Starting challenge switch');
+        const nextChallengePath = path.join(__dirname, '../../nextChallenge.json');
+        const challengePath = path.join(__dirname, '../../challenge.json');
+
+        // Log the actual file paths
+        console.log('nextChallengePath:', nextChallengePath);
+        console.log('challengePath:', challengePath);
+
+        // Check if files exist
         try {
-            console.log('Starting challenge switch');
-            const nextChallengePath = path.join(__dirname, '../../nextChallenge.json');
-            const challengePath = path.join(__dirname, '../../challenge.json');
+            await fs.access(nextChallengePath);
+            await fs.access(challengePath);
+            console.log('Both files exist and are accessible');
+        } catch (error) {
+            console.error('File access error:', error);
+            throw error;
+        }
 
-            console.log('Reading next challenge from:', nextChallengePath);
-            const nextChallengeData = await fs.readFile(nextChallengePath, 'utf8');
-            console.log('Next challenge data:', nextChallengeData);
-            
-            const nextChallenge = JSON.parse(nextChallengeData);
-            console.log('Parsed next challenge:', nextChallenge);
+        // Read and log current challenge
+        const currentChallengeData = await fs.readFile(challengePath, 'utf8');
+        console.log('Current challenge before switch:', currentChallengeData);
 
-            console.log('Writing to challenge file:', challengePath);
-            await fs.writeFile(challengePath, JSON.stringify(nextChallenge, null, 2));
+        // Read and log next challenge
+        console.log('Reading next challenge from:', nextChallengePath);
+        const nextChallengeData = await fs.readFile(nextChallengePath, 'utf8');
+        console.log('Next challenge data:', nextChallengeData);
+        
+        const nextChallenge = JSON.parse(nextChallengeData);
+        console.log('Parsed next challenge:', nextChallenge);
+
+        // Write and verify
+        console.log('Writing to challenge file:', challengePath);
+        await fs.writeFile(challengePath, JSON.stringify(nextChallenge, null, 2));
+        
+        // Verify the write
+        const verifyData = await fs.readFile(challengePath, 'utf8');
+        console.log('Verification - new challenge data:', verifyData);
+
 
             // Create new empty next challenge template
             const emptyTemplate = {
