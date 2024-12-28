@@ -53,14 +53,18 @@ class Announcer {
 
     async switchToNextChallenge() {
         try {
-            const nextChallengePath = path.join(__dirname, '../nextChallenge.json');
-            const challengePath = path.join(__dirname, '../challenge.json');
+            console.log('Starting challenge switch');
+            const nextChallengePath = path.join(__dirname, '../../nextChallenge.json');
+            const challengePath = path.join(__dirname, '../../challenge.json');
 
-            // Read next challenge
+            console.log('Reading next challenge from:', nextChallengePath);
             const nextChallengeData = await fs.readFile(nextChallengePath, 'utf8');
+            console.log('Next challenge data:', nextChallengeData);
+            
             const nextChallenge = JSON.parse(nextChallengeData);
+            console.log('Parsed next challenge:', nextChallenge);
 
-            // Update current challenge file
+            console.log('Writing to challenge file:', challengePath);
             await fs.writeFile(challengePath, JSON.stringify(nextChallenge, null, 2));
 
             // Create new empty next challenge template
@@ -98,7 +102,7 @@ class Announcer {
             await this.makeAnnouncement(embed);
 
         } catch (error) {
-            console.error('Error switching challenges:', error);
+            console.error('Detailed switch error:', error);
             throw error;
         }
     }
