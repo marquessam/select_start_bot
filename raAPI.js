@@ -1,6 +1,7 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-const config = require('./config.js');
+const fs = require('fs').promises;
+const path = require('path');
 
 async function fetchNominations() {
     try {
@@ -75,8 +76,14 @@ async function fetchNominations() {
         throw error;
     }
 }
+
 async function fetchLeaderboardData() {
     try {
+        // Read current challenge file
+        const challengePath = path.join(process.cwd(), 'challenge.json');
+        const challengeData = await fs.readFile(challengePath, 'utf8');
+        const challenge = JSON.parse(challengeData);
+
         const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
 
         // Fetch users from spreadsheet
@@ -98,7 +105,7 @@ async function fetchLeaderboardData() {
                 const params = new URLSearchParams({
                     z: process.env.RA_USERNAME,
                     y: process.env.RA_API_KEY,
-                    g: config.currentChallenge.gameId,
+                    g: challenge.currentChallenge.gameId, // Use challenge.json instead of config
                     u: username
                 });
 
@@ -145,8 +152,8 @@ async function fetchLeaderboardData() {
 
         return {
             gameInfo: validGameInfo || { 
-                Title: config.currentChallenge.gameName,
-                ImageIcon: config.currentChallenge.gameIcon
+                Title: challenge.currentChallenge.gameName,
+                ImageIcon: challenge.currentChallenge.gameIcon
             },
             leaderboard: topTen,
             additionalParticipants: additionalParticipants,
@@ -158,7 +165,6 @@ async function fetchLeaderboardData() {
         throw error;
     }
 }
-
 module.exports = { 
     fetchLeaderboardData,
     fetchNominations 
