@@ -51,46 +51,45 @@ class Announcer {
         }
     }
 
-async switchToNextChallenge() {
-    try {
-        console.log('Starting challenge switch');
-        const nextChallengePath = path.join(__dirname, '../../nextChallenge.json');
-        const challengePath = path.join(__dirname, '../../challenge.json');
-
-        // Log the actual file paths
-        console.log('nextChallengePath:', nextChallengePath);
-        console.log('challengePath:', challengePath);
-
-        // Check if files exist
+    async switchToNextChallenge() {
         try {
-            await fs.access(nextChallengePath);
-            await fs.access(challengePath);
-            console.log('Both files exist and are accessible');
-        } catch (error) {
-            console.error('File access error:', error);
-            throw error;
-        }
+            console.log('Starting challenge switch');
+            const nextChallengePath = path.join(process.cwd(), 'nextChallenge.json');
+            const challengePath = path.join(process.cwd(), 'challenge.json');
 
-        // Read and log current challenge
-        const currentChallengeData = await fs.readFile(challengePath, 'utf8');
-        console.log('Current challenge before switch:', currentChallengeData);
+            // Log the actual file paths
+            console.log('nextChallengePath:', nextChallengePath);
+            console.log('challengePath:', challengePath);
 
-        // Read and log next challenge
-        console.log('Reading next challenge from:', nextChallengePath);
-        const nextChallengeData = await fs.readFile(nextChallengePath, 'utf8');
-        console.log('Next challenge data:', nextChallengeData);
-        
-        const nextChallenge = JSON.parse(nextChallengeData);
-        console.log('Parsed next challenge:', nextChallenge);
+            // Check if files exist
+            try {
+                await fs.access(nextChallengePath);
+                await fs.access(challengePath);
+                console.log('Both files exist and are accessible');
+            } catch (error) {
+                console.error('File access error:', error);
+                throw error;
+            }
 
-        // Write and verify
-        console.log('Writing to challenge file:', challengePath);
-        await fs.writeFile(challengePath, JSON.stringify(nextChallenge, null, 2));
-        
-        // Verify the write
-        const verifyData = await fs.readFile(challengePath, 'utf8');
-        console.log('Verification - new challenge data:', verifyData);
+            // Read and log current challenge
+            const currentChallengeData = await fs.readFile(challengePath, 'utf8');
+            console.log('Current challenge before switch:', currentChallengeData);
 
+            // Read and log next challenge
+            console.log('Reading next challenge from:', nextChallengePath);
+            const nextChallengeData = await fs.readFile(nextChallengePath, 'utf8');
+            console.log('Next challenge data:', nextChallengeData);
+            
+            const nextChallenge = JSON.parse(nextChallengeData);
+            console.log('Parsed next challenge:', nextChallenge);
+
+            // Write and verify
+            console.log('Writing to challenge file:', challengePath);
+            await fs.writeFile(challengePath, JSON.stringify(nextChallenge, null, 2));
+            
+            // Verify the write
+            const verifyData = await fs.readFile(challengePath, 'utf8');
+            console.log('Verification - new challenge data:', verifyData);
 
             // Create new empty next challenge template
             const emptyTemplate = {
