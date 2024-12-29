@@ -1,4 +1,3 @@
-// commands/yearlyboard.js
 const TerminalEmbed = require('../utils/embedBuilder');
 
 module.exports = {
@@ -14,17 +13,23 @@ module.exports = {
             
             // Filter leaderboard to only include valid users
             const filteredLeaderboard = leaderboard.filter(user => 
-                validUsers.includes(user.username)
+                validUsers.includes(user.username.toLowerCase())
             );
             
             const embed = new TerminalEmbed()
                 .setTerminalTitle('YEARLY RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]')
-                .addTerminalField('TOP OPERATORS',
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
+
+            if (filteredLeaderboard.length > 0) {
+                embed.addTerminalField('TOP OPERATORS',
                     filteredLeaderboard
                         .map((user, index) => `${index + 1}. ${user.username}: ${user.points} points`)
-                        .join('\n'))
-                .setTerminalFooter();
+                        .join('\n'));
+            } else {
+                embed.addTerminalField('STATUS', 'No rankings available');
+            }
+
+            embed.setTerminalFooter();
             
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Type !profile <user> for detailed stats\n[Ready for input]█\x1b[0m```');
