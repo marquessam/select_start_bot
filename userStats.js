@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const TerminalEmbed = require('./embedBuilder');
 
 class UserStats {
     constructor() {
@@ -8,6 +9,29 @@ class UserStats {
         this.stats = null;
         this.currentYear = new Date().getFullYear();
         this.SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
+    }
+
+    async sendPointsNotification(client, username, points, reason, isBonus = true) {
+        try {
+            // Find the Discord user
+            const guild = await client.guilds.fetch('1300941091335438468');
+            const member = await guild.members.fetch({ query: username, limit: 1 });
+            
+            if (member) {
+                const embed = new TerminalEmbed()
+                    .setTerminalTitle('POINTS AWARDED')
+                    .setTerminalDescription('[NOTIFICATION]\n[POINTS UPDATE]')
+                    .addTerminalField('DETAILS', 
+                        `You have been awarded ${points} points!\n` +
+                        `Reason: ${reason}\n` +
+                        `Type: ${isBonus ? 'Bonus Points' : 'Challenge Points'}`)
+                    .setTerminalFooter();
+
+                await member.send({ embeds: [embed] });
+            }
+        } catch (error) {
+            console.error('Error sending points notification:', error);
+        }
     }
 
     async archiveLeaderboard(data) {
@@ -125,10 +149,11 @@ class UserStats {
         }
     }
 
-    async addMonthlyPoints(month, year, rankings) {
+    async addMonthlyPoints(month, year, rankings, client) {
         await this.refreshUserList();
         
         const pointsDistribution = { first: 6, second: 4, third: 2 };
+        const placementNames = { first: '1st', second: '2nd', third: '3rd' };
         
         for (const [place, username] of Object.entries(rankings)) {
             if (username) {
@@ -146,13 +171,19 @@ class UserStats {
                     points,
                     date: new Date().toISOString()
                 };
+
+                // Send DM notification
+                if (client) {
+                    const reason = `${placementNames[place]} place in ${month} challenge`;
+                    await this.sendPointsNotification(client, username, points, reason, false);
+                }
             }
         }
 
         await this.saveStats();
     }
 
-    async addBonusPoints(username, points, reason) {
+    async addBonusPoints(username, points, reason, client) {
         await this.refreshUserList();
         await this.initializeUserIfNeeded(username);
         
@@ -168,6 +199,11 @@ class UserStats {
         });
 
         await this.saveStats();
+        
+        // Send DM notification
+        if (client) {
+            await this.sendPointsNotification(client, username, points, reason, true);
+        }
     }
 
     async getUserStats(username) {
@@ -204,6 +240,30 @@ class UserStats {
             .sort((a, b) => b.points - a.points);
 
         return leaderboard;
+    }
+
+    async resetUserPoints(username) {
+        try {
+            await this.initializeUserIfNeeded(username);
+            
+            const currentYear = new Date().getFullYear().toString();
+            
+            // Reset all point-related data
+            this.stats.users[username] = {
+                totalPoints: 0,
+                yearlyPoints: {
+                    [currentYear]: 0
+                },
+                monthlyAchievements: {},
+                bonusPoints: []
+            };
+
+            await this.saveStats();
+            return true;
+        } catch (error) {
+            console.error('Error resetting user points:', error);
+            throw error;
+        }
     }
 
     async getAllUsers() {
