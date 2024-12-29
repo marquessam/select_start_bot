@@ -15,21 +15,21 @@ module.exports = {
 
             await message.channel.send('```ansi\n\x1b[32m> Processing monthly rankings update...\x1b[0m\n```');
 
-            // Update monthly rankings
+            // Update monthly rankings - pass message.client for DM notifications
             await userStats.addMonthlyPoints(month, year, {
                 first,
                 second,
                 third
-            });
+            }, message.client);
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('MONTHLY RANKINGS UPDATED')
                 .setTerminalDescription('[UPDATE COMPLETE]\n[POINTS ALLOCATED]')
                 .addTerminalField('RANKINGS PROCESSED',
                     `MONTH: ${month}\n` +
-                    `1ST PLACE: ${first} (10 pts)\n` +
-                    `2ND PLACE: ${second} (6 pts)\n` +
-                    `3RD PLACE: ${third} (3 pts)`)
+                    `1ST PLACE: ${first} (6 pts)\n` +
+                    `2ND PLACE: ${second} (4 pts)\n` +
+                    `3RD PLACE: ${third} (2 pts)`)
                 .setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
