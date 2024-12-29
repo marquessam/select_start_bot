@@ -13,7 +13,6 @@ class UserStats {
 
     async sendPointsNotification(client, username, points, reason, isBonus = true) {
         try {
-            // Find the Discord user
             const guild = await client.guilds.fetch('1300941091335438468');
             const member = await guild.members.fetch({ query: username, limit: 1 });
             
@@ -106,32 +105,29 @@ class UserStats {
     }
 
     async initializeUserIfNeeded(username) {
-    if (!username) return;
-    
-    // Clean up username and make it consistent case
-    const cleanUsername = username.trim().toLowerCase();
-    if (!cleanUsername) return;
+        if (!username) return;
+        
+        const cleanUsername = username.trim().toLowerCase();
+        if (!cleanUsername) return;
 
-    // Check if user exists with any case
-    const existingUser = Object.keys(this.stats.users)
-        .find(user => user.toLowerCase() === cleanUsername);
+        const existingUser = Object.keys(this.stats.users)
+            .find(user => user.toLowerCase() === cleanUsername);
 
-    if (!existingUser) {
-        // If user doesn't exist, create with original case from spreadsheet
-        this.stats.users[username.trim()] = {
-            totalPoints: 0,
-            yearlyPoints: {},
-            monthlyAchievements: {},
-            bonusPoints: []
-        };
+        if (!existingUser) {
+            this.stats.users[username.trim()] = {
+                totalPoints: 0,
+                yearlyPoints: {},
+                monthlyAchievements: {},
+                bonusPoints: []
+            };
+        }
+
+        const year = this.currentYear.toString();
+        const actualUsername = existingUser || username.trim();
+        if (!this.stats.users[actualUsername].yearlyPoints[year]) {
+            this.stats.users[actualUsername].yearlyPoints[year] = 0;
+        }
     }
-
-    const year = this.currentYear.toString();
-    const actualUsername = existingUser || username.trim();
-    if (!this.stats.users[actualUsername].yearlyPoints[year]) {
-        this.stats.users[actualUsername].yearlyPoints[year] = 0;
-    }
-}
 
     async refreshUserList() {
         try {
@@ -164,25 +160,43 @@ class UserStats {
         
         for (const [place, username] of Object.entries(rankings)) {
             if (username) {
-                await this.initializeUserIfNeeded(username);
+                const actualUsername = Object.keys(this.stats.users)
+                    .find(user => user.toLowerCase() === username.toLowerCase());
                 
-                const points = pointsDistribution[place];
-                this.stats.users[username].totalPoints += points;
-                this.stats.users[username].yearlyPoints[year] += points;
-                
-                if (!this.stats.users[username].monthlyAchievements[year]) {
-                    this.stats.users[username].monthlyAchievements[year] = {};
+                if (!actualUsername) {
+                    await this.initializeUserIfNeeded(username);
                 }
-                this.stats.users[username].monthlyAchievements[year][month] = {
+
+                const userToUpdate = actualUsername || username;
+                const points = pointsDistribution[place];
+
+                if (!this.stats.users[userToUpdate]) {
+                    this.stats.users[userToUpdate] = {
+                        totalPoints: 0,
+                        yearlyPoints: { [year]: 0 },
+                        monthlyAchievements: {},
+                        bonusPoints: []
+                    };
+                }
+
+                this.stats.users[userToUpdate].totalPoints += points;
+                if (!this.stats.users[userToUpdate].yearlyPoints[year]) {
+                    this.stats.users[userToUpdate].yearlyPoints[year] = 0;
+                }
+                this.stats.users[userToUpdate].yearlyPoints[year] += points;
+                
+                if (!this.stats.users[userToUpdate].monthlyAchievements[year]) {
+                    this.stats.users[userToUpdate].monthlyAchievements[year] = {};
+                }
+                this.stats.users[userToUpdate].monthlyAchievements[year][month] = {
                     place,
                     points,
                     date: new Date().toISOString()
                 };
 
-                // Send DM notification
                 if (client) {
                     const reason = `${placementNames[place]} place in ${month} challenge`;
-                    await this.sendPointsNotification(client, username, points, reason, false);
+                    await this.sendPointsNotification(client, userToUpdate, points, reason, false);
                 }
             }
         }
@@ -191,55 +205,91 @@ class UserStats {
     }
 
     async addBonusPoints(username, points, reason, client) {
-        await this.refreshUserList();
-        await this.initializeUserIfNeeded(username);
-        
-        const year = this.currentYear.toString();
-        this.stats.users[username].totalPoints += points;
-        this.stats.users[username].yearlyPoints[year] += points;
-        
-        this.stats.users[username].bonusPoints.push({
-            points,
-            reason,
-            date: new Date().toISOString(),
-            year
-        });
+        try {
+            console.log('Starting bonus points addition for:', username);
+            await this.refreshUserList();
+            
+            const actualUsername = Object.keys(this.stats.users)
+                .find(user => user.toLowerCase() === username.toLowerCase());
+            
+            console.log('Found actual username:', actualUsername);
+            
+            if (!actualUsername) {
+                console.log('Username not found, initializing:', username);
+                await this.initializeUserIfNeeded(username);
+            }
 
-        await this.saveStats();
-        
-        // Send DM notification
-        if (client) {
-            await this.sendPointsNotification(client, username, points, reason, true);
+            const userToUpdate = actualUsername || username;
+            console.log('User to update:', userToUpdate);
+            
+            const year = this.currentYear.toString();
+            
+            if (!this.stats.users[userToUpdate]) {
+                console.log('Creating new user entry for:', userToUpdate);
+                this.stats.users[userToUpdate] = {
+                    totalPoints: 0,
+                    yearlyPoints: { [year]: 0 },
+                    monthlyAchievements: {},
+                    bonusPoints: []
+                };
+            }
+            
+            this.stats.users[userToUpdate].totalPoints += points;
+            if (!this.stats.users[userToUpdate].yearlyPoints[year]) {
+                this.stats.users[userToUpdate].yearlyPoints[year] = 0;
+            }
+            this.stats.users[userToUpdate].yearlyPoints[year] += points;
+            
+            if (!this.stats.users[userToUpdate].bonusPoints) {
+                this.stats.users[userToUpdate].bonusPoints = [];
+            }
+            
+            this.stats.users[userToUpdate].bonusPoints.push({
+                points,
+                reason,
+                date: new Date().toISOString(),
+                year
+            });
+
+            await this.saveStats();
+            
+            if (client) {
+                await this.sendPointsNotification(client, userToUpdate, points, reason, true);
+            }
+
+            console.log('Successfully added points to:', userToUpdate);
+        } catch (error) {
+            console.error('Error in addBonusPoints for user', username, ':', error);
+            throw error;
         }
     }
 
-   async getUserStats(username) {
-    try {
-        console.log('Getting stats for user:', username);
-        await this.refreshUserList();
-        console.log('User list refreshed');
+    async getUserStats(username) {
+        try {
+            console.log('Getting stats for user:', username);
+            await this.refreshUserList();
+            console.log('User list refreshed');
 
-        // Find user with case-insensitive comparison
-        const actualUsername = Object.keys(this.stats.users)
-            .find(user => user.toLowerCase() === username.toLowerCase());
+            const actualUsername = Object.keys(this.stats.users)
+                .find(user => user.toLowerCase() === username.toLowerCase());
 
-        if (!actualUsername) {
-            await this.initializeUserIfNeeded(username);
+            if (!actualUsername) {
+                await this.initializeUserIfNeeded(username);
+                return {
+                    username,
+                    ...this.stats.users[username]
+                };
+            }
+
             return {
-                username,
-                ...this.stats.users[username]
+                username: actualUsername,
+                ...this.stats.users[actualUsername]
             };
+        } catch (error) {
+            console.error('Error in getUserStats:', error);
+            throw error;
         }
-
-        return {
-            username: actualUsername,
-            ...this.stats.users[actualUsername]
-        };
-    } catch (error) {
-        console.error('Error in getUserStats:', error);
-        throw error;
     }
-}
 
     async getYearlyLeaderboard(year = null) {
         await this.refreshUserList();
@@ -258,12 +308,17 @@ class UserStats {
 
     async resetUserPoints(username) {
         try {
-            await this.initializeUserIfNeeded(username);
-            
+            const actualUsername = Object.keys(this.stats.users)
+                .find(user => user.toLowerCase() === username.toLowerCase());
+
+            if (!actualUsername) {
+                await this.initializeUserIfNeeded(username);
+            }
+
+            const userToUpdate = actualUsername || username;
             const currentYear = new Date().getFullYear().toString();
             
-            // Reset all point-related data
-            this.stats.users[username] = {
+            this.stats.users[userToUpdate] = {
                 totalPoints: 0,
                 yearlyPoints: {
                     [currentYear]: 0
@@ -280,8 +335,8 @@ class UserStats {
         }
     }
 
-   async getAllUsers() {
-    return Object.keys(this.stats.users).map(user => user.toLowerCase());
+    async getAllUsers() {
+        return Object.keys(this.stats.users).map(user => user.toLowerCase());
     }
 }
 
