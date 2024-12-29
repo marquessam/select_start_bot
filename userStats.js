@@ -1,20 +1,21 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const TerminalEmbed = require('./utils/embedBuilder');
 const database = require('./database');
+const fs = require('fs').promises; // Ensure fs is included
 
 class UserStats {
     constructor() {
         this.stats = null;
         this.currentYear = new Date().getFullYear();
         this.SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
+        this.dbPath = './path/to/your/db.json'; // Ensure to define the dbPath correctly
     }
 
     async loadStats() {
         try {
-            // Load stats from MongoDB
+            // Load stats from MongoDB or other DB
             this.stats = await database.getUserStats();
             
-            // Fetch and sync users from spreadsheet
             const response = await fetch(this.SPREADSHEET_URL);
             const csvText = await response.text();
             
@@ -30,7 +31,6 @@ class UserStats {
 
             await this.saveStats();
             console.log('Stats loaded and synchronized with spreadsheet');
-            
         } catch (error) {
             console.error('Error loading or synchronizing stats:', error);
             throw error;
@@ -38,8 +38,32 @@ class UserStats {
     }
 
     async saveStats() {
-        await database.saveUserStats(this.stats);
+        await fs.writeFile(this.dbPath, JSON.stringify(this.stats, null, 2));
     }
+
+    async initializeUserIfNeeded(username) {
+        if (!username) return;
+
+        const cleanUsername = username.trim().toLowerCase();
+        const existingUser = Object.keys(this.stats.users)
+            .find(user => user.toLowerCase() === cleanUsername);
+
+        if (!existingUser) {
+            this.stats.users[cleanUsername] = {
+                totalPoints: 0,
+                yearlyPoints: {},
+                monthlyAchievements: {},
+                bonusPoints: []
+            };
+        }
+
+        const year = this.currentYear.toString();
+        const actualUsername = existingUser || cleanUsername;
+        if (!this.stats.users[actualUsername].yearlyPoints[year]) {
+            this.stats.users[actualUsername].yearlyPoints[year] = 0;
+        }
+    }
+    
     async sendPointsNotification(client, username, points, reason, isBonus = true) {
         try {
             const guild = await client.guilds.fetch('1300941091335438468');
