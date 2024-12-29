@@ -1,16 +1,45 @@
-const fs = require('fs').promises;
-const path = require('path');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const TerminalEmbed = require('./utils/embedBuilder');
+const database = require('./database');
 
 class UserStats {
     constructor() {
-        this.dbPath = path.join(__dirname, 'userStats.json');
         this.stats = null;
         this.currentYear = new Date().getFullYear();
         this.SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
     }
 
+    async loadStats() {
+        try {
+            // Load stats from MongoDB
+            this.stats = await database.getUserStats();
+            
+            // Fetch and sync users from spreadsheet
+            const response = await fetch(this.SPREADSHEET_URL);
+            const csvText = await response.text();
+            
+            const users = csvText
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line)
+                .slice(1);
+
+            for (const username of users) {
+                await this.initializeUserIfNeeded(username);
+            }
+
+            await this.saveStats();
+            console.log('Stats loaded and synchronized with spreadsheet');
+            
+        } catch (error) {
+            console.error('Error loading or synchronizing stats:', error);
+            throw error;
+        }
+    }
+
+    async saveStats() {
+        await database.saveUserStats(this.stats);
+    }
     async sendPointsNotification(client, username, points, reason, isBonus = true) {
         try {
             const guild = await client.guilds.fetch('1300941091335438468');
