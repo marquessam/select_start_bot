@@ -46,6 +46,31 @@ class UserStats {
         }
     }
 
+    async getUserStats(username) {
+    try {
+        console.log('Getting stats for user:', username);
+        // Refresh user list before getting stats
+        console.log('Refreshing user list...');
+        await this.refreshUserList();
+        console.log('User list refreshed');
+
+        console.log('Initializing user if needed...');
+        await this.initializeUserIfNeeded(username);
+        console.log('User initialized');
+        
+        console.log('Current stats:', this.stats);
+        console.log('User stats:', this.stats.users[username]);
+
+        return {
+            username,
+            ...this.stats.users[username]
+        };
+    } catch (error) {
+        console.error('Error in getUserStats:', error);
+        throw error;
+    }
+}
+    
     // [Rest of your existing code remains exactly the same]
     async resetUserPoints(username) {
         // ... [Keep existing method]
