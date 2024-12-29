@@ -13,6 +13,15 @@ module.exports = {
             const [month, first, second, third] = args;
             const year = new Date().getFullYear().toString();
 
+            // Validate users
+            const validUsers = await userStats.getAllUsers();
+            const usersToCheck = [first, second, third].filter(Boolean);
+            const invalidUsers = usersToCheck.filter(user => !validUsers.includes(user.toLowerCase()));
+            if (invalidUsers.length > 0) {
+                await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] Invalid users: ${invalidUsers.join(', ')}\n[Ready for input]█\x1b[0m\`\`\``);
+                return;
+            }
+
             await message.channel.send('```ansi\n\x1b[32m> Processing monthly rankings update...\x1b[0m\n```');
 
             // Update monthly rankings - pass message.client for DM notifications
