@@ -6,7 +6,6 @@ module.exports = {
     description: 'Displays user profile and stats',
     async execute(message, args, { userStats }) {
         try {
-            console.log('Starting profile command for args:', args);
             const username = args[0];
 
             if (!username) {
@@ -14,46 +13,41 @@ module.exports = {
                 return;
             }
 
+            // Validate user is in participant list
+            const validUsers = await userStats.getAllUsers();
+            if (!validUsers.includes(username.toLowerCase())) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in participant list\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
-            console.log('Fetching leaderboard data for:', username);
 
             try {
-                // Get user stats first
-                const stats = await userStats.getUserStats(username);
-                console.log('User stats fetched:', stats);
-
-                if (!stats) {
-                    await message.channel.send('```ansi\n\x1b[32m[ERROR] User stats not found\n[Ready for input]█\x1b[0m```');
-                    return;
-                }
-
-                // Get leaderboard data
                 const data = await fetchLeaderboardData();
-                console.log('Leaderboard data fetched:', data ? 'success' : 'null');
-                
                 const userProgress = data.leaderboard.find(user => 
                     user.username.toLowerCase() === username.toLowerCase()
                 );
-                console.log('User progress found:', userProgress ? 'yes' : 'no');
-
+                
+                const stats = await userStats.getUserStats(username);
+                
                 if (!userProgress) {
                     await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in leaderboard\n[Ready for input]█\x1b[0m```');
                     return;
                 }
 
                 const currentYear = new Date().getFullYear().toString();
-                const yearlyPoints = stats.yearlyPoints?.[currentYear] || 0;
+                const yearlyPoints = stats.yearlyPoints[currentYear] || 0;
 
-                const recentAchievements = stats.monthlyAchievements?.[currentYear] || {};
+                const recentAchievements = stats.monthlyAchievements[currentYear] || {};
                 const recentAchievementsText = Object.entries(recentAchievements)
                     .map(([month, achievement]) => 
                         `${month}: ${achievement.place} place (${achievement.points} pts)`)
                     .join('\n');
 
                 const recentBonusPoints = stats.bonusPoints
-                    ?.filter(bonus => bonus.year === currentYear)
+                    .filter(bonus => bonus.year === currentYear)
                     .map(bonus => `${bonus.points} pts - ${bonus.reason}`)
-                    .join('\n') || '';
+                    .join('\n');
 
                 const embed = new TerminalEmbed()
                     .setTerminalTitle(`USER DATA: ${userProgress.username}`)
