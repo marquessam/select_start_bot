@@ -213,26 +213,33 @@ class UserStats {
         }
     }
 
-    async getUserStats(username) {
-        try {
-            console.log('Getting stats for user:', username);
-            await this.refreshUserList();
-            console.log('User list refreshed');
-            await this.initializeUserIfNeeded(username);
-            console.log('User initialized');
-            
-            console.log('Current stats:', this.stats);
-            console.log('User stats:', this.stats.users[username]);
+   async getUserStats(username) {
+    try {
+        console.log('Getting stats for user:', username);
+        await this.refreshUserList();
+        console.log('User list refreshed');
 
+        // Find user with case-insensitive comparison
+        const actualUsername = Object.keys(this.stats.users)
+            .find(user => user.toLowerCase() === username.toLowerCase());
+
+        if (!actualUsername) {
+            await this.initializeUserIfNeeded(username);
             return {
                 username,
                 ...this.stats.users[username]
             };
-        } catch (error) {
-            console.error('Error in getUserStats:', error);
-            throw error;
         }
+
+        return {
+            username: actualUsername,
+            ...this.stats.users[actualUsername]
+        };
+    } catch (error) {
+        console.error('Error in getUserStats:', error);
+        throw error;
     }
+}
 
     async getYearlyLeaderboard(year = null) {
         await this.refreshUserList();
@@ -273,8 +280,8 @@ class UserStats {
         }
     }
 
-    async getAllUsers() {
-        return Object.keys(this.stats.users);
+   async getAllUsers() {
+    return Object.keys(this.stats.users).map(user => user.toLowerCase());
     }
 }
 
