@@ -106,25 +106,32 @@ class UserStats {
     }
 
     async initializeUserIfNeeded(username) {
-        if (!username) return;
-        
-        const cleanUsername = username.trim();
-        if (!cleanUsername) return;
+    if (!username) return;
+    
+    // Clean up username and make it consistent case
+    const cleanUsername = username.trim().toLowerCase();
+    if (!cleanUsername) return;
 
-        if (!this.stats.users[cleanUsername]) {
-            this.stats.users[cleanUsername] = {
-                totalPoints: 0,
-                yearlyPoints: {},
-                monthlyAchievements: {},
-                bonusPoints: []
-            };
-        }
+    // Check if user exists with any case
+    const existingUser = Object.keys(this.stats.users)
+        .find(user => user.toLowerCase() === cleanUsername);
 
-        const year = this.currentYear.toString();
-        if (!this.stats.users[cleanUsername].yearlyPoints[year]) {
-            this.stats.users[cleanUsername].yearlyPoints[year] = 0;
-        }
+    if (!existingUser) {
+        // If user doesn't exist, create with original case from spreadsheet
+        this.stats.users[username.trim()] = {
+            totalPoints: 0,
+            yearlyPoints: {},
+            monthlyAchievements: {},
+            bonusPoints: []
+        };
     }
+
+    const year = this.currentYear.toString();
+    const actualUsername = existingUser || username.trim();
+    if (!this.stats.users[actualUsername].yearlyPoints[year]) {
+        this.stats.users[actualUsername].yearlyPoints[year] = 0;
+    }
+}
 
     async refreshUserList() {
         try {
