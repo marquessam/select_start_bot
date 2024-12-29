@@ -19,17 +19,16 @@ module.exports = {
                 return;
             }
 
-            // Get the list of valid users
+            // Validate user is in participant list
             const validUsers = await userStats.getAllUsers();
-            
-            // Check if the username is in the valid users list
-            if (!validUsers.includes(username)) {
+            if (!validUsers.includes(username.toLowerCase())) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in participant list\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
             await message.channel.send('```ansi\n\x1b[32m> Processing points allocation...\x1b[0m\n```');
             
+            // Pass message.client for DM notifications
             await userStats.addBonusPoints(username, points, reason, message.client);
 
             const embed = new TerminalEmbed()
