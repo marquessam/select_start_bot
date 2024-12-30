@@ -5,6 +5,7 @@ module.exports = {
     description: 'Add points to all participants',
     async execute(message, args, { userStats }) {
         try {
+            // Validate input
             if (args.length < 2) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !addpointsall <points> <reason>\n[Ready for input]█\x1b[0m```');
                 return;
@@ -18,24 +19,17 @@ module.exports = {
                 return;
             }
 
-            // Force refresh user list first
-            await message.channel.send('```ansi\n\x1b[32m> Refreshing user list...\x1b[0m\n```');
-            await userStats.refreshUserList();
-
-            // Get all users after refresh
+            // Process points allocation
             const users = await userStats.getAllUsers();
-            await message.channel.send('```ansi\n\x1b[32m> Processing points allocation for all users...\x1b[0m\n```');
-
             let successfulAdditions = 0;
             let failedUsers = [];
 
             // Add points to each user
             for (const username of users) {
                 try {
-                    // Initialize user first
                     await userStats.initializeUserIfNeeded(username);
-                    // Then add points
-                    await userStats.addBonusPoints(username, points, reason, message.client);
+                    // Assuming we'll modify addBonusPoints to not send messages
+                    await userStats.addBonusPoints(username, points, reason);
                     successfulAdditions++;
                 } catch (error) {
                     console.error(`Error adding points to ${username}:`, error);
@@ -43,6 +37,7 @@ module.exports = {
                 }
             }
 
+            // Create response embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle('MASS POINTS ALLOCATION')
                 .setTerminalDescription('[TRANSACTION COMPLETE]')
@@ -57,7 +52,6 @@ module.exports = {
             }
 
             embed.setTerminalFooter();
-
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Type !yearlyboard to verify points\n[Ready for input]█\x1b[0m```');
 
