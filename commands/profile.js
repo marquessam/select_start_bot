@@ -1,6 +1,5 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const { fetchLeaderboardData } = require('../raAPI.js');
-const database = require('../database');
 
 module.exports = {
     name: 'profile',
@@ -13,7 +12,7 @@ module.exports = {
                 return;
             }
 
-            // Validate user is in participant list first
+            // Get valid users and yearly leaderboard
             const validUsers = await userStats.getAllUsers();
             if (!validUsers.includes(username.toLowerCase())) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in participant list\n[Ready for input]█\x1b[0m```');
@@ -23,31 +22,27 @@ module.exports = {
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
             try {
-                const [raData, stats] = await Promise.all([
-                    fetchLeaderboardData(),
-                    userStats.getUserStats(username)
+                // Get user stats, leaderboard, and RA data
+                const [stats, leaderboard, raData] = await Promise.all([
+                    userStats.getUserStats(username),
+                    userStats.getYearlyLeaderboard(),
+                    fetchLeaderboardData()
                 ]);
 
+                // Get RA user progress
                 const userProgress = raData.leaderboard.find(user => 
                     user.username.toLowerCase() === username.toLowerCase()
                 );
-                
-                if (!userProgress) {
-                    await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in leaderboard\n[Ready for input]█\x1b[0m```');
-                    return;
-                }
 
-                // Get yearly ranking
-                const yearlyBoard = await userStats.getYearlyLeaderboard();
-                
-                // Calculate user's rank considering ties
-                const userPoints = yearlyBoard.find(user => 
+                // Find user's points and calculate rank
+                const userPoints = leaderboard.find(user => 
                     user.username.toLowerCase() === username.toLowerCase()
                 )?.points || 0;
 
+                // Calculate rank considering ties
                 let userRank = 1;
                 const higherScores = new Set(
-                    yearlyBoard
+                    leaderboard
                         .filter(user => user.points > userPoints)
                         .map(user => user.points)
                 );
@@ -68,14 +63,19 @@ module.exports = {
                     .join('\n');
 
                 const embed = new TerminalEmbed()
-                    .setTerminalTitle(`USER DATA: ${userProgress.username}`)
-                    .setURL(userProgress.profileUrl)
-                    .setThumbnail(userProgress.profileImage)
-                    .setTerminalDescription('[STATUS: AUTHENTICATED]\n[CLEARANCE: GRANTED]')
-                    .addTerminalField('CURRENT MISSION PROGRESS', 
-                        `ACHIEVEMENTS: ${userProgress.completedAchievements}/${userProgress.totalAchievements}\nCOMPLETION: ${userProgress.completionPercentage}%`)
+                    .setTerminalTitle(`USER DATA: ${username}`);
+
+                // Add RA specific data if available
+                if (userProgress) {
+                    embed.setURL(userProgress.profileUrl)
+                        .setThumbnail(userProgress.profileImage)
+                        .addTerminalField('CURRENT MISSION PROGRESS', 
+                            `ACHIEVEMENTS: ${userProgress.completedAchievements}/${userProgress.totalAchievements}\nCOMPLETION: ${userProgress.completionPercentage}%`);
+                }
+
+                embed.setTerminalDescription('[STATUS: AUTHENTICATED]\n[CLEARANCE: GRANTED]')
                     .addTerminalField('YEARLY STATISTICS',
-                        `TOTAL POINTS: ${yearlyPoints}\nRANK: ${userRank}/${yearlyBoard.length}`);
+                        `TOTAL POINTS: ${yearlyPoints}\nRANK: ${userRank}/${leaderboard.length}`);
 
                 if (recentAchievementsText) {
                     embed.addTerminalField('MONTHLY ACHIEVEMENTS', recentAchievementsText);
