@@ -82,12 +82,11 @@ class Database {
         const collection = this.db.collection('challenges');
         const challenge = await collection.findOne({ _id: 'current' });
         return challenge || {
-            gameId: "",
-            gameName: "",
-            gameIcon: "",
-            startDate: "",
-            endDate: "",
-            rules: [
+             gameId: "319",
+             gameName: "Chrono Trigger",
+             gameIcon: "/Images/093950.png",
+             startDate: "2025-01-01",
+             endDate: "2025-01-31",
                 "Hardcore mode must be enabled",
                 "All achievements are eligible",
                 "Progress tracked via retroachievements",
@@ -170,8 +169,8 @@ class Database {
             currentProgress: 0,
             puzzles: [],
             finalReward: {
-                gameId: "",
-                gameName: "",
+                gameId: "10024",
+                gameName: "Mario Tennis",
                 points: 0
             }
         };
