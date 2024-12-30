@@ -7,29 +7,73 @@ module.exports = {
     description: 'Displays current high score rankings',
     async execute(message, args) {
         try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing high score database...\x1b[0m\n```');
-            
             const highscores = await database.getHighScores();
             
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('HIGH SCORE RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]\n[EXPIRES: DECEMBER 1ST 2025]');
+            // If no specific game is provided, show the game list
+            if (!args.length) {
+                await message.channel.send('```ansi\n\x1b[32m> Accessing high score database...\x1b[0m\n```');
+                
+                const embed = new TerminalEmbed()
+                    .setTerminalTitle('HIGH SCORE BOARDS')
+                    .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT A GAME TO VIEW RANKINGS]\n[EXPIRES: DECEMBER 1ST 2025]');
 
-            // Display each game's rankings
-            for (const [gameName, gameData] of Object.entries(highscores.games)) {
-                if (gameData.scores.length > 0) {
-                    const scoreText = gameData.scores
-                        .map((score, index) => {
-                            const medals = ['🥇', '🥈', '🥉'];
-                            return `${medals[index]} ${score.username}: ${score.score}`;
-                        })
-                        .join('\n');
-                    
-                    embed.addTerminalField(
-                        `${gameName} (${gameData.platform})`,
-                        scoreText || 'No scores recorded'
-                    );
-                }
+                // Create a numbered list of games
+                const gamesList = Object.entries(highscores.games)
+                    .map(([gameName, gameData], index) => {
+                        const hasScores = gameData.scores.length > 0 ? '✓' : ' ';
+                        return `${index + 1}. ${gameName} (${gameData.platform}) ${hasScores}`;
+                    })
+                    .join('\n');
+
+                embed.addTerminalField(
+                    'AVAILABLE GAMES',
+                    gamesList + '\n\n✓ = Scores recorded'
+                );
+
+                embed.addTerminalField(
+                    'USAGE',
+                    '!highscore <game number>\nExample: !highscore 1'
+                );
+
+                embed.setTerminalFooter();
+                
+                await message.channel.send({ embeds: [embed] });
+                await message.channel.send('```ansi\n\x1b[32m> Enter game number to view rankings\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            // If a game number is provided
+            const gameNumber = parseInt(args[0]);
+            const games = Object.entries(highscores.games);
+
+            if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > games.length) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\nUse !highscore to see available games\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            const [gameName, gameData] = games[gameNumber - 1];
+
+            const embed = new TerminalEmbed()
+                .setTerminalTitle(`${gameName} HIGH SCORES`)
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING RANKINGS]');
+
+            if (gameData.scores.length > 0) {
+                const scoreText = gameData.scores
+                    .map((score, index) => {
+                        const medals = ['🥇', '🥈', '🥉'];
+                        return `${medals[index]} ${score.username}: ${score.score}`;
+                    })
+                    .join('\n');
+                
+                embed.addTerminalField(
+                    `RANKINGS (${gameData.platform})`,
+                    scoreText
+                );
+            } else {
+                embed.addTerminalField(
+                    `STATUS (${gameData.platform})`,
+                    'No scores recorded yet'
+                );
             }
 
             embed.addTerminalField(
