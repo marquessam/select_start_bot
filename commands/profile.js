@@ -1,5 +1,6 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const { fetchLeaderboardData } = require('../raAPI.js');
+const database = require('../database');
 
 module.exports = {
     name: 'profile',
@@ -12,7 +13,7 @@ module.exports = {
                 return;
             }
 
-            // Get valid users and yearly leaderboard
+            // Validate user is in participant list
             const validUsers = await userStats.getAllUsers();
             if (!validUsers.includes(username.toLowerCase())) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in participant list\n[Ready for input]█\x1b[0m```');
@@ -22,17 +23,22 @@ module.exports = {
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
             try {
-                // Get user stats, leaderboard, and RA data
-                const [stats, leaderboard, raData] = await Promise.all([
-                    userStats.getUserStats(username),
+                // Get all necessary data in parallel
+                const [data, leaderboard, stats, currentChallenge] = await Promise.all([
+                    fetchLeaderboardData(),
                     userStats.getYearlyLeaderboard(),
-                    fetchLeaderboardData()
+                    userStats.getUserStats(username),
+                    database.getCurrentChallenge()
                 ]);
 
-                // Get RA user progress
-                const userProgress = raData.leaderboard.find(user => 
+                const userProgress = data.leaderboard.find(user => 
                     user.username.toLowerCase() === username.toLowerCase()
                 );
+                
+                if (!userProgress) {
+                    await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in leaderboard\n[Ready for input]█\x1b[0m```');
+                    return;
+                }
 
                 // Find user's points and calculate rank
                 const userPoints = leaderboard.find(user => 
@@ -63,19 +69,20 @@ module.exports = {
                     .join('\n');
 
                 const embed = new TerminalEmbed()
-                    .setTerminalTitle(`USER DATA: ${username}`);
+                    .setTerminalTitle(`USER DATA: ${userProgress.username}`)
+                    .setURL(userProgress.profileUrl)
+                    .setThumbnail(userProgress.profileImage)
+                    .setTerminalDescription('[STATUS: AUTHENTICATED]\n[CLEARANCE: GRANTED]');
 
-                // Add RA specific data if available
-                if (userProgress) {
-                    embed.setURL(userProgress.profileUrl)
-                        .setThumbnail(userProgress.profileImage)
-                        .addTerminalField('CURRENT MISSION PROGRESS', 
-                            `ACHIEVEMENTS: ${userProgress.completedAchievements}/${userProgress.totalAchievements}\nCOMPLETION: ${userProgress.completionPercentage}%`);
+                // Add current challenge progress if there is an active challenge
+                if (currentChallenge && currentChallenge.gameId) {
+                    embed.addTerminalField('CURRENT MISSION PROGRESS', 
+                        `ACHIEVEMENTS: ${userProgress.completedAchievements}/${userProgress.totalAchievements}\n` +
+                        `COMPLETION: ${userProgress.completionPercentage}%`);
                 }
 
-                embed.setTerminalDescription('[STATUS: AUTHENTICATED]\n[CLEARANCE: GRANTED]')
-                    .addTerminalField('YEARLY STATISTICS',
-                        `TOTAL POINTS: ${yearlyPoints}\nRANK: ${userRank}/${leaderboard.length}`);
+                embed.addTerminalField('YEARLY STATISTICS',
+                    `TOTAL POINTS: ${yearlyPoints}\nRANK: ${userRank}/${leaderboard.length}`);
 
                 if (recentAchievementsText) {
                     embed.addTerminalField('MONTHLY ACHIEVEMENTS', recentAchievementsText);
