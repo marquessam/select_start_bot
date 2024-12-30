@@ -64,7 +64,7 @@ module.exports = {
                 }
 
                 if (recentBonusPoints) {
-                    embed.addTerminalField('BONUS POINTS', recentBonusPoints);
+                    embed.addTerminalField('POINTS EARNED', recentBonusPoints);
                 }
 
                 embed.setTerminalFooter();
