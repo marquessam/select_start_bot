@@ -48,17 +48,24 @@ client.once('ready', async () => {
 });
 
 client.on('messageCreate', async message => {
-   if (message.author.bot) return;
+    if (message.author.bot) return;
 
-   // Check for shadow game solutions
-   await shadowGame.checkMessage(message);
+    try {
+        // Only check shadow game if it was initialized successfully
+        if (shadowGame) {
+            await shadowGame.checkMessage(message);
+        }
 
-   // Handle commands
-   await commandHandler.handleCommand(message, {
-       shadowGame,
-       userStats,
-       announcer
-   });
+        // Handle commands
+        await commandHandler.handleCommand(message, {
+            shadowGame,
+            userStats,
+            announcer
+        });
+    } catch (error) {
+        console.error('Error processing message:', error);
+    }
+  });
 });
 
 client.login(process.env.DISCORD_TOKEN);
