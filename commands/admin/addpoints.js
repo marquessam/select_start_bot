@@ -28,8 +28,8 @@ module.exports = {
 
             await message.channel.send('```ansi\n\x1b[32m> Processing points allocation...\x1b[0m\n```');
             
-            // Pass message.client for DM notifications
-            await userStats.addBonusPoints(username, points, reason, message.client);
+            // Remove client parameter since we're not sending DMs
+            await userStats.addBonusPoints(username, points, reason);
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('POINTS ALLOCATED')
