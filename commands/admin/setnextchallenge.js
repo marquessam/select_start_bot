@@ -1,37 +1,34 @@
 const TerminalEmbed = require('../../utils/embedBuilder');
-const fs = require('fs').promises;
-const path = require('path');
+const database = require('../../database');
 
 module.exports = {
     name: 'setnextchallenge',
     description: 'Set up the next monthly challenge',
     async execute(message, args, { userStats }) {
         try {
-            // Load both current and next challenge files
-            const nextChallengePath = path.join(__dirname, '../../nextChallenge.json');
-            
-            // Example challenge data structure
+            // Create empty next challenge template
             const nextChallenge = {
-                currentChallenge: {
-                    gameId: "",
-                    gameName: "",
-                    gameIcon: "",
-                    startDate: "",
-                    endDate: "",
-                    rules: [
-                        "Hardcore mode must be enabled",
-                        "All achievements are eligible",
-                        "Progress tracked via retroachievements",
-                        "No hacks/save states/cheats allowed"
-                    ],
-                    points: {
-                        first: 10,
-                        second: 6,
-                        third: 3
-                    }
+                gameId: "",
+                gameName: "",
+                gameIcon: "",
+                startDate: "",
+                endDate: "",
+                rules: [
+                    "Hardcore mode must be enabled",
+                    "All achievements are eligible",
+                    "Progress tracked via retroachievements",
+                    "No hacks/save states/cheats allowed"
+                ],
+                points: {
+                    first: 10,
+                    second: 6,
+                    third: 3
                 }
             };
 
+            // Save empty template to database
+            await database.saveNextChallenge(nextChallenge);
+            
             // Display setup prompt
             const embed = new TerminalEmbed()
                 .setTerminalTitle('NEXT CHALLENGE SETUP')
@@ -43,11 +40,9 @@ module.exports = {
                     '!setnext icon <icon_path>\n' +
                     '!setnext dates <start> <end>')
                 .setTerminalFooter();
-
+            
             await message.channel.send({ embeds: [embed] });
-
-            // Save empty template if it doesn't exist
-            await fs.writeFile(nextChallengePath, JSON.stringify(nextChallenge, null, 2));
+            await message.channel.send('```ansi\n\x1b[32m> Template initialized in database\n[Ready for input]█\x1b[0m```');
             
         } catch (error) {
             console.error('Set Next Challenge Error:', error);
