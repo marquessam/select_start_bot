@@ -155,6 +155,32 @@ class Database {
         }
     }
 
+    async getHighScores() {
+    const collection = this.db.collection('highscores');
+    const highscores = await collection.findOne({ _id: 'highscores' });
+    return highscores || {
+        games: {
+            'Tony Hawk\'s Pro Skater': { platform: 'PSX', scores: [] },
+            'Mr. Driller': { platform: 'PSX', scores: [] },
+            'Tetris': { platform: 'Game Boy', scores: [] },
+            'Ms. Pac-Man': { platform: 'NES', scores: [] },
+            'Raiden Trad': { platform: 'SNES', scores: [] },
+            'Community Game 1': { platform: 'TBA', scores: [] },
+            'Community Game 2': { platform: 'TBA', scores: [] },
+            'Community Game 3': { platform: 'TBA', scores: [] }
+        }
+    };
+}
+
+async saveHighScores(highscores) {
+    const collection = this.db.collection('highscores');
+    await collection.updateOne(
+        { _id: 'highscores' },
+        { $set: highscores },
+        { upsert: true }
+    );
+}
+    
     // Helper method to check if connection is alive
     async isConnected() {
         try {
