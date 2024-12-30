@@ -4,24 +4,34 @@
     "currentProgress": 0,
     "puzzles": [
       {
-        "error": "ERROR 0xF7A2: Memory address FFT_0x4322 corrupted\nExpected value 'highpotion_price' not found\nAttempting recovery...",
-        "solution": "!200gp",
-        "completion_message": "[RECOVERED] Price index restored\n[WARNING] New corruption detected in job_matrix..."
+        "error": "ERROR 0xCT01: Timeline database corrupted\nExpected value 'date.presentday.timeline' not found\nAttempting recovery of time marker...",
+        "solution": "!1000AD",
+        "completion_message": "[RECOVERED] Present day timeline restored\n[WARNING] Additional timeline anomaly detected in Middle Ages..."
       },
       {
-        "error": "ERROR 0xF7B3: job_matrix.squire_progression corrupted\nExpected value 'jp_chemist_unlock' missing\nAttempting recovery...",
-        "solution": "!jp300",
-        "completion_message": "[RECOVERED] Job progression restored\n[WARNING] Battle calculation anomaly detected..."
+        "error": "ERROR 0xCT02: Paradox detected in Middle Ages\nAnomalous dual existence: LEANNE.entity and MARLE.entity\nExpected value 'date.middleages.timeline' not found\nAttempting timeline calibration...",
+        "solution": "!600AD",
+        "completion_message": "[RECOVERED] Middle Ages timeline stabilized\n[WARNING] Future timeline corruption detected..."
       },
       {
-        "error": "ERROR 0xF7C1: battle_calc.zodiac_compatibility corrupted\nExpected value 'max_compatibility_multiplier' missing\nAttempting recovery...",
-        "solution": "!1.5x",
-        "completion_message": "[RECOVERED] Battle calculations restored\n[WARNING] Hidden data packet detected..."
+        "error": "ERROR 0xCT03: Future systems critical\nLife support failing: DOME_NETWORK.status = CRITICAL\nExpected value 'date.futureapocalypse.timeline' corrupted\nAttempting emergency time sync...",
+        "solution": "!2300AD",
+        "completion_message": "[RECOVERED] Future timeline synchronized\n[WARNING] Day of Lavos temporal anomaly detected..."
+      },
+      {
+        "error": "ERROR 0xCT04: LAVOS.emergence_date corrupted\nCatastrophic event timeline unstable\nExpected value 'date.lavos.timeline' not found\nAttempting temporal stabilization...",
+        "solution": "!1999AD",
+        "completion_message": "[RECOVERED] Day of Lavos timepoint restored\n[WARNING] Prehistoric data corruption detected..."
+      },
+      {
+        "error": "ERROR 0xCT05: Prehistoric database overflow\nAEON.sys temporal boundary exceeded\nExpected value 'prehistory.timeline' not found\nAttempting primitive era recovery...",
+        "solution": "!65000000BC",
+        "completion_message": "[RECOVERED] Prehistoric era restored\n[SUCCESS] All temporal anomalies resolved\n[ACCESSING HIDDEN DATA...]"
       }
     ],
     "finalReward": {
-      "gameId": "1234",
-      "gameName": "[REDACTED TITLE]",
+      "gameId": "9999",
+      "gameName": "[TEMPORAL ANOMALY RESOLVED]",
       "points": 2
     }
   }
