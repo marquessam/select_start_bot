@@ -2,7 +2,8 @@ const TerminalEmbed = require('../../utils/embedBuilder');
 const database = require('../../database');
 
 module.exports = {
-    name: 'highscores',
+    name: 'highscore',
+    aliases: ['highscores'],
     description: 'Displays current high score rankings',
     async execute(message, args) {
         try {
