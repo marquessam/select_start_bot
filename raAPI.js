@@ -71,7 +71,6 @@ async function fetchLeaderboardData() {
     }
 }
 
-module.exports = { fetchLeaderboardData };
-    fetchLeaderboardData,
-    fetchNominations 
+module.exports = {
+    fetchLeaderboardData
 };
