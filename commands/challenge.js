@@ -1,5 +1,5 @@
 const TerminalEmbed = require('../utils/embedBuilder');
-const { getCurrentChallenge } = require('../challengeConfig.js');
+const database = require('../database');
 
 module.exports = {
     name: 'challenge',
@@ -7,9 +7,9 @@ module.exports = {
     async execute(message, args, { shadowGame }) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing challenge database...\x1b[0m\n```');
-
-            const currentChallenge = await getCurrentChallenge();
-
+            
+            const currentChallenge = await database.getCurrentChallenge();
+            
             const embed = new TerminalEmbed()
                 .setTerminalTitle('MONTHLY CHALLENGE')
                 .setURL(`https://retroachievements.org/game/${currentChallenge.gameId}`)
