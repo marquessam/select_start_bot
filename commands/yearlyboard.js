@@ -1,41 +1,100 @@
 const TerminalEmbed = require('../utils/embedBuilder');
+const { fetchLeaderboardData } = require('../raAPI.js');
 
 module.exports = {
-    name: 'yearlyboard',
-    description: 'Displays yearly rankings',
+    name: 'profile',
+    description: 'Displays user profile and stats',
     async execute(message, args, { userStats }) {
         try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
-            
-            // Get valid users and yearly leaderboard
-            const validUsers = await userStats.getAllUsers();
-            const leaderboard = await userStats.getYearlyLeaderboard();
-            
-            // Filter leaderboard to only include valid users
-            const filteredLeaderboard = leaderboard.filter(user => 
-                validUsers.includes(user.username.toLowerCase())
-            );
-            
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('YEARLY RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
-
-            if (filteredLeaderboard.length > 0) {
-                embed.addTerminalField('TOP OPERATORS',
-                    filteredLeaderboard
-                        .map((user, index) => `${index + 1}. ${user.username}: ${user.points} points`)
-                        .join('\n'));
-            } else {
-                embed.addTerminalField('STATUS', 'No rankings available');
+            const username = args[0];
+            if (!username) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid query\nSyntax: !profile <username>\n[Ready for input]█\x1b[0m```');
+                return;
             }
 
-            embed.setTerminalFooter();
-            
-            await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !profile <user> for detailed stats\n[Ready for input]█\x1b[0m```');
+            // Validate user is in participant list
+            const validUsers = await userStats.getAllUsers();
+            if (!validUsers.includes(username.toLowerCase())) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in participant list\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
+
+            try {
+                const [data, leaderboard] = await Promise.all([
+                    fetchLeaderboardData(),
+                    userStats.getYearlyLeaderboard()
+                ]);
+
+                const userProgress = data.leaderboard.find(user => 
+                    user.username.toLowerCase() === username.toLowerCase()
+                );
+                
+                const stats = await userStats.getUserStats(username);
+                
+                if (!userProgress) {
+                    await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in leaderboard\n[Ready for input]█\x1b[0m```');
+                    return;
+                }
+
+                // Find user's points
+                const userPoints = leaderboard.find(user => 
+                    user.username.toLowerCase() === username.toLowerCase()
+                )?.points || 0;
+
+                // Calculate rank considering ties
+                let userRank = 1;
+                const higherScores = new Set(
+                    leaderboard
+                        .filter(user => user.points > userPoints)
+                        .map(user => user.points)
+                );
+                userRank = higherScores.size + 1;
+
+                const currentYear = new Date().getFullYear().toString();
+                const yearlyPoints = stats.yearlyPoints[currentYear] || 0;
+                const recentAchievements = stats.monthlyAchievements[currentYear] || {};
+                
+                const recentAchievementsText = Object.entries(recentAchievements)
+                    .map(([month, achievement]) => 
+                        `${month}: ${achievement.place} place (${achievement.points} pts)`)
+                    .join('\n');
+
+                const recentBonusPoints = stats.bonusPoints
+                    .filter(bonus => bonus.year === currentYear)
+                    .map(bonus => `${bonus.points} pts - ${bonus.reason}`)
+                    .join('\n');
+
+                const embed = new TerminalEmbed()
+                    .setTerminalTitle(`USER DATA: ${userProgress.username}`)
+                    .setURL(userProgress.profileUrl)
+                    .setThumbnail(userProgress.profileImage)
+                    .setTerminalDescription('[STATUS: AUTHENTICATED]\n[CLEARANCE: GRANTED]')
+                    .addTerminalField('CURRENT MISSION PROGRESS', 
+                        `ACHIEVEMENTS: ${userProgress.completedAchievements}/${userProgress.totalAchievements}\nCOMPLETION: ${userProgress.completionPercentage}%`)
+                    .addTerminalField('YEARLY STATISTICS',
+                        `TOTAL POINTS: ${yearlyPoints}\nRANK: ${userRank}/${leaderboard.length}`);
+
+                if (recentAchievementsText) {
+                    embed.addTerminalField('MONTHLY ACHIEVEMENTS', recentAchievementsText);
+                }
+
+                if (recentBonusPoints) {
+                    embed.addTerminalField('POINTS EARNED', recentBonusPoints);
+                }
+
+                embed.setTerminalFooter();
+                await message.channel.send({ embeds: [embed] });
+                await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
+
+            } catch (fetchError) {
+                console.error('Error fetching data:', fetchError);
+                throw new Error('Failed to fetch user data');
+            }
         } catch (error) {
-            console.error('Yearly Rankings Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly rankings\n[Ready for input]█\x1b[0m```');
+            console.error('Profile Command Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Database connection failed\n[Ready for input]█\x1b[0m```');
         }
     }
 };
