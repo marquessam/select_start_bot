@@ -1,9 +1,8 @@
-const TerminalEmbed = require('../../utils/embedBuilder');
-const database = require('../../database');
+const TerminalEmbed = require('../utils/embedBuilder');
+const database = require('../database');
 
 module.exports = {
-    name: 'highscore',
-    aliases: ['highscores'],
+    name: 'highscores',
     description: 'Displays current high score rankings',
     async execute(message, args) {
         try {
@@ -32,7 +31,7 @@ module.exports = {
 
                 embed.addTerminalField(
                     'USAGE',
-                    '!highscore <game number>\nExample: !highscore 1'
+                    '!highscores <game number>\nExample: !highscores 1'
                 );
 
                 embed.setTerminalFooter();
@@ -47,7 +46,7 @@ module.exports = {
             const games = Object.entries(highscores.games);
 
             if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > games.length) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\nUse !highscore to see available games\n[Ready for input]█\x1b[0m```');
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\nUse !highscores to see available games\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
