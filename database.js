@@ -5,10 +5,13 @@ class Database {
         this.client = null;
         this.db = null;
         
-        // Validate MongoDB URI at construction
         if (!process.env.MONGODB_URI) {
             throw new Error('MONGODB_URI environment variable is not defined');
         }
+
+        // Log the URI format (but not the credentials) for debugging
+        const uriFormat = process.env.MONGODB_URI.replace(/:([^@]+)@/, ':***@');
+        console.log('MongoDB URI format:', uriFormat);
     }
 
     async connect() {
@@ -19,15 +22,16 @@ class Database {
             }
 
             this.client = new MongoClient(process.env.MONGODB_URI, {
-                useNewUrlParser: true,
-                useUnifiedTopology: true,
                 serverSelectionTimeoutMS: 5000,
                 maxPoolSize: 10
             });
             
+            // Test the connection before proceeding
             await this.client.connect();
+            await this.client.db().admin().ping();
+            
             this.db = this.client.db('selectstart');
-            console.log('Connected to MongoDB');
+            console.log('Successfully connected to MongoDB');
 
             // Add connection error handler
             this.client.on('error', (error) => {
@@ -36,7 +40,18 @@ class Database {
             });
 
         } catch (error) {
-            console.error('MongoDB connection error:', error);
+            if (error.name === 'MongoServerError') {
+                console.error('MongoDB Authentication Error:');
+                console.error('- Error Code:', error.code);
+                console.error('- Error Message:', error.errmsg);
+                if (error.code === 8000) {
+                    console.error('Authentication failed. Please check:');
+                    console.error('1. Username and password are correct');
+                    console.error('2. User has correct database permissions');
+                    console.error('3. Database name is correct');
+                    console.error('4. Special characters in password are URL encoded');
+                }
+            }
             throw error;
         }
     }
