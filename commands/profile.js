@@ -1,5 +1,6 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const { fetchLeaderboardData } = require('../raAPI.js');
+const database = require('../database');
 
 module.exports = {
     name: 'profile',
@@ -12,37 +13,49 @@ module.exports = {
                 return;
             }
 
-            // Validate user is in participant list
-            const validUsers = await userStats.getAllUsers();
-            if (!validUsers.includes(username.toLowerCase())) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in participant list\n[Ready for input]█\x1b[0m```');
-                return;
-            }
-
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
             try {
-                // Fetch both RetroAchievements data and yearly leaderboard
-                const [data, leaderboard] = await Promise.all([
+                // Get current challenge info
+                const currentChallenge = await database.getCurrentChallenge();
+                
+                // Fetch RetroAchievements data and user stats
+                const [raData, stats] = await Promise.all([
                     fetchLeaderboardData(),
-                    userStats.getYearlyLeaderboard()
+                    userStats.getUserStats(username)
                 ]);
 
-                const userProgress = data.leaderboard.find(user => 
+                // Validate user exists in system
+                if (!stats) {
+                    await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in database\n[Ready for input]█\x1b[0m```');
+                    return;
+                }
+
+                const userProgress = raData.leaderboard.find(user => 
                     user.username.toLowerCase() === username.toLowerCase()
                 );
-                
-                const stats = await userStats.getUserStats(username);
                 
                 if (!userProgress) {
                     await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in leaderboard\n[Ready for input]█\x1b[0m```');
                     return;
                 }
 
-                // Find user's rank in the yearly leaderboard
-                const userRank = leaderboard.findIndex(user => 
+                // Get yearly ranking
+                const yearlyBoard = await userStats.getYearlyLeaderboard();
+                
+                // Calculate user's rank considering ties
+                const userPoints = yearlyBoard.find(user => 
                     user.username.toLowerCase() === username.toLowerCase()
-                ) + 1;
+                )?.points || 0;
+
+                // Calculate rank considering ties
+                let userRank = 1;
+                const higherScores = new Set(
+                    yearlyBoard
+                        .filter(user => user.points > userPoints)
+                        .map(user => user.points)
+                );
+                userRank = higherScores.size + 1;
 
                 const currentYear = new Date().getFullYear().toString();
                 const yearlyPoints = stats.yearlyPoints[currentYear] || 0;
@@ -66,7 +79,7 @@ module.exports = {
                     .addTerminalField('CURRENT MISSION PROGRESS', 
                         `ACHIEVEMENTS: ${userProgress.completedAchievements}/${userProgress.totalAchievements}\nCOMPLETION: ${userProgress.completionPercentage}%`)
                     .addTerminalField('YEARLY STATISTICS',
-                        `TOTAL POINTS: ${yearlyPoints}\nRANK: ${userRank}/${leaderboard.length}`);
+                        `TOTAL POINTS: ${yearlyPoints}\nRANK: ${userRank}/${yearlyBoard.length}`);
 
                 if (recentAchievementsText) {
                     embed.addTerminalField('MONTHLY ACHIEVEMENTS', recentAchievementsText);
