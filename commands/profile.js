@@ -7,7 +7,6 @@ module.exports = {
     async execute(message, args, { userStats }) {
         try {
             const username = args[0];
-
             if (!username) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid query\nSyntax: !profile <username>\n[Ready for input]█\x1b[0m```');
                 return;
@@ -23,7 +22,12 @@ module.exports = {
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
             try {
-                const data = await fetchLeaderboardData();
+                // Fetch both RetroAchievements data and yearly leaderboard
+                const [data, leaderboard] = await Promise.all([
+                    fetchLeaderboardData(),
+                    userStats.getYearlyLeaderboard()
+                ]);
+
                 const userProgress = data.leaderboard.find(user => 
                     user.username.toLowerCase() === username.toLowerCase()
                 );
@@ -35,10 +39,15 @@ module.exports = {
                     return;
                 }
 
+                // Find user's rank in the yearly leaderboard
+                const userRank = leaderboard.findIndex(user => 
+                    user.username.toLowerCase() === username.toLowerCase()
+                ) + 1;
+
                 const currentYear = new Date().getFullYear().toString();
                 const yearlyPoints = stats.yearlyPoints[currentYear] || 0;
-
                 const recentAchievements = stats.monthlyAchievements[currentYear] || {};
+                
                 const recentAchievementsText = Object.entries(recentAchievements)
                     .map(([month, achievement]) => 
                         `${month}: ${achievement.place} place (${achievement.points} pts)`)
@@ -57,7 +66,7 @@ module.exports = {
                     .addTerminalField('CURRENT MISSION PROGRESS', 
                         `ACHIEVEMENTS: ${userProgress.completedAchievements}/${userProgress.totalAchievements}\nCOMPLETION: ${userProgress.completionPercentage}%`)
                     .addTerminalField('YEARLY STATISTICS',
-                        `TOTAL POINTS: ${yearlyPoints}\nRANK: Coming soon...`);
+                        `TOTAL POINTS: ${yearlyPoints}\nRANK: ${userRank}/${leaderboard.length}`);
 
                 if (recentAchievementsText) {
                     embed.addTerminalField('MONTHLY ACHIEVEMENTS', recentAchievementsText);
@@ -68,7 +77,6 @@ module.exports = {
                 }
 
                 embed.setTerminalFooter();
-
                 await message.channel.send({ embeds: [embed] });
                 await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
 
@@ -76,7 +84,6 @@ module.exports = {
                 console.error('Error fetching data:', fetchError);
                 throw new Error('Failed to fetch user data');
             }
-
         } catch (error) {
             console.error('Profile Command Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Database connection failed\n[Ready for input]█\x1b[0m```');
