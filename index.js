@@ -66,6 +66,6 @@ client.on('messageCreate', async message => {
         console.error('Error processing message:', error);
     }
   });
-});
+
 
 client.login(process.env.DISCORD_TOKEN);
