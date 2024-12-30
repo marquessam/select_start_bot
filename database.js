@@ -20,7 +20,6 @@ class Database {
             this.db = this.client.db('selectstart');
             console.log('Connected to MongoDB');
 
-            // Add connection error handler
             this.client.on('error', (error) => {
                 console.error('MongoDB connection error:', error);
                 this.reconnect();
@@ -57,7 +56,6 @@ class Database {
         }
     }
 
-    // User Stats Methods
     async getUserStats() {
         const collection = this.db.collection('userstats');
         const stats = await collection.findOne({ _id: 'stats' });
@@ -77,27 +75,32 @@ class Database {
         );
     }
 
-    // Challenge Methods
     async getCurrentChallenge() {
-        const collection = this.db.collection('challenges');
-        const challenge = await collection.findOne({ _id: 'current' });
-        return challenge || {
-             gameId: "319",
-             gameName: "Chrono Trigger",
-             gameIcon: "/Images/093950.png",
-             startDate: "2025-01-01",
-             endDate: "2025-01-31",
-                "Hardcore mode must be enabled",
-                "All achievements are eligible",
-                "Progress tracked via retroachievements",
-                "No hacks/save states/cheats allowed"
-            ],
-            points: {
-                first: 6,
-                second: 4,
-                third: 2
-            }
-        };
+        try {
+            const collection = this.db.collection('challenges');
+            const challenge = await collection.findOne({ _id: 'current' });
+            return challenge || {
+                gameId: "",
+                gameName: "",
+                gameIcon: "",
+                startDate: "",
+                endDate: "",
+                rules: [
+                    "Hardcore mode must be enabled",
+                    "All achievements are eligible",
+                    "Progress tracked via retroachievements",
+                    "No hacks/save states/cheats allowed"
+                ],
+                points: {
+                    first: 6,
+                    second: 4,
+                    third: 2
+                }
+            };
+        } catch (error) {
+            console.error('Error getting current challenge:', error);
+            throw error;
+        }
     }
 
     async saveCurrentChallenge(challenge) {
@@ -124,7 +127,6 @@ class Database {
         );
     }
 
-    // Configuration Methods
     async getConfiguration() {
         const collection = this.db.collection('config');
         const config = await collection.findOne({ _id: 'settings' });
@@ -160,7 +162,6 @@ class Database {
         );
     }
 
-    // Shadow Game Methods
     async getShadowGame() {
         const collection = this.db.collection('shadowgame');
         const game = await collection.findOne({ _id: 'current' });
@@ -169,8 +170,8 @@ class Database {
             currentProgress: 0,
             puzzles: [],
             finalReward: {
-                gameId: "10024",
-                gameName: "Mario Tennis",
+                gameId: "",
+                gameName: "",
                 points: 0
             }
         };
@@ -185,7 +186,6 @@ class Database {
         );
     }
 
-    // High Scores Methods
     async getHighScores() {
         const collection = this.db.collection('highscores');
         const highscores = await collection.findOne({ _id: 'highscores' });
