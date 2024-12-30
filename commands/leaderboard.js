@@ -24,12 +24,18 @@ module.exports = {
                 );
             });
 
-            // Additional participants
+            // Additional participants with rank numbers
             const additionalUsers = data.leaderboard.slice(3);
             if (additionalUsers.length > 0) {
+                const additionalRankings = additionalUsers
+                    .map((user, index) => 
+                        `${index + 4}. ${user.username} (${user.completionPercentage}%)`
+                    )
+                    .join('\n');
+                    
                 embed.addTerminalField(
                     'ADDITIONAL PARTICIPANTS',
-                    additionalUsers.map(user => user.username).join(', ')
+                    additionalRankings
                 );
             }
 
