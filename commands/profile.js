@@ -13,23 +13,20 @@ module.exports = {
                 return;
             }
 
+            // Validate user is in participant list first
+            const validUsers = await userStats.getAllUsers();
+            if (!validUsers.includes(username.toLowerCase())) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in participant list\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
             try {
-                // Get current challenge info
-                const currentChallenge = await database.getCurrentChallenge();
-                
-                // Fetch RetroAchievements data and user stats
                 const [raData, stats] = await Promise.all([
                     fetchLeaderboardData(),
                     userStats.getUserStats(username)
                 ]);
-
-                // Validate user exists in system
-                if (!stats) {
-                    await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in database\n[Ready for input]█\x1b[0m```');
-                    return;
-                }
 
                 const userProgress = raData.leaderboard.find(user => 
                     user.username.toLowerCase() === username.toLowerCase()
@@ -48,7 +45,6 @@ module.exports = {
                     user.username.toLowerCase() === username.toLowerCase()
                 )?.points || 0;
 
-                // Calculate rank considering ties
                 let userRank = 1;
                 const higherScores = new Set(
                     yearlyBoard
