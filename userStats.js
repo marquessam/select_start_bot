@@ -1,5 +1,4 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-const TerminalEmbed = require('./utils/embedBuilder');
 const database = require('./database');
 
 class UserStats {
@@ -38,9 +37,9 @@ class UserStats {
     }
 
     async saveStats() {
-        // Save to MongoDB
         await database.saveUserStats(this.stats);
     }
+
     async initializeUserIfNeeded(username) {
         if (!username) return;
 
@@ -51,7 +50,6 @@ class UserStats {
             .find(user => user.toLowerCase() === cleanUsername);
 
         if (!existingUser) {
-            // Create new user in MongoDB via stats object
             this.stats.users[cleanUsername] = {
                 totalPoints: 0,
                 yearlyPoints: {},
@@ -66,30 +64,7 @@ class UserStats {
             this.stats.users[actualUsername].yearlyPoints[year] = 0;
         }
 
-        // Save changes to MongoDB
         await this.saveStats();
-    }
-
-    async sendPointsNotification(client, username, points, reason, isBonus = true) {
-        try {
-            const guild = await client.guilds.fetch('1300941091335438468');
-            const member = await guild.members.fetch({ query: username, limit: 1 });
-            
-            if (member) {
-                const embed = new TerminalEmbed()
-                    .setTerminalTitle('POINTS AWARDED')
-                    .setTerminalDescription('[NOTIFICATION]\n[POINTS UPDATE]')
-                    .addTerminalField('DETAILS', 
-                        `You have been awarded ${points} points!\n` +
-                        `Reason: ${reason}\n` +
-                        `Type: ${isBonus ? 'Bonus Points' : 'Challenge Points'}`)
-                    .setTerminalFooter();
-
-                await member.send({ embeds: [embed] });
-            }
-        } catch (error) {
-            console.error('Error sending points notification:', error);
-        }
     }
 
     async archiveLeaderboard(data) {
@@ -111,7 +86,6 @@ class UserStats {
                 leaderboard: data.leaderboard
             };
 
-            // Save to MongoDB
             await this.saveStats();
             
             return {
@@ -124,6 +98,7 @@ class UserStats {
             throw error;
         }
     }
+
     async refreshUserList() {
         try {
             const response = await fetch(this.SPREADSHEET_URL);
@@ -139,7 +114,6 @@ class UserStats {
                 await this.initializeUserIfNeeded(username);
             }
 
-            // Save to MongoDB
             await this.saveStats();
             return users;
         } catch (error) {
@@ -148,11 +122,10 @@ class UserStats {
         }
     }
 
-    async addMonthlyPoints(month, year, rankings, client) {
+    async addMonthlyPoints(month, year, rankings) {
         await this.refreshUserList();
         
         const pointsDistribution = { first: 6, second: 4, third: 2 };
-        const placementNames = { first: '1st', second: '2nd', third: '3rd' };
         
         for (const [place, username] of Object.entries(rankings)) {
             if (username) {
@@ -189,19 +162,13 @@ class UserStats {
                     points,
                     date: new Date().toISOString()
                 };
-
-                if (client) {
-                    const reason = `${placementNames[place]} place in ${month} challenge`;
-                    await this.sendPointsNotification(client, userToUpdate, points, reason, false);
-                }
             }
         }
 
-        // Save to MongoDB
         await this.saveStats();
     }
 
-    async addBonusPoints(username, points, reason, client) {
+    async addBonusPoints(username, points, reason) {
         try {
             console.log('Starting bonus points addition for:', username);
             await this.refreshUserList();
@@ -248,19 +215,14 @@ class UserStats {
                 year
             });
 
-            // Save to MongoDB
             await this.saveStats();
-            
-            if (client) {
-                await this.sendPointsNotification(client, userToUpdate, points, reason, true);
-            }
-
             console.log('Successfully added points to:', userToUpdate);
         } catch (error) {
             console.error('Error in addBonusPoints for user', username, ':', error);
             throw error;
         }
     }
+
     async getUserStats(username) {
         try {
             console.log('Getting stats for user:', username);
@@ -324,7 +286,6 @@ class UserStats {
                 bonusPoints: []
             };
 
-            // Save to MongoDB
             await this.saveStats();
             return true;
         } catch (error) {
