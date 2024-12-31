@@ -37,32 +37,47 @@ module.exports = {
             // Calculate monthly rank with ties
             const monthlyRankData = data.leaderboard
                 .sort((a, b) => b.completionPercentage - a.completionPercentage)
-                .map((user, index, sorted) => {
-                    return {
-                        username: user.username,
-                        rank: index + 1,
-                        tie: index > 0 && sorted[index - 1].completionPercentage === user.completionPercentage
-                    };
-                });
+                .reduce((acc, user, index, sorted) => {
+                    if (index === 0 || user.completionPercentage !== sorted[index - 1].completionPercentage) {
+                        acc.currentRank = index + 1;
+                    }
+                    acc.rankedUsers.push({
+                        ...user,
+                        rank: acc.currentRank,
+                        tie: index > 0 && user.completionPercentage === sorted[index - 1].completionPercentage
+                    });
+                    return acc;
+                }, { currentRank: 1, rankedUsers: [] });
 
-            const monthlyRank = monthlyRankData.find(user => user.username.toLowerCase() === username.toLowerCase());
+            const monthlyRank = monthlyRankData.rankedUsers.find(user => user.username.toLowerCase() === username.toLowerCase());
             const monthlyRankText = monthlyRank
                 ? `${monthlyRank.rank}/${data.leaderboard.length}${monthlyRank.tie ? ' (tie)' : ''}`
                 : 'N/A';
 
-            // Calculate yearly rank with ties
-            const yearlyRankData = yearlyLeaderboard.reduce((acc, user, index) => {
-                if (index === 0 || user.points !== yearlyLeaderboard[index - 1].points) {
-                    acc.currentRank = index + 1;
-                }
-                if (user.username.toLowerCase() === username.toLowerCase()) {
-                    acc.rank = acc.currentRank;
-                }
-                return acc;
-            }, { currentRank: 1, rank: null });
+            // Ensure the yearly leaderboard includes all participants
+            const adjustedYearlyLeaderboard = allParticipants.map(participant => {
+                const user = yearlyLeaderboard.find(u => u.username.toLowerCase() === participant.toLowerCase());
+                return user || { username: participant, points: 0, gamesCompleted: 0 };
+            });
 
-            const yearlyRankText = yearlyRankData.rank
-                ? `${yearlyRankData.rank}/${yearlyLeaderboard.length}`
+            // Calculate yearly rank with ties
+            const yearlyRankData = adjustedYearlyLeaderboard
+                .sort((a, b) => b.points - a.points)
+                .reduce((acc, user, index, sorted) => {
+                    if (index === 0 || user.points !== sorted[index - 1].points) {
+                        acc.currentRank = index + 1;
+                    }
+                    acc.rankedUsers.push({
+                        ...user,
+                        rank: acc.currentRank,
+                        tie: index > 0 && user.points === sorted[index - 1].points
+                    });
+                    return acc;
+                }, { currentRank: 1, rankedUsers: [] });
+
+            const yearlyRank = yearlyRankData.rankedUsers.find(user => user.username.toLowerCase() === username.toLowerCase());
+            const yearlyRankText = yearlyRank
+                ? `${yearlyRank.rank}/${adjustedYearlyLeaderboard.length}${yearlyRank.tie ? ' (tie)' : ''}`
                 : 'N/A';
 
             // Find user's profile info in leaderboard data
