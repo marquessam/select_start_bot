@@ -1,3 +1,4 @@
+// setnextchallenge.js
 const TerminalEmbed = require('../../utils/embedBuilder');
 const database = require('../../database');
 
@@ -20,9 +21,9 @@ module.exports = {
                     "No hacks/save states/cheats allowed"
                 ],
                 points: {
-                    first: 10,
-                    second: 6,
-                    third: 3
+                    first: 6,
+                    second: 4,
+                    third: 2
                 }
             };
 
