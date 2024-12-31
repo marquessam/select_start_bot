@@ -2,49 +2,9 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const database = require('./database');
 
-async function fetchNominations() {
-    try {
-        const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSpV_1nLVtIVvXtNVqpzqXV6NQVi8l6pm5wQR41tYm7ooAmxfH0ln__TuEcC9so6KFRanFW0yCiJOM/pub?output=csv';
-        
-        console.log('Fetching nominations from:', SPREADSHEET_URL);
-        const response = await fetch(SPREADSHEET_URL);
-        console.log('Response status:', response.status);
-        
-        const csvText = await response.text();
-        console.log('CSV content (first 100 chars):', csvText.substring(0, 100));
-        
-        const nominations = csvText
-            .split('\n')
-            .slice(1)
-            .map(line => {
-                console.log('Processing line:', line);
-                const [gameTitle, platform] = line.trim().split(',').map(item => item.trim());
-                return { platform, game: gameTitle };
-            })
-            .filter(nom => nom.platform && nom.game);
-
-        console.log('Processed nominations:', nominations);
-
-        const groupedNominations = nominations.reduce((groups, nom) => {
-            if (!groups[nom.platform]) {
-                groups[nom.platform] = [];
-            }
-            groups[nom.platform].push(nom.game);
-            return groups;
-        }, {});
-
-        console.log('Grouped nominations:', groupedNominations);
-
-        return groupedNominations;
-    } catch (error) {
-        console.error('Detailed nominations error:', error);
-        throw error;
-    }
-}
-
 async function fetchLeaderboardData() {
     try {
-        // Get current challenge from database instead of file
+        // Get current challenge from database
         const challenge = await database.getCurrentChallenge();
         if (!challenge || !challenge.gameId) {
             throw new Error('No active challenge found in database');
@@ -66,15 +26,16 @@ async function fetchLeaderboardData() {
 
         for (const username of users) {
             try {
-                await delay(300);
+                await delay(300); // Rate limiting
 
                 const params = new URLSearchParams({
                     z: process.env.RA_USERNAME,
                     y: process.env.RA_API_KEY,
-                    g: challenge.gameId,  // Updated to use database structure
+                    g: challenge.gameId,
                     u: username
                 });
 
+                // Get user progress
                 const url = `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`;
                 const response = await fetch(url);
                 
@@ -83,6 +44,16 @@ async function fetchLeaderboardData() {
                 }
                 
                 const data = await response.json();
+
+                // Get user info for profile image
+                const userInfoParams = new URLSearchParams({
+                    z: process.env.RA_USERNAME,
+                    y: process.env.RA_API_KEY,
+                    u: username
+                });
+                const userInfoUrl = `https://retroachievements.org/API/API_GetUserSummary.php?${userInfoParams}`;
+                const userInfoResponse = await fetch(userInfoUrl);
+                const userInfo = await userInfoResponse.json();
 
                 if (!validGameInfo && data.Title && data.ImageIcon) {
                     validGameInfo = {
@@ -98,7 +69,8 @@ async function fetchLeaderboardData() {
 
                 usersProgress.push({
                     username,
-                    profileImage: `https://retroachievements.org/UserPic/${username}.png`,
+                    profileImage: userInfo.UserPic ? `https://retroachievements.org${userInfo.UserPic}` : 
+                                `https://retroachievements.org/UserPic/${username}.png`,
                     profileUrl: `https://retroachievements.org/user/${username}`,
                     completedAchievements: completed,
                     totalAchievements: numAchievements,
@@ -106,6 +78,15 @@ async function fetchLeaderboardData() {
                 });
             } catch (error) {
                 console.error(`Error fetching data for ${username}:`, error);
+                // Add user with default values if there's an error
+                usersProgress.push({
+                    username,
+                    profileImage: `https://retroachievements.org/UserPic/${username}.png`,
+                    profileUrl: `https://retroachievements.org/user/${username}`,
+                    completedAchievements: 0,
+                    totalAchievements: 0,
+                    completionPercentage: 0
+                });
             }
         }
         
@@ -128,6 +109,41 @@ async function fetchLeaderboardData() {
 
     } catch (error) {
         console.error('API Error:', error);
+        throw error;
+    }
+}
+
+async function fetchNominations() {
+    try {
+        const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSpV_1nLVtIVvXtNVqpzqXV6NQVi8l6pm5wQR41tYm7ooAmxfH0ln__TuEcC9so6KFRanFW0yCiJOM/pub?output=csv';
+        
+        const response = await fetch(SPREADSHEET_URL);
+        const csvText = await response.text();
+        
+        const nominations = csvText
+            .split('\n')
+            .slice(1)
+            .map(line => {
+                const [gameTitle, platform] = line.trim().split(',').map(item => item.trim());
+                return { platform, game: gameTitle };
+            })
+            .filter(nom => nom.platform && nom.game);
+
+        const groupedNominations = nominations.reduce((groups, nom) => {
+            if (!groups[nom.platform]) {
+                groups[nom.platform] = [];
+            }
+            groups[nom.platform].push(nom.game);
+            return groups;
+        }, {});
+
+        Object.keys(groupedNominations).forEach(platform => {
+            groupedNominations[platform].sort();
+        });
+
+        return groupedNominations;
+    } catch (error) {
+        console.error('Error fetching nominations:', error);
         throw error;
     }
 }
