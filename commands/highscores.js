@@ -1,3 +1,4 @@
+// highscores.js (updated version)
 const TerminalEmbed = require('../utils/embedBuilder');
 const database = require('../database');
 
