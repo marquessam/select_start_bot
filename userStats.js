@@ -13,6 +13,11 @@ class UserStats {
             // Load stats from MongoDB
             this.stats = await database.getUserStats();
             
+            // Initialize the base structure if it doesn't exist
+            if (!this.stats.users) {
+                this.stats.users = {};
+            }
+            
             // Fetch and sync users from spreadsheet
             const response = await fetch(this.SPREADSHEET_URL);
             const csvText = await response.text();
@@ -35,7 +40,6 @@ class UserStats {
             throw error;
         }
     }
-
     async saveStats() {
         await database.saveUserStats(this.stats);
     }
