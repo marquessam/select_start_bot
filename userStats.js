@@ -14,7 +14,22 @@ class UserStats {
         this.currentYear = new Date().getFullYear();
         this.SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
     }
+    
+async getAllUsers() {
+        try {
+            // Ensure that user data is initialized properly
+            if (!this.stats.users) {
+                throw new Error('User data is not initialized.');
+            }
 
+            // Return all user keys in lowercase
+            return Object.keys(this.stats.users).map(user => user.toLowerCase());
+        } catch (error) {
+            console.error('Error fetching all users:', error);
+            throw error;
+        }
+    }
+    
     async loadStats() {
         try {
             // Load stats from MongoDB
