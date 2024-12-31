@@ -21,7 +21,7 @@ module.exports = {
             const allParticipants = await userStats.refreshUserList();
 
             // Get all necessary data
-            const [data, yearlyLeaderboard, stats, currentChallenge] = await Promise.all([
+            const [data, yearlyLeaderboardRaw, stats, currentChallenge] = await Promise.all([
                 fetchLeaderboardData(),
                 userStats.getYearlyLeaderboard(currentYear, allParticipants),
                 userStats.getUserStats(username),
@@ -54,36 +54,37 @@ module.exports = {
                 ? `${monthlyRank.rank}/${data.leaderboard.length}${monthlyRank.tie ? ' (tie)' : ''}`
                 : 'N/A';
 
-            // Ensure the yearly leaderboard includes all participants
+            // Calculate yearly rank with ties
             const adjustedYearlyLeaderboard = allParticipants.map(participant => {
-                const user = yearlyLeaderboard.find(u => u.username.toLowerCase() === participant.toLowerCase());
-                return user || { username: participant, points: 0, gamesCompleted: 0 };
+                const user = yearlyLeaderboardRaw.find(u => u.username.toLowerCase() === participant.toLowerCase());
+                return user || { username: participant, points: 0 };
             });
 
-         // Calculate yearly rank with ties
-const yearlyRankData = yearlyLeaderboard.reduce((acc, user, index, arr) => {
-    if (index === 0 || user.points !== arr[index - 1].points) {
-        acc.currentRank = index + 1; // Update rank only when points differ
-    }
-    if (user.username.toLowerCase() === username.toLowerCase()) {
-        acc.rank = acc.currentRank; // Assign the rank of the current user
-    }
-    return acc;
-}, { currentRank: 1, rank: null });
+            let currentRank = 1;
+            let currentPoints = -1;
+            let sameRankCount = 0;
 
-// Debugging output
-console.log('Yearly leaderboard:', yearlyLeaderboard);
-console.log('User stats:', yearlyRankData);
+            const rankedYearlyLeaderboard = adjustedYearlyLeaderboard
+                .sort((a, b) => b.points - a.points)
+                .map((user, index) => {
+                    if (user.points !== currentPoints) {
+                        currentRank += sameRankCount;
+                        sameRankCount = 0;
+                        currentPoints = user.points;
+                    } else {
+                        sameRankCount++;
+                    }
+                    return {
+                        ...user,
+                        rank: currentRank
+                    };
+                });
 
-// Generate the rank text
-const yearlyRankText = yearlyRankData.rank
-    ? `${yearlyRankData.rank}/${yearlyLeaderboard.length} (tie)`
-    : 'N/A';
+            const userYearlyRank = rankedYearlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase());
+            const yearlyRankText = userYearlyRank
+                ? `${userYearlyRank.rank}/${rankedYearlyLeaderboard.length} (tie)`
+                : 'N/A';
 
-// Ensure leaderboard includes the username
-if (!yearlyRankData.rank) {
-    console.error(`User "${username}" not found in yearly leaderboard.`);
-}
             // Find user's profile info in leaderboard data
             const userLeaderboardData = data.leaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
