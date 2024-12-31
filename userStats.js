@@ -3,21 +3,27 @@ const database = require('./database');
 
 class UserStats {
     constructor() {
-        this.stats = null;
+        this.stats = {
+            users: {},
+            yearlyStats: {},
+            monthlyStats: {},
+            gameCompletions: {}
+        };
         this.currentYear = new Date().getFullYear();
         this.SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
     }
 
-async loadStats() {
+    async loadStats() {
         try {
-            // Load stats from MongoDB with default structure
+            // Load stats from MongoDB
             const dbStats = await database.getUserStats();
+            
+            // Merge with default structure
             this.stats = {
-                users: {},
-                yearlyStats: {},
-                monthlyStats: {},
-                gameCompletions: {},
-                ...dbStats  // This will overlay any existing data from DB
+                users: dbStats.users || {},
+                yearlyStats: dbStats.yearlyStats || {},
+                monthlyStats: dbStats.monthlyStats || {},
+                gameCompletions: dbStats.gameCompletions || {}
             };
             
             // Fetch and sync users from spreadsheet
@@ -29,6 +35,8 @@ async loadStats() {
                 .map(line => line.trim())
                 .filter(line => line)
                 .slice(1);
+
+            console.log('Found users:', users);
 
             for (const username of users) {
                 await this.initializeUserIfNeeded(username);
@@ -43,11 +51,7 @@ async loadStats() {
         }
     }
 
-    async saveStats() {
-        await database.saveUserStats(this.stats);
-    }
-
- async initializeUserIfNeeded(username) {
+    async initializeUserIfNeeded(username) {
         if (!username) return;
 
         const cleanUsername = username.trim().toLowerCase();
@@ -68,9 +72,9 @@ async loadStats() {
             };
         }
 
-        // Initialize year-specific structures
         const userStats = this.stats.users[cleanUsername];
 
+        // Initialize year structures if they don't exist
         if (!userStats.yearlyPoints[year]) {
             userStats.yearlyPoints[year] = 0;
         }
