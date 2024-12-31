@@ -59,12 +59,36 @@ class Database {
     async getUserStats() {
         const collection = this.db.collection('userstats');
         const stats = await collection.findOne({ _id: 'stats' });
+        const year = new Date().getFullYear().toString();
+
         return stats || {
             users: {},
-            yearlyStats: {},
+            yearlyStats: {
+                [year]: {
+                    communityAchievements: 0,
+                    totalParticipants: 0,
+                    averageCompletion: 0,
+                    monthlyStats: {}
+                }
+            },
             monthlyStats: {},
             gameCompletions: {},
-            achievementStats: {}
+            achievementStats: {},
+            communityRecords: {
+                fastestCompletions: {},
+                highestScores: {},
+                monthlyRecords: {
+                    highestParticipation: 0,
+                    mostCompetitive: "",
+                    highestAverageCompletion: 0
+                },
+                milestones: [],
+                hallOfFame: {
+                    perfectMonths: [],
+                    speedrunners: [],
+                    completionists: []
+                }
+            }
         };
     }
 
@@ -73,6 +97,54 @@ class Database {
         await collection.updateOne(
             { _id: 'stats' },
             { $set: stats },
+            { upsert: true }
+        );
+    }
+
+    async getCommunityRecords() {
+        const collection = this.db.collection('records');
+        const records = await collection.findOne({ _id: 'records' });
+        const year = new Date().getFullYear().toString();
+
+        return records || {
+            fastestCompletions: {},
+            highestScores: {},
+            monthlyRecords: {
+                highestParticipation: 0,
+                mostCompetitive: "",
+                highestAverageCompletion: 0
+            },
+            yearlyRecords: {
+                [year]: {
+                    mostAchievements: {
+                        user: "",
+                        count: 0
+                    },
+                    fastestCompletion: {
+                        user: "",
+                        game: "",
+                        time: 0
+                    },
+                    highestPoints: {
+                        user: "",
+                        points: 0
+                    }
+                }
+            },
+            milestones: [],
+            hallOfFame: {
+                perfectMonths: [],
+                speedrunners: [],
+                completionists: []
+            }
+        };
+    }
+
+    async saveCommunityRecords(records) {
+        const collection = this.db.collection('records');
+        await collection.updateOne(
+            { _id: 'records' },
+            { $set: records },
             { upsert: true }
         );
     }
@@ -97,6 +169,15 @@ class Database {
                     first: 6,
                     second: 4,
                     third: 2
+                },
+                stats: {
+                    participants: 0,
+                    totalAchievements: 0,
+                    averageCompletion: 0,
+                    startDate: null,
+                    lastUpdate: null,
+                    dailyStats: {},
+                    leaderboardHistory: []
                 }
             };
         } catch (error) {
@@ -151,7 +232,18 @@ class Database {
             },
             betaTesters: [],
             admins: [],
-            nominatedGames: []
+            nominatedGames: [],
+            achievements: {
+                titles: {
+                    "Speedrunner": { requirement: "Complete 3 games in under 24 hours" },
+                    "Completionist": { requirement: "100% complete 5 games" },
+                    "Competitor": { requirement: "Place in top 3 for 3 months" }
+                },
+                badges: {
+                    "First Blood": { requirement: "First to complete an achievement" },
+                    "Perfect Month": { requirement: "100% completion in monthly challenge" }
+                }
+            }
         };
     }
 
