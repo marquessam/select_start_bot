@@ -60,25 +60,21 @@ module.exports = {
                 return user || { username: participant, points: 0, gamesCompleted: 0 };
             });
 
-            // Calculate yearly rank with ties
-            const yearlyRankData = adjustedYearlyLeaderboard
-                .sort((a, b) => b.points - a.points)
-                .reduce((acc, user, index, sorted) => {
-                    if (index === 0 || user.points !== sorted[index - 1].points) {
-                        acc.currentRank = index + 1;
-                    }
-                    acc.rankedUsers.push({
-                        ...user,
-                        rank: acc.currentRank,
-                        tie: index > 0 && user.points === sorted[index - 1].points
-                    });
-                    return acc;
-                }, { currentRank: 1, rankedUsers: [] });
+           // Calculate yearly rank with ties
+     const yearlyRankData = yearlyLeaderboard.reduce((acc, user, index, arr) => {
+    if (index === 0 || user.points !== arr[index - 1].points) {
+        acc.currentRank = index + 1; // Update rank only when points differ
+    }
+    if (user.username.toLowerCase() === username.toLowerCase()) {
+        acc.rank = acc.currentRank; // Assign the rank of the current user
+    }
+    return acc;
+}, { currentRank: 1, rank: null });
 
-            const yearlyRank = yearlyRankData.rankedUsers.find(user => user.username.toLowerCase() === username.toLowerCase());
-            const yearlyRankText = yearlyRank
-                ? `${yearlyRank.rank}/${adjustedYearlyLeaderboard.length}${yearlyRank.tie ? ' (tie)' : ''}`
-                : 'N/A';
+// Generate the rank text
+const yearlyRankText = yearlyRankData.rank
+    ? `${yearlyRankData.rank}/${yearlyLeaderboard.length} (tie)`
+    : 'N/A';
 
             // Find user's profile info in leaderboard data
             const userLeaderboardData = data.leaderboard.find(user => 
