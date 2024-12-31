@@ -15,6 +15,8 @@ module.exports = {
 
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
+            const currentYear = new Date().getFullYear().toString();
+
             // Get all necessary data
             const [data, yearlyLeaderboard, stats, currentChallenge] = await Promise.all([
                 fetchLeaderboardData(),
@@ -23,7 +25,6 @@ module.exports = {
                 database.getCurrentChallenge()
             ]);
 
-            const currentYear = new Date().getFullYear().toString();
             const yearlyPoints = stats.yearlyPoints[currentYear] || 0;
 
             // Calculate yearly rank with ties
@@ -57,7 +58,6 @@ module.exports = {
                 .setTerminalTitle(`USER PROFILE: ${username}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]');
 
-            // Only set thumbnail if we have a valid profile image
             if (userLeaderboardData?.profileImage) {
                 embed.setThumbnail(userLeaderboardData.profileImage);
             }
@@ -70,7 +70,7 @@ module.exports = {
                 );
             }
 
-            embed.addTerminalField('2024 STATISTICS',
+            embed.addTerminalField(`${currentYear} STATISTICS`,
                 `YEARLY POINTS: ${yearlyPoints}\n` +
                 `YEARLY RANK: ${yearlyRankData.rank || 'N/A'}/${yearlyLeaderboard.length}\n` +
                 `MONTHLY RANK: ${monthlyRankData.rank || 'N/A'}/${data.leaderboard.length}\n` +
@@ -86,7 +86,7 @@ module.exports = {
                 const completionList = completedGames
                     .map(game => `${game.gameName} (${new Date(game.completionDate).toLocaleDateString()})`)
                     .join('\n');
-                embed.addTerminalField('2024 COMPLETIONS', completionList);
+                embed.addTerminalField(`${currentYear} COMPLETIONS`, completionList);
             }
 
             // Add monthly achievements if any
