@@ -16,7 +16,6 @@ module.exports = {
                 '!nominations\nDisplay nominated games\n\n' +
                 '=== USER STATS ===\n' +
                 '!profile <user>\nAccess user achievement data\n\n' +
-                '!yearlyboard\nDisplay yearly rankings\n\n' +
                 '!viewarchive <month>\nView historical rankings\n\n' +
                 '=== HIGH SCORES ===\n' +
                 '!highscores\nView all game high scores\n\n' +
