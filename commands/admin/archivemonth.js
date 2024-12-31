@@ -1,5 +1,7 @@
+// archivemonth.js
 const TerminalEmbed = require('../../utils/embedBuilder');
 const { fetchLeaderboardData } = require('../../raAPI.js');
+const database = require('../../database');
 
 module.exports = {
     name: 'archivemonth',
