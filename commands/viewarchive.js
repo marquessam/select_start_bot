@@ -1,4 +1,6 @@
+// viewarchive.js
 const TerminalEmbed = require('../utils/embedBuilder');
+const database = require('../database');
 
 module.exports = {
     name: 'viewarchive',
@@ -13,12 +15,17 @@ module.exports = {
             const month = args[0];
             await message.channel.send('```ansi\n\x1b[32m> Accessing archived data...\x1b[0m\n```');
             
-            const archive = await userStats.getMonthlyArchive(month);
+            // Get stats from database
+            const stats = await database.getUserStats();
+            const year = new Date().getFullYear().toString();
             
-            if (!archive) {
+            // Check if archive exists for the month
+            if (!stats.monthlyStats?.[year]?.[month]) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] No archive found for ' + month + '\n[Ready for input]█\x1b[0m```');
                 return;
             }
+
+            const archive = stats.monthlyStats[year][month];
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`ARCHIVED RANKINGS: ${month.toUpperCase()}`)
@@ -26,7 +33,7 @@ module.exports = {
                 .setTerminalDescription('[ARCHIVE ACCESS GRANTED]\n[DISPLAYING HISTORICAL DATA]');
 
             // Display top 3 with medals
-            archive.rankings.slice(0, 3).forEach((user, index) => {
+            archive.leaderboard.slice(0, 3).forEach((user, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 embed.addTerminalField(
                     `${medals[index]} ${user.username}`,
@@ -35,7 +42,7 @@ module.exports = {
             });
 
             // Additional participants
-            const additionalUsers = archive.rankings.slice(3);
+            const additionalUsers = archive.leaderboard.slice(3);
             if (additionalUsers.length > 0) {
                 embed.addTerminalField(
                     'ADDITIONAL PARTICIPANTS',
