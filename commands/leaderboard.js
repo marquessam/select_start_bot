@@ -23,14 +23,38 @@ module.exports = {
                     .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
                     .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING MONTHLY RANKINGS]');
 
-                // Display top participants
-                data.leaderboard.slice(0, 10).forEach((user, index) => {
+                // Calculate ranks considering ties
+                const leaderboardWithTies = data.leaderboard
+                    .sort((a, b) => b.completionPercentage - a.completionPercentage)
+                    .map((user, index, sorted) => ({
+                        ...user,
+                        rank: index > 0 && sorted[index - 1].completionPercentage === user.completionPercentage
+                            ? sorted[index - 1].rank
+                            : index + 1
+                    }));
+
+                // Display top 3 with medals
+                leaderboardWithTies.slice(0, 3).forEach((user, index) => {
+                    const medals = ['🥇', '🥈', '🥉'];
                     embed.addTerminalField(
-                        `${index + 1}. ${user.username}`,
+                        `${medals[index]} ${user.username}`,
                         `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\nPROGRESS: ${user.completionPercentage}%`
                     );
                 });
 
+                // Additional participants
+                const additionalUsers = leaderboardWithTies.slice(3);
+                if (additionalUsers.length > 0) {
+                    const additionalRankings = additionalUsers
+                        .map(user =>
+                            `${user.rank}. ${user.username} (${user.completionPercentage}%)`
+                        )
+                        .join('\n');
+
+                    embed.addTerminalField('ADDITIONAL PARTICIPANTS', additionalRankings);
+                }
+
+                embed.setTerminalFooter();
                 await message.channel.send({ embeds: [embed] });
             } else if (option === 'year') {
                 // Fetch and display yearly leaderboard
@@ -49,6 +73,7 @@ module.exports = {
                     );
                 });
 
+                embed.setTerminalFooter();
                 await message.channel.send({ embeds: [embed] });
             }
         } catch (error) {
