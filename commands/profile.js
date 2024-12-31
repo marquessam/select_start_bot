@@ -17,16 +17,40 @@ module.exports = {
 
             const currentYear = new Date().getFullYear().toString();
 
-            // Fetch participants from Google Sheet
-            const allParticipants = await userStats.refreshUserList();
-
-            // Get all necessary data
+            // Fetch participants and all necessary data
+            const allParticipants = await userStats.getAllUsers();
             const [data, yearlyLeaderboard, stats, currentChallenge] = await Promise.all([
                 fetchLeaderboardData(),
                 userStats.getYearlyLeaderboard(currentYear, allParticipants),
                 userStats.getUserStats(username),
-                database.getCurrentChallenge()
+                database.getCurrentChallenge(),
             ]);
+
+            // Ensure the yearly leaderboard includes all participants
+            const adjustedYearlyLeaderboard = allParticipants.map(participant => {
+                const user = yearlyLeaderboard.find(u => u.username.toLowerCase() === participant.toLowerCase());
+                return user || { username: participant, points: 0 };
+            });
+
+            // Calculate yearly rank with ties
+            let currentRank = 1;
+            let sameRankCount = 0;
+            let lastPoints = -1;
+            const rankedYearlyLeaderboard = adjustedYearlyLeaderboard.map((user, index) => {
+                if (user.points !== lastPoints) {
+                    currentRank += sameRankCount;
+                    sameRankCount = 0;
+                    lastPoints = user.points;
+                } else {
+                    sameRankCount++;
+                }
+                return { ...user, rank: currentRank };
+            });
+
+            const userYearlyData = rankedYearlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase());
+            const yearlyRankText = userYearlyData
+                ? `${userYearlyData.rank}/${rankedYearlyLeaderboard.length} (tie)`
+                : 'N/A';
 
             // Ensure the monthly leaderboard includes all participants
             data.leaderboard = allParticipants.map(participant => {
@@ -44,7 +68,7 @@ module.exports = {
                     acc.rankedUsers.push({
                         ...user,
                         rank: acc.currentRank,
-                        tie: index > 0 && user.completionPercentage === sorted[index - 1].completionPercentage
+                        tie: index > 0 && user.completionPercentage === sorted[index - 1].completionPercentage,
                     });
                     return acc;
                 }, { currentRank: 1, rankedUsers: [] });
@@ -54,82 +78,39 @@ module.exports = {
                 ? `${monthlyRank.rank}/${data.leaderboard.length}${monthlyRank.tie ? ' (tie)' : ''}`
                 : 'N/A';
 
-            // Calculate yearly rank with ties using the same logic as !leaderboard year
-            let currentRank = 1;
-            let currentPoints = -1;
-            let sameRankCount = 0;
-
-            const adjustedYearlyLeaderboard = yearlyLeaderboard.map((user, index) => {
-                if (user.points !== currentPoints) {
-                    currentRank += sameRankCount;
-                    sameRankCount = 0;
-                    currentPoints = user.points;
-                } else {
-                    sameRankCount++;
-                }
-                return {
-                    ...user,
-                    rank: currentRank
-                };
-            });
-
-            const yearlyRankData = adjustedYearlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase());
-            const yearlyRankText = yearlyRankData
-                ? `${yearlyRankData.rank}/${adjustedYearlyLeaderboard.length} (tie)`
-                : 'N/A';
-
-            // Find user's profile info in leaderboard data
-            const userLeaderboardData = data.leaderboard.find(user => 
-                user.username.toLowerCase() === username.toLowerCase()
-            );
-
+            // Construct profile embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]');
-
-            if (userLeaderboardData?.profileImage) {
-                embed.setThumbnail(userLeaderboardData.profileImage);
-            }
-
-            if (userLeaderboardData) {
-                embed.addTerminalField('CURRENT CHALLENGE PROGRESS',
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
+                .addTerminalField('CURRENT CHALLENGE PROGRESS',
                     `GAME: ${currentChallenge.gameName}\n` +
-                    `PROGRESS: ${userLeaderboardData.completionPercentage}%\n` +
-                    `ACHIEVEMENTS: ${userLeaderboardData.completedAchievements}/${userLeaderboardData.totalAchievements}`
-                );
-            }
+                    `PROGRESS: ${data.leaderboard.find(user => user.username.toLowerCase() === username.toLowerCase())?.completionPercentage || 0}%\n` +
+                    `ACHIEVEMENTS: ${data.leaderboard.find(user => user.username.toLowerCase() === username.toLowerCase())?.completedAchievements || 0}/` +
+                    `${data.leaderboard.find(user => user.username.toLowerCase() === username.toLowerCase())?.totalAchievements || 0}`)
+                .addTerminalField('RANKINGS',
+                    `MONTHLY RANK: ${monthlyRankText}\n` +
+                    `YEARLY RANK: ${yearlyRankText}`)
+                .addTerminalField(`${currentYear} STATISTICS`,
+                    `YEARLY POINTS: ${stats.yearlyPoints[currentYear] || 0}\n` +
+                    `GAMES COMPLETED: ${stats.yearlyStats?.[currentYear]?.totalGamesCompleted || 0}\n` +
+                    `ACHIEVEMENTS UNLOCKED: ${stats.yearlyStats?.[currentYear]?.totalAchievementsUnlocked || 0}\n` +
+                    `HARDCORE COMPLETIONS: ${stats.yearlyStats?.[currentYear]?.hardcoreCompletions || 0}\n` +
+                    `MONTHLY PARTICIPATIONS: ${stats.yearlyStats?.[currentYear]?.monthlyParticipations || 0}`);
 
-            embed.addTerminalField('RANKINGS',
-                `MONTHLY RANK: ${monthlyRankText}\n` +
-                `YEARLY RANK: ${yearlyRankText}`
-            );
-
-            embed.addTerminalField(`${currentYear} STATISTICS`,
-                `YEARLY POINTS: ${stats.yearlyPoints[currentYear] || 0}\n` +
-                `GAMES COMPLETED: ${stats.yearlyStats?.[currentYear]?.totalGamesCompleted || 0}\n` +
-                `ACHIEVEMENTS UNLOCKED: ${stats.yearlyStats?.[currentYear]?.totalAchievementsUnlocked || 0}\n` +
-                `HARDCORE COMPLETIONS: ${stats.yearlyStats?.[currentYear]?.hardcoreCompletions || 0}\n` +
-                `MONTHLY PARTICIPATIONS: ${stats.yearlyStats?.[currentYear]?.monthlyParticipations || 0}`
-            );
-
-            // Add bonus points if any
             const recentBonusPoints = (stats.bonusPoints || [])
                 .filter(bonus => bonus.year === currentYear)
                 .map(bonus => `${bonus.reason}: ${bonus.points} pts`)
                 .join('\n');
 
             const totalBonusPoints = stats.bonusPoints.reduce((acc, bonus) => acc + bonus.points, 0);
-
             embed.addTerminalField('POINTS', `${recentBonusPoints}\nTotal: ${totalBonusPoints} pts`);
-
             embed.setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
-
         } catch (error) {
             console.error('Profile Command Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
         }
-    }
+    },
 };
