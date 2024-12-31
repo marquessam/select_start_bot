@@ -8,15 +8,17 @@ class UserStats {
         this.SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
     }
 
-    async loadStats() {
+async loadStats() {
         try {
-            // Load stats from MongoDB
-            this.stats = await database.getUserStats();
-            
-            // Initialize the base structure if it doesn't exist
-            if (!this.stats.users) {
-                this.stats.users = {};
-            }
+            // Load stats from MongoDB with default structure
+            const dbStats = await database.getUserStats();
+            this.stats = {
+                users: {},
+                yearlyStats: {},
+                monthlyStats: {},
+                gameCompletions: {},
+                ...dbStats  // This will overlay any existing data from DB
+            };
             
             // Fetch and sync users from spreadsheet
             const response = await fetch(this.SPREADSHEET_URL);
@@ -40,25 +42,22 @@ class UserStats {
             throw error;
         }
     }
+
     async saveStats() {
         await database.saveUserStats(this.stats);
     }
 
-  async initializeUserIfNeeded(username) {
+ async initializeUserIfNeeded(username) {
         if (!username) return;
 
         const cleanUsername = username.trim().toLowerCase();
         if (!cleanUsername) return;
 
-        const existingUser = Object.keys(this.stats.users)
-            .find(user => user.toLowerCase() === cleanUsername);
-
         const year = this.currentYear.toString();
-        const actualUsername = existingUser || cleanUsername;
-
-        // If user doesn't exist, create full structure
-        if (!this.stats.users[actualUsername]) {
-            this.stats.users[actualUsername] = {
+        
+        // Initialize user if they don't exist
+        if (!this.stats.users[cleanUsername]) {
+            this.stats.users[cleanUsername] = {
                 totalPoints: 0,
                 yearlyPoints: {},
                 monthlyAchievements: {},
@@ -69,21 +68,23 @@ class UserStats {
             };
         }
 
-        // Initialize all year-specific structures
-        if (!this.stats.users[actualUsername].yearlyPoints[year]) {
-            this.stats.users[actualUsername].yearlyPoints[year] = 0;
+        // Initialize year-specific structures
+        const userStats = this.stats.users[cleanUsername];
+
+        if (!userStats.yearlyPoints[year]) {
+            userStats.yearlyPoints[year] = 0;
         }
 
-        if (!this.stats.users[actualUsername].completedGames[year]) {
-            this.stats.users[actualUsername].completedGames[year] = [];
+        if (!userStats.completedGames[year]) {
+            userStats.completedGames[year] = [];
         }
 
-        if (!this.stats.users[actualUsername].monthlyStats[year]) {
-            this.stats.users[actualUsername].monthlyStats[year] = {};
+        if (!userStats.monthlyStats[year]) {
+            userStats.monthlyStats[year] = {};
         }
 
-        if (!this.stats.users[actualUsername].yearlyStats[year]) {
-            this.stats.users[actualUsername].yearlyStats[year] = {
+        if (!userStats.yearlyStats[year]) {
+            userStats.yearlyStats[year] = {
                 totalGamesCompleted: 0,
                 totalAchievementsUnlocked: 0,
                 hardcoreCompletions: 0,
@@ -93,9 +94,12 @@ class UserStats {
             };
         }
 
+        if (!userStats.monthlyAchievements[year]) {
+            userStats.monthlyAchievements[year] = {};
+        }
+
         await this.saveStats();
     }
-
     async refreshUserList() {
         try {
             const response = await fetch(this.SPREADSHEET_URL);
