@@ -1,8 +1,7 @@
 const TerminalEmbed = require('./embedBuilder');
 const { fetchLeaderboardData } = require('../raAPI.js');
-const fs = require('fs').promises;
-const path = require('path');
 const cron = require('node-cron');
+const database = require('./database');
 
 class Announcer {
     constructor(client, userStats, channelId) {
@@ -54,66 +53,40 @@ class Announcer {
     async switchToNextChallenge() {
         try {
             console.log('Starting challenge switch');
-            const nextChallengePath = path.join(process.cwd(), 'nextChallenge.json');
-            const challengePath = path.join(process.cwd(), 'challenge.json');
 
-            // Log the actual file paths
-            console.log('nextChallengePath:', nextChallengePath);
-            console.log('challengePath:', challengePath);
-
-            // Check if files exist
-            try {
-                await fs.access(nextChallengePath);
-                await fs.access(challengePath);
-                console.log('Both files exist and are accessible');
-            } catch (error) {
-                console.error('File access error:', error);
-                throw error;
+            // Get next challenge from database
+            const nextChallenge = await database.getNextChallenge();
+            if (!nextChallenge) {
+                throw new Error('No next challenge found in database');
             }
 
-            // Read and log current challenge
-            const currentChallengeData = await fs.readFile(challengePath, 'utf8');
-            console.log('Current challenge before switch:', currentChallengeData);
+            // Save next challenge as current
+            await database.saveCurrentChallenge(nextChallenge);
+            console.log('Saved next challenge as current');
 
-            // Read and log next challenge
-            console.log('Reading next challenge from:', nextChallengePath);
-            const nextChallengeData = await fs.readFile(nextChallengePath, 'utf8');
-            console.log('Next challenge data:', nextChallengeData);
-            
-            const nextChallenge = JSON.parse(nextChallengeData);
-            console.log('Parsed next challenge:', nextChallenge);
-
-            // Write and verify
-            console.log('Writing to challenge file:', challengePath);
-            await fs.writeFile(challengePath, JSON.stringify(nextChallenge, null, 2));
-            
-            // Verify the write
-            const verifyData = await fs.readFile(challengePath, 'utf8');
-            console.log('Verification - new challenge data:', verifyData);
-
-            // Create new empty next challenge template
+            // Create empty template for next challenge
             const emptyTemplate = {
-                currentChallenge: {
-                    gameId: "",
-                    gameName: "",
-                    gameIcon: "",
-                    startDate: "",
-                    endDate: "",
-                    rules: [
-                        "Hardcore mode must be enabled",
-                        "All achievements are eligible",
-                        "Progress tracked via retroachievements",
-                        "No hacks/save states/cheats allowed"
-                    ],
-                    points: {
-                        first: 6,
-                        second: 4,
-                        third: 2
-                    }
+                gameId: "",
+                gameName: "",
+                gameIcon: "",
+                startDate: "",
+                endDate: "",
+                rules: [
+                    "Hardcore mode must be enabled",
+                    "All achievements are eligible",
+                    "Progress tracked via retroachievements",
+                    "No hacks/save states/cheats allowed"
+                ],
+                points: {
+                    first: 6,
+                    second: 4,
+                    third: 2
                 }
             };
 
-            await fs.writeFile(nextChallengePath, JSON.stringify(emptyTemplate, null, 2));
+            // Save empty template as next challenge
+            await database.saveNextChallenge(emptyTemplate);
+            console.log('Saved empty template as next challenge');
 
             // Create announcement about transition
             const embed = new TerminalEmbed()
