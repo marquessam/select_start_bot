@@ -17,50 +17,36 @@ module.exports = {
 
             const currentYear = new Date().getFullYear().toString();
 
-            // Get all necessary data
+            // Fetch all required data
             const [data, yearlyLeaderboard, stats, currentChallenge] = await Promise.all([
-                fetchLeaderboardData(),
-                userStats.getYearlyLeaderboard(),
-                userStats.getUserStats(username),
-                database.getCurrentChallenge()
+                fetchLeaderboardData(), // Monthly leaderboard data
+                userStats.getYearlyLeaderboard(), // Yearly leaderboard
+                userStats.getUserStats(username), // User-specific stats
+                database.getCurrentChallenge() // Current challenge details
             ]);
 
-            const yearlyPoints = stats.yearlyPoints[currentYear] || 0;
+            const yearlyPoints = stats.yearlyPoints?.[currentYear] || 0;
 
-            // Calculate yearly rank with ties
-            const yearlyRankData = yearlyLeaderboard.reduce((acc, user, index) => {
-                if (index === 0 || user.points !== yearlyLeaderboard[index - 1].points) {
-                    acc.currentRank = index + 1;
-                }
-                if (user.username.toLowerCase() === username.toLowerCase()) {
-                    acc.rank = acc.currentRank;
-                }
-                return acc;
-            }, { currentRank: 1, rank: null });
+            // Determine yearly and monthly ranks
+            const yearlyRank = yearlyLeaderboard.findIndex(user =>
+                user.username.toLowerCase() === username.toLowerCase()
+            ) + 1;
 
-            // Calculate monthly rank with ties
-            const monthlyRankData = data.leaderboard.reduce((acc, user, index) => {
-                if (index === 0 || user.completionPercentage !== data.leaderboard[index - 1].completionPercentage) {
-                    acc.currentRank = index + 1;
-                }
-                if (user.username.toLowerCase() === username.toLowerCase()) {
-                    acc.rank = acc.currentRank;
-                }
-                return acc;
-            }, { currentRank: 1, rank: null });
+            const monthlyRank = data.leaderboard.findIndex(user =>
+                user.username.toLowerCase() === username.toLowerCase()
+            ) + 1;
 
-            // Find user's profile info in leaderboard data
-            const userLeaderboardData = data.leaderboard.find(user => 
+            // Extract user leaderboard details
+            const userLeaderboardData = data.leaderboard.find(user =>
                 user.username.toLowerCase() === username.toLowerCase()
             );
 
+            const profileIcon = userLeaderboardData?.profileImage || `https://retroachievements.org/Images/UserPic/${username}.png`;
+
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]');
-
-            if (userLeaderboardData?.profileImage) {
-                embed.setThumbnail(userLeaderboardData.profileImage);
-            }
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
+                .setThumbnail(profileIcon);
 
             if (userLeaderboardData) {
                 embed.addTerminalField('CURRENT CHALLENGE PROGRESS',
@@ -72,41 +58,38 @@ module.exports = {
 
             embed.addTerminalField(`${currentYear} STATISTICS`,
                 `YEARLY POINTS: ${yearlyPoints}\n` +
-                `YEARLY RANK: ${yearlyRankData.rank || 'N/A'}/${yearlyLeaderboard.length}\n` +
-                `MONTHLY RANK: ${monthlyRankData.rank || 'N/A'}/${data.leaderboard.length}\n` +
+                `YEARLY RANK: ${yearlyRank || 'N/A'}/${yearlyLeaderboard.length}\n` +
+                `MONTHLY RANK: ${monthlyRank || 'N/A'}/${data.leaderboard.length}\n` +
                 `GAMES COMPLETED: ${stats.yearlyStats?.[currentYear]?.totalGamesCompleted || 0}\n` +
                 `ACHIEVEMENTS UNLOCKED: ${stats.yearlyStats?.[currentYear]?.totalAchievementsUnlocked || 0}\n` +
                 `HARDCORE COMPLETIONS: ${stats.yearlyStats?.[currentYear]?.hardcoreCompletions || 0}\n` +
                 `MONTHLY PARTICIPATIONS: ${stats.yearlyStats?.[currentYear]?.monthlyParticipations || 0}`
             );
 
-            // Display completed games if any
             const completedGames = stats.completedGames?.[currentYear] || [];
             if (completedGames.length > 0) {
-                const completionList = completedGames
-                    .map(game => `${game.gameName} (${new Date(game.completionDate).toLocaleDateString()})`)
-                    .join('\n');
-                embed.addTerminalField(`${currentYear} COMPLETIONS`, completionList);
+                embed.addTerminalField(`${currentYear} COMPLETIONS`,
+                    completedGames.map(game =>
+                        `${game.gameName} (${new Date(game.completionDate).toLocaleDateString()})`
+                    ).join('\n')
+                );
             }
 
-            // Add monthly achievements if any
-            const recentAchievements = stats.monthlyAchievements[currentYear] || {};
-            if (Object.keys(recentAchievements).length > 0) {
-                const achievementText = Object.entries(recentAchievements)
-                    .map(([month, achievement]) =>
-                        `${month}: ${achievement.place} place (${achievement.points} pts)`)
-                    .join('\n');
-                embed.addTerminalField('MONTHLY ACHIEVEMENTS', achievementText);
+            const monthlyAchievements = stats.monthlyAchievements?.[currentYear] || {};
+            if (Object.keys(monthlyAchievements).length > 0) {
+                embed.addTerminalField('MONTHLY ACHIEVEMENTS',
+                    Object.entries(monthlyAchievements).map(([month, achievement]) =>
+                        `${month}: ${achievement.place} place (${achievement.points} pts)`
+                    ).join('\n')
+                );
             }
 
-            // Add bonus points if any
-            const recentBonusPoints = (stats.bonusPoints || [])
+            const bonusPoints = (stats.bonusPoints || [])
                 .filter(bonus => bonus.year === currentYear)
                 .map(bonus => `${bonus.points} pts - ${bonus.reason}`)
                 .join('\n');
-
-            if (recentBonusPoints) {
-                embed.addTerminalField('BONUS POINTS', recentBonusPoints);
+            if (bonusPoints) {
+                embed.addTerminalField('BONUS POINTS', bonusPoints);
             }
 
             embed.setTerminalFooter();
