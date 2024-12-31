@@ -144,6 +144,32 @@ class UserStats {
         }
     }
 
+    async getYearlyLeaderboard(year = null) {
+    try {
+        const targetYear = year || this.currentYear.toString();
+
+        // Ensure users data is refreshed and up-to-date
+        await this.refreshUserList();
+
+        // Map users to leaderboard entries
+        const leaderboard = Object.entries(this.stats.users).map(([username, stats]) => ({
+            username,
+            points: stats.yearlyPoints[targetYear] || 0,
+            gamesCompleted: stats.yearlyStats?.[targetYear]?.totalGamesCompleted || 0,
+            achievementsUnlocked: stats.yearlyStats?.[targetYear]?.totalAchievementsUnlocked || 0,
+            monthlyParticipations: stats.yearlyStats?.[targetYear]?.monthlyParticipations || 0,
+        }));
+
+        // Sort by points, then by games completed as a tiebreaker
+        return leaderboard.sort((a, b) => 
+            b.points - a.points || b.gamesCompleted - a.gamesCompleted
+        );
+    } catch (error) {
+        console.error('Error in getYearlyLeaderboard:', error);
+        throw error;
+    }
+}
+
     async getUserStats(username) {
         try {
             console.log('Fetching stats for user:', username);
