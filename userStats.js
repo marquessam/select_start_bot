@@ -40,7 +40,7 @@ class UserStats {
         await database.saveUserStats(this.stats);
     }
 
-    async initializeUserIfNeeded(username) {
+  async initializeUserIfNeeded(username) {
         if (!username) return;
 
         const cleanUsername = username.trim().toLowerCase();
@@ -49,41 +49,35 @@ class UserStats {
         const existingUser = Object.keys(this.stats.users)
             .find(user => user.toLowerCase() === cleanUsername);
 
-        if (!existingUser) {
-            this.stats.users[cleanUsername] = {
+        const year = this.currentYear.toString();
+        const actualUsername = existingUser || cleanUsername;
+
+        // If user doesn't exist, create full structure
+        if (!this.stats.users[actualUsername]) {
+            this.stats.users[actualUsername] = {
                 totalPoints: 0,
                 yearlyPoints: {},
                 monthlyAchievements: {},
                 bonusPoints: [],
                 completedGames: {},
                 monthlyStats: {},
-                yearlyStats: {},
-                currentChallenges: {
-                    monthly: null,
-                    special: []
-                }
+                yearlyStats: {}
             };
         }
 
-        const year = this.currentYear.toString();
-        const actualUsername = existingUser || cleanUsername;
-
-        // Initialize yearly points if needed
+        // Initialize all year-specific structures
         if (!this.stats.users[actualUsername].yearlyPoints[year]) {
             this.stats.users[actualUsername].yearlyPoints[year] = 0;
         }
 
-        // Initialize completed games tracking if needed
         if (!this.stats.users[actualUsername].completedGames[year]) {
             this.stats.users[actualUsername].completedGames[year] = [];
         }
 
-        // Initialize monthly stats if needed
         if (!this.stats.users[actualUsername].monthlyStats[year]) {
             this.stats.users[actualUsername].monthlyStats[year] = {};
         }
 
-        // Initialize yearly stats if needed
         if (!this.stats.users[actualUsername].yearlyStats[year]) {
             this.stats.users[actualUsername].yearlyStats[year] = {
                 totalGamesCompleted: 0,
