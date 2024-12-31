@@ -62,7 +62,9 @@ class Database {
         return stats || {
             users: {},
             yearlyStats: {},
-            monthlyStats: {}
+            monthlyStats: {},
+            gameCompletions: {},
+            achievementStats: {}
         };
     }
 
