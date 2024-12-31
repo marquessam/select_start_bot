@@ -15,8 +15,8 @@ class CommandHandler {
             console.log('Loading commands from:', commandsPath);
             
             if (!fs.existsSync(commandsPath)) {
-                console.error('Commands directory not found at:', commandsPath);
-                return;
+                fs.mkdirSync(commandsPath, { recursive: true });
+                console.log('Created commands directory');
             }
 
             const commandFiles = fs.readdirSync(commandsPath)
@@ -42,34 +42,36 @@ class CommandHandler {
 
             // Load admin commands from root/commands/admin
             const adminPath = path.join(commandsPath, 'admin');
-            if (fs.existsSync(adminPath)) {
-                console.log('Loading admin commands from:', adminPath);
-                
-                const adminFiles = fs.readdirSync(adminPath)
-                    .filter(file => file.endsWith('.js'));
-                console.log('Found admin files:', adminFiles);
+            if (!fs.existsSync(adminPath)) {
+                fs.mkdirSync(adminPath, { recursive: true });
+                console.log('Created admin commands directory');
+            }
 
-                for (const file of adminFiles) {
-                    try {
-                        const filePath = path.join(adminPath, file);
-                        console.log('Loading admin file:', filePath);
-                        
-                        delete require.cache[require.resolve(filePath)];
-                        const command = require(filePath);
-                        
-                        if (command.name) {
-                            console.log('Loaded admin command:', command.name);
-                            this.commands.set(command.name, command);
-                        }
-                    } catch (error) {
-                        console.error(`Error loading admin command ${file}:`, error);
+            const adminFiles = fs.readdirSync(adminPath)
+                .filter(file => file.endsWith('.js'));
+            console.log('Found admin files:', adminFiles);
+
+            for (const file of adminFiles) {
+                try {
+                    const filePath = path.join(adminPath, file);
+                    console.log('Loading admin file:', filePath);
+                    
+                    delete require.cache[require.resolve(filePath)];
+                    const command = require(filePath);
+                    
+                    if (command.name) {
+                        console.log('Loaded admin command:', command.name);
+                        this.commands.set(command.name, command);
                     }
+                } catch (error) {
+                    console.error(`Error loading admin command ${file}:`, error);
                 }
             }
 
             console.log('All loaded commands:', Array.from(this.commands.keys()));
         } catch (error) {
             console.error('Error in loadCommands:', error);
+            throw error;
         }
     }
 
