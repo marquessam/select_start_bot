@@ -1,5 +1,6 @@
-// commands/admin/switchchallenge.js
+// switchchallenge.js
 const TerminalEmbed = require('../../utils/embedBuilder');
+const database = require('../../database');
 
 module.exports = {
     name: 'switchchallenge',
@@ -9,6 +10,8 @@ module.exports = {
             await message.channel.send('```ansi\n\x1b[32m> Initiating challenge transition...\x1b[0m\n```');
             await announcer.handleNewMonth();
 
+            const currentChallenge = await database.getCurrentChallenge();
+
             const embed = new TerminalEmbed()
                 .setTerminalTitle('MANUAL CHALLENGE TRANSITION')
                 .setTerminalDescription('[TRANSITION COMPLETE]\n[VERIFY NEW CHALLENGE]')
@@ -16,6 +19,10 @@ module.exports = {
                     '1. Archived previous challenge\n' +
                     '2. Switched to new challenge\n' +
                     '3. Created new template')
+                .addTerminalField('CURRENT CHALLENGE',
+                    `GAME: ${currentChallenge.gameName}\n` +
+                    `START: ${currentChallenge.startDate}\n` +
+                    `END: ${currentChallenge.endDate}`)
                 .setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
