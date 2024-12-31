@@ -1,5 +1,6 @@
-// commands/admin/addpointsmulti.js
+// addpointsmulti.js
 const TerminalEmbed = require('../../utils/embedBuilder');
+const database = require('../../database');
 
 module.exports = {
     name: 'addpointsmulti',
@@ -22,7 +23,7 @@ module.exports = {
 
             // Validate users
             const validUsers = await userStats.getAllUsers();
-            const invalidUsers = userList.filter(user => !validUsers.includes(user));
+            const invalidUsers = userList.filter(user => !validUsers.includes(user.toLowerCase()));
             
             if (invalidUsers.length > 0) {
                 await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] Invalid users: ${invalidUsers.join(', ')}\n[Ready for input]█\x1b[0m\`\`\``);
@@ -31,20 +32,52 @@ module.exports = {
 
             await message.channel.send('```ansi\n\x1b[32m> Processing points allocation for selected users...\x1b[0m\n```');
 
+            // Get initial stats
+            const initialStats = await database.getUserStats();
+            const currentYear = new Date().getFullYear().toString();
+            
+            // Track successful and failed additions
+            let successfulAdditions = [];
+            let failedUsers = [];
+
             // Add points to each specified user
             for (const username of userList) {
-                await userStats.addBonusPoints(username, points, reason, message.client);
+                try {
+                    await userStats.addBonusPoints(username, points, reason);
+                    successfulAdditions.push(username);
+                } catch (error) {
+                    console.error(`Error adding points to ${username}:`, error);
+                    failedUsers.push(username);
+                }
+            }
+
+            // Get final stats for verification
+            const finalStats = await database.getUserStats();
+
+            // Create verification summary
+            let verificationText = '';
+            for (const username of userList) {
+                const beforePoints = initialStats.users[username]?.yearlyPoints[currentYear] || 0;
+                const afterPoints = finalStats.users[username]?.yearlyPoints[currentYear] || 0;
+                verificationText += `${username}: ${beforePoints} → ${afterPoints}\n`;
             }
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('MULTI-USER POINTS ALLOCATION')
                 .setTerminalDescription('[TRANSACTION COMPLETE]\n[POINTS ADDED SUCCESSFULLY]')
                 .addTerminalField('OPERATION DETAILS', 
-                    `USERS AFFECTED: ${userList.length}\n` +
+                    `USERS AFFECTED: ${successfulAdditions.length}/${userList.length}\n` +
                     `POINTS PER USER: ${points}\n` +
-                    `REASON: ${reason}\n` +
-                    `USERS: ${userList.join(', ')}`)
-                .setTerminalFooter();
+                    `REASON: ${reason}`)
+                .addTerminalField('POINTS VERIFICATION',
+                    verificationText);
+
+            if (failedUsers.length > 0) {
+                embed.addTerminalField('FAILED ALLOCATIONS',
+                    failedUsers.join(', '));
+            }
+
+            embed.setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Type !yearlyboard to verify points\n[Ready for input]█\x1b[0m```');
