@@ -60,8 +60,8 @@ module.exports = {
                 return user || { username: participant, points: 0, gamesCompleted: 0 };
             });
 
-           // Calculate yearly rank with ties
-     const yearlyRankData = yearlyLeaderboard.reduce((acc, user, index, arr) => {
+         // Calculate yearly rank with ties
+const yearlyRankData = yearlyLeaderboard.reduce((acc, user, index, arr) => {
     if (index === 0 || user.points !== arr[index - 1].points) {
         acc.currentRank = index + 1; // Update rank only when points differ
     }
@@ -71,11 +71,19 @@ module.exports = {
     return acc;
 }, { currentRank: 1, rank: null });
 
+// Debugging output
+console.log('Yearly leaderboard:', yearlyLeaderboard);
+console.log('User stats:', yearlyRankData);
+
 // Generate the rank text
 const yearlyRankText = yearlyRankData.rank
     ? `${yearlyRankData.rank}/${yearlyLeaderboard.length} (tie)`
     : 'N/A';
 
+// Ensure leaderboard includes the username
+if (!yearlyRankData.rank) {
+    console.error(`User "${username}" not found in yearly leaderboard.`);
+}
             // Find user's profile info in leaderboard data
             const userLeaderboardData = data.leaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
