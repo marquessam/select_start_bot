@@ -31,6 +31,10 @@ module.exports = {
                '> Applies to any monthly challenge game\n' +
                '> Can be earned at any time during 2025')
            .addTerminalField('BONUS OBJECTIVES',
+               '> Earn 1 point for completing any officially listed challenge game by reaching the end credits on RetroAchievements.' +
+               '> Participate in highscores by submitting a screenshot of the 5 listed games in !highscores.' +
+               '> Submit new highscore challenges to fill 3 remaining slots.' +
+               '> Highscores run until December 1st, with top 3 placements earning 3/2/1 points.')' +
                '> Earn bonus points through community participation\n' +
                '> Special events and activities offer point opportunities\n' +
                '> Extra points awarded for community achievements')
