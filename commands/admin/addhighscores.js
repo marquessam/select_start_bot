@@ -1,3 +1,4 @@
+// addhighscores.js
 const TerminalEmbed = require('../../utils/embedBuilder');
 const database = require('../../database');
 
@@ -28,7 +29,7 @@ module.exports = {
                 return;
             }
 
-            // Get current high scores
+            // Get current high scores from database
             const highscores = await database.getHighScores();
 
             // Validate game exists
@@ -38,6 +39,9 @@ module.exports = {
                     '\n[Ready for input]█\x1b[0m```');
                 return;
             }
+
+            // Store previous scores for verification
+            const previousScores = [...highscores.games[gameName].scores];
 
             // Update scores array
             let scores = highscores.games[gameName].scores;
@@ -51,6 +55,16 @@ module.exports = {
             highscores.games[gameName].scores = scores;
             await database.saveHighScores(highscores);
 
+            // Create score comparison text
+            let comparisonText = 'Previous Scores:\n';
+            previousScores.forEach(s => {
+                comparisonText += `${s.rank}. ${s.username}: ${s.score}\n`;
+            });
+            comparisonText += '\nNew Scores:\n';
+            scores.forEach(s => {
+                comparisonText += `${s.rank}. ${s.username}: ${s.score}\n`;
+            });
+
             // Create confirmation embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle('HIGH SCORE UPDATED')
@@ -60,6 +74,7 @@ module.exports = {
                     `USER: ${username}\n` +
                     `SCORE: ${score}\n` +
                     `RANK: ${rank}`)
+                .addTerminalField('VERIFICATION', comparisonText)
                 .setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
