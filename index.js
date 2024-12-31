@@ -1,3 +1,18 @@
+const fs = require('fs');
+const path = require('path');
+
+// Debug logs at startup
+console.log('=== DEBUG START ===');
+console.log('Current directory:', __dirname);
+console.log('Directory contents:', fs.readdirSync(__dirname));
+
+if (fs.existsSync(path.join(__dirname, 'commands'))) {
+    console.log('Commands directory contents:', fs.readdirSync(path.join(__dirname, 'commands')));
+} else {
+    console.log('Commands directory not found!');
+}
+
+// Rest of your imports
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const ShadowGame = require('./shadowGame.js');
@@ -5,15 +20,6 @@ const UserStats = require('./userStats.js');
 const CommandHandler = require('./handlers/commandHandler.js');
 const Announcer = require('./utils/announcer');
 const database = require('./database');
-
-const client = new Client({
-   intents: [
-       GatewayIntentBits.Guilds,
-       GatewayIntentBits.GuildMessages,
-       GatewayIntentBits.MessageContent,
-       GatewayIntentBits.GuildMembers
-   ]
-});
 
 let shadowGame;
 const userStats = new UserStats();
