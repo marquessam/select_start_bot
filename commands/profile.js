@@ -51,17 +51,19 @@ module.exports = {
                 : 'N/A';
 
             // Calculate yearly rank with ties
-           const yearlyRankData = yearlyLeaderboard.reduce((acc, user, index) => {
-    // Adjust rank only when points differ from the previous user
-    if (index === 0 || user.points !== yearlyLeaderboard[index - 1].points) {
-        acc.currentRank = index + 1;
-    }
-    if (user.username.toLowerCase() === username.toLowerCase()) {
-        acc.rank = acc.currentRank;
-    }
-    return acc;
-}, { currentRank: 1, rank: null });
+            const yearlyRankData = yearlyLeaderboard.reduce((acc, user, index) => {
+                if (index === 0 || user.points !== yearlyLeaderboard[index - 1].points) {
+                    acc.currentRank = index + 1;
+                }
+                if (user.username.toLowerCase() === username.toLowerCase()) {
+                    acc.rank = acc.currentRank;
+                }
+                return acc;
+            }, { currentRank: 1, rank: null });
 
+            const yearlyRankText = yearlyRankData.rank
+                ? `${yearlyRankData.rank}/${yearlyLeaderboard.length}`
+                : 'N/A';
 
             // Find user's profile info in leaderboard data
             const userLeaderboardData = data.leaderboard.find(user => 
