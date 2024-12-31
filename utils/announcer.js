@@ -1,7 +1,7 @@
 const TerminalEmbed = require('./embedBuilder');
 const { fetchLeaderboardData } = require('../raAPI.js');
 const cron = require('node-cron');
-const database = require('./database');
+const database = require('../database');
 
 class Announcer {
     constructor(client, userStats, channelId) {
