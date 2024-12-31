@@ -15,21 +15,46 @@ module.exports = {
                 .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]');
 
+            const leaderboard = data.leaderboard;
+
+            // Calculate ranks considering ties
+            let currentRank = 1;
+            let tieCount = 0;
+            let previousPercentage = null;
+
+            const rankedLeaderboard = leaderboard.map((user, index) => {
+                if (user.completionPercentage !== previousPercentage) {
+                    currentRank += tieCount;
+                    tieCount = 0;
+                } else {
+                    tieCount++;
+                }
+                previousPercentage = user.completionPercentage;
+
+                return {
+                    rank: currentRank,
+                    username: user.username,
+                    completedAchievements: user.completedAchievements,
+                    totalAchievements: user.totalAchievements,
+                    completionPercentage: user.completionPercentage
+                };
+            });
+
             // Display top 3 with medals
-            data.leaderboard.slice(0, 3).forEach((user, index) => {
+            rankedLeaderboard.slice(0, 3).forEach((user, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 embed.addTerminalField(
-                    `${medals[index]} ${user.username}`,
+                    `${medals[index]} ${user.username} (Rank: ${user.rank}${tieCount > 0 ? ' (tie)' : ''})`,
                     `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\nPROGRESS: ${user.completionPercentage}%`
                 );
             });
 
             // Additional participants with rank numbers
-            const additionalUsers = data.leaderboard.slice(3);
+            const additionalUsers = rankedLeaderboard.slice(3);
             if (additionalUsers.length > 0) {
                 const additionalRankings = additionalUsers
-                    .map((user, index) => 
-                        `${index + 4}. ${user.username} (${user.completionPercentage}%)`
+                    .map(user => 
+                        `${user.rank}. ${user.username} (${user.completionPercentage}%)`
                     )
                     .join('\n');
                     
