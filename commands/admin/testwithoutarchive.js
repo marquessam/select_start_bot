@@ -1,4 +1,5 @@
 const TerminalEmbed = require('../../utils/embedBuilder');
+const database = require('../../database');
 
 module.exports = {
     name: 'testwithoutarchive',
@@ -6,6 +7,10 @@ module.exports = {
     async execute(message, args, { announcer }) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Initiating announcement test...\x1b[0m\n```');
+
+            // Get current and next challenge data
+            const currentChallenge = await database.getCurrentChallenge();
+            const nextChallenge = await database.getNextChallenge();
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('TEST ANNOUNCEMENTS')
@@ -17,8 +22,8 @@ module.exports = {
                     '3. Switch to next challenge\n' +
                     '4. Make announcements')
                 .addTerminalField('CURRENT SETUP',
-                    'Current Challenge: <check challenge.json>\n' +
-                    'Next Challenge: <check nextChallenge.json>')
+                    `Current Challenge: ${currentChallenge.gameName || '<Not Set>'}\n` +
+                    `Next Challenge: ${nextChallenge?.gameName || '<Not Set>'}`)
                 .setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
