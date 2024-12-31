@@ -8,10 +8,17 @@ class CommandHandler {
 
     async loadCommands(dependencies) {
         try {
-            const commandsPath = path.join(__dirname, '..', 'commands');
-            console.log('Loading commands from:', commandsPath);
+            console.log('Starting command loading process...');
             
             // Load regular commands
+            const commandsPath = path.join(__dirname, 'commands');
+            console.log('Loading commands from:', commandsPath);
+            
+            if (!fs.existsSync(commandsPath)) {
+                console.error('Commands directory not found at:', commandsPath);
+                return;
+            }
+
             const commandFiles = fs.readdirSync(commandsPath)
                 .filter(file => file.endsWith('.js'));
             console.log('Found command files:', commandFiles);
@@ -19,10 +26,17 @@ class CommandHandler {
             for (const file of commandFiles) {
                 try {
                     const filePath = path.join(commandsPath, file);
-                    console.log('Loading file:', filePath);
+                    console.log('Loading command file:', filePath);
+                    
+                    delete require.cache[require.resolve(filePath)];
                     const command = require(filePath);
-                    console.log('Loaded command:', command.name);
-                    this.commands.set(command.name, command);
+                    
+                    if (command.name) {
+                        console.log('Loaded command:', command.name);
+                        this.commands.set(command.name, command);
+                    } else {
+                        console.warn('Command file missing name property:', file);
+                    }
                 } catch (error) {
                     console.error(`Error loading command ${file}:`, error);
                 }
@@ -32,6 +46,7 @@ class CommandHandler {
             const adminPath = path.join(commandsPath, 'admin');
             if (fs.existsSync(adminPath)) {
                 console.log('Loading admin commands from:', adminPath);
+                
                 const adminFiles = fs.readdirSync(adminPath)
                     .filter(file => file.endsWith('.js'));
                 console.log('Found admin files:', adminFiles);
@@ -40,16 +55,26 @@ class CommandHandler {
                     try {
                         const filePath = path.join(adminPath, file);
                         console.log('Loading admin file:', filePath);
+                        
+                        delete require.cache[require.resolve(filePath)];
                         const command = require(filePath);
-                        console.log('Loaded admin command:', command.name);
-                        this.commands.set(command.name, command);
+                        
+                        if (command.name) {
+                            console.log('Loaded admin command:', command.name);
+                            this.commands.set(command.name, command);
+                        } else {
+                            console.warn('Admin command file missing name property:', file);
+                        }
                     } catch (error) {
                         console.error(`Error loading admin command ${file}:`, error);
                     }
                 }
+            } else {
+                console.log('Admin commands directory not found');
             }
 
             console.log('All loaded commands:', Array.from(this.commands.keys()));
+
         } catch (error) {
             console.error('Error in loadCommands:', error);
         }
