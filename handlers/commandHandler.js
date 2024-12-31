@@ -10,8 +10,8 @@ class CommandHandler {
         try {
             console.log('Starting command loading process...');
             
-            // Load regular commands
-            const commandsPath = path.join(__dirname, 'commands');
+            // Load regular commands from root/commands
+            const commandsPath = path.join(__dirname, '..', 'commands');
             console.log('Loading commands from:', commandsPath);
             
             if (!fs.existsSync(commandsPath)) {
@@ -34,15 +34,13 @@ class CommandHandler {
                     if (command.name) {
                         console.log('Loaded command:', command.name);
                         this.commands.set(command.name, command);
-                    } else {
-                        console.warn('Command file missing name property:', file);
                     }
                 } catch (error) {
                     console.error(`Error loading command ${file}:`, error);
                 }
             }
 
-            // Load admin commands
+            // Load admin commands from root/commands/admin
             const adminPath = path.join(commandsPath, 'admin');
             if (fs.existsSync(adminPath)) {
                 console.log('Loading admin commands from:', adminPath);
@@ -62,19 +60,14 @@ class CommandHandler {
                         if (command.name) {
                             console.log('Loaded admin command:', command.name);
                             this.commands.set(command.name, command);
-                        } else {
-                            console.warn('Admin command file missing name property:', file);
                         }
                     } catch (error) {
                         console.error(`Error loading admin command ${file}:`, error);
                     }
                 }
-            } else {
-                console.log('Admin commands directory not found');
             }
 
             console.log('All loaded commands:', Array.from(this.commands.keys()));
-
         } catch (error) {
             console.error('Error in loadCommands:', error);
         }
