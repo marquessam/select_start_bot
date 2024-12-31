@@ -1,11 +1,12 @@
+// addpointsall.js
 const TerminalEmbed = require('../../utils/embedBuilder');
+const database = require('../../database');
 
 module.exports = {
     name: 'addpointsall',
     description: 'Add points to all participants',
     async execute(message, args, { userStats }) {
         try {
-            // Validate input
             if (args.length < 2) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !addpointsall <points> <reason>\n[Ready for input]█\x1b[0m```');
                 return;
@@ -19,22 +20,36 @@ module.exports = {
                 return;
             }
 
-            // Process points allocation
+            // Get initial stats for verification
             const users = await userStats.getAllUsers();
+            const initialStats = await database.getUserStats();
+            const currentYear = new Date().getFullYear().toString();
+
+            await message.channel.send('```ansi\n\x1b[32m> Processing mass points allocation...\x1b[0m\n```');
+
             let successfulAdditions = 0;
             let failedUsers = [];
 
             // Add points to each user
             for (const username of users) {
                 try {
-                    await userStats.initializeUserIfNeeded(username);
-                    // Assuming we'll modify addBonusPoints to not send messages
                     await userStats.addBonusPoints(username, points, reason);
                     successfulAdditions++;
                 } catch (error) {
                     console.error(`Error adding points to ${username}:`, error);
                     failedUsers.push(username);
                 }
+            }
+
+            // Get final stats for verification
+            const finalStats = await database.getUserStats();
+
+            // Create verification summary
+            let verificationText = '';
+            for (const username of users) {
+                const beforePoints = initialStats.users[username]?.yearlyPoints[currentYear] || 0;
+                const afterPoints = finalStats.users[username]?.yearlyPoints[currentYear] || 0;
+                verificationText += `${username}: ${beforePoints} → ${afterPoints}\n`;
             }
 
             // Create response embed
@@ -49,6 +64,11 @@ module.exports = {
             if (failedUsers.length > 0) {
                 embed.addTerminalField('FAILED ALLOCATIONS',
                     failedUsers.join(', '));
+            }
+
+            if (verificationText) {
+                embed.addTerminalField('POINTS VERIFICATION',
+                    verificationText.slice(0, 1024)); // Discord field limit
             }
 
             embed.setTerminalFooter();
