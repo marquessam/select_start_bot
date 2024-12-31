@@ -54,30 +54,28 @@ module.exports = {
                 ? `${monthlyRank.rank}/${data.leaderboard.length}${monthlyRank.tie ? ' (tie)' : ''}`
                 : 'N/A';
 
-            // Ensure the yearly leaderboard includes all participants
-            const adjustedYearlyLeaderboard = allParticipants.map(participant => {
-                const user = yearlyLeaderboard.find(u => u.username.toLowerCase() === participant.toLowerCase());
-                return user || { username: participant, points: 0, gamesCompleted: 0 };
+            // Calculate yearly rank with ties using the same logic as !leaderboard year
+            let currentRank = 1;
+            let currentPoints = -1;
+            let sameRankCount = 0;
+
+            const adjustedYearlyLeaderboard = yearlyLeaderboard.map((user, index) => {
+                if (user.points !== currentPoints) {
+                    currentRank += sameRankCount;
+                    sameRankCount = 0;
+                    currentPoints = user.points;
+                } else {
+                    sameRankCount++;
+                }
+                return {
+                    ...user,
+                    rank: currentRank
+                };
             });
 
-            // Calculate yearly rank with ties
-            const yearlyRankData = adjustedYearlyLeaderboard
-                .sort((a, b) => b.points - a.points)
-                .reduce((acc, user, index, sorted) => {
-                    if (index === 0 || user.points !== sorted[index - 1].points) {
-                        acc.currentRank = index + 1;
-                    }
-                    acc.rankedUsers.push({
-                        ...user,
-                        rank: acc.currentRank,
-                        tie: index > 0 && user.points === sorted[index - 1].points
-                    });
-                    return acc;
-                }, { currentRank: 1, rankedUsers: [] });
-
-            const yearlyRank = yearlyRankData.rankedUsers.find(user => user.username.toLowerCase() === username.toLowerCase());
-            const yearlyRankText = yearlyRank
-                ? `${yearlyRank.rank}/${adjustedYearlyLeaderboard.length}${yearlyRank.tie ? ' (tie)' : ''}`
+            const yearlyRankData = adjustedYearlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase());
+            const yearlyRankText = yearlyRankData
+                ? `${yearlyRankData.rank}/${adjustedYearlyLeaderboard.length} (tie)`
                 : 'N/A';
 
             // Find user's profile info in leaderboard data
