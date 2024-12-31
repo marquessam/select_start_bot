@@ -12,7 +12,6 @@ if (fs.existsSync(path.join(__dirname, 'commands'))) {
     console.log('Commands directory not found!');
 }
 
-// Rest of your imports
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const ShadowGame = require('./shadowGame.js');
@@ -21,10 +20,21 @@ const CommandHandler = require('./handlers/commandHandler.js');
 const Announcer = require('./utils/announcer');
 const database = require('./database');
 
+const client = new Client({
+   intents: [
+       GatewayIntentBits.Guilds,
+       GatewayIntentBits.GuildMessages,
+       GatewayIntentBits.MessageContent,
+       GatewayIntentBits.GuildMembers
+   ]
+});
+
 let shadowGame;
 const userStats = new UserStats();
 const commandHandler = new CommandHandler();
 const ANNOUNCEMENT_CHANNEL_ID = process.env.ANNOUNCEMENT_CHANNEL_ID;
+
+// Create announcer after client is initialized
 const announcer = new Announcer(client, userStats, ANNOUNCEMENT_CHANNEL_ID);
 
 client.once('ready', async () => {
@@ -40,16 +50,6 @@ client.once('ready', async () => {
        await userStats.loadStats();
        await announcer.initialize();
 
-       // Debug log directory contents
-       const fs = require('fs');
-       const path = require('path');
-       
-       const commandsPath = path.join(__dirname, 'commands');
-       const adminPath = path.join(commandsPath, 'admin');
-       
-       console.log('Commands directory content:', fs.readdirSync(commandsPath));
-       console.log('Admin commands directory content:', fs.readdirSync(adminPath));
-       
        // Load commands with dependencies
        await commandHandler.loadCommands({
            shadowGame,
