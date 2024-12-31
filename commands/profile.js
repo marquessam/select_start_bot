@@ -13,93 +13,55 @@ module.exports = {
                 return;
             }
 
-            // Initial message to the user
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
             const currentYear = new Date().getFullYear().toString();
 
-            // Add detailed logs and fallback handling for data fetching
-            console.log('Fetching data for !profile command...');
-            
+            // Get all necessary data
             const [data, yearlyLeaderboard, stats, currentChallenge] = await Promise.all([
-                (async () => {
-                    try {
-                        console.log('Fetching leaderboard data...');
-                        const leaderboardData = await fetchLeaderboardData();
-                        console.log('Leaderboard data fetched successfully.');
-                        return leaderboardData;
-                    } catch (error) {
-                        console.error('Error fetching leaderboard data:', error);
-                        return { leaderboard: [] }; // Fallback structure
-                    }
-                })(),
-                (async () => {
-                    try {
-                        console.log('Fetching yearly leaderboard...');
-                        const leaderboard = await userStats.getYearlyLeaderboard();
-                        console.log('Yearly leaderboard fetched successfully.');
-                        return leaderboard;
-                    } catch (error) {
-                        console.error('Error fetching yearly leaderboard:', error);
-                        return []; // Fallback structure
-                    }
-                })(),
-                (async () => {
-                    try {
-                        console.log('Fetching user stats...');
-                        const userStatsData = await userStats.getUserStats(username);
-                        console.log('User stats fetched successfully.');
-                        return userStatsData;
-                    } catch (error) {
-                        console.error('Error fetching user stats:', error);
-                        return {
-                            yearlyPoints: {},
-                            yearlyStats: {},
-                            completedGames: {},
-                            monthlyAchievements: {},
-                            bonusPoints: []
-                        }; // Fallback structure
-                    }
-                })(),
-                (async () => {
-                    try {
-                        console.log('Fetching current challenge...');
-                        const challenge = await database.getCurrentChallenge();
-                        console.log('Current challenge fetched successfully.');
-                        return challenge;
-                    } catch (error) {
-                        console.error('Error fetching current challenge:', error);
-                        return { gameName: 'Unknown' }; // Fallback structure
-                    }
-                })()
+                fetchLeaderboardData(),
+                userStats.getYearlyLeaderboard(),
+                userStats.getUserStats(username),
+                database.getCurrentChallenge()
             ]);
 
-            console.log('All data fetched:', { data, yearlyLeaderboard, stats, currentChallenge });
+            const yearlyPoints = stats.yearlyPoints[currentYear] || 0;
 
-            const yearlyPoints = stats.yearlyPoints?.[currentYear] || 0;
+            // Calculate yearly rank with ties
+            const yearlyRankData = yearlyLeaderboard.reduce((acc, user, index) => {
+                if (index === 0 || user.points !== yearlyLeaderboard[index - 1].points) {
+                    acc.currentRank = index + 1;
+                }
+                if (user.username.toLowerCase() === username.toLowerCase()) {
+                    acc.rank = acc.currentRank;
+                }
+                return acc;
+            }, { currentRank: 1, rank: null });
 
-            // Determine yearly and monthly ranks
-            const yearlyRank = yearlyLeaderboard.findIndex(user =>
-                user.username.toLowerCase() === username.toLowerCase()
-            ) + 1;
+            // Calculate monthly rank with ties
+            const monthlyRankData = data.leaderboard.reduce((acc, user, index) => {
+                if (index === 0 || user.completionPercentage !== data.leaderboard[index - 1].completionPercentage) {
+                    acc.currentRank = index + 1;
+                }
+                if (user.username.toLowerCase() === username.toLowerCase()) {
+                    acc.rank = acc.currentRank;
+                }
+                return acc;
+            }, { currentRank: 1, rank: null });
 
-            const monthlyRank = data.leaderboard.findIndex(user =>
-                user.username.toLowerCase() === username.toLowerCase()
-            ) + 1;
-
-            // Extract user leaderboard details
-            const userLeaderboardData = data.leaderboard.find(user =>
+            // Find user's profile info in leaderboard data
+            const userLeaderboardData = data.leaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
             );
 
-            const profileIcon = userLeaderboardData?.profileImage || `https://retroachievements.org/Images/UserPic/${username}.png`;
-
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
-                .setThumbnail(profileIcon);
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]');
 
-            // Add challenge progress if available
+            if (userLeaderboardData?.profileImage) {
+                embed.setThumbnail(userLeaderboardData.profileImage);
+            }
+
             if (userLeaderboardData) {
                 embed.addTerminalField('CURRENT CHALLENGE PROGRESS',
                     `GAME: ${currentChallenge.gameName}\n` +
@@ -108,54 +70,40 @@ module.exports = {
                 );
             }
 
-            // Add yearly statistics
+            embed.addTerminalField('RANKINGS',
+                `MONTHLY RANK: ${monthlyRankData.rank || 'N/A'}/${data.leaderboard.length}\n` +
+                `YEARLY RANK: ${yearlyRankData.rank || 'N/A'}/${yearlyLeaderboard.length}`
+            );
+
             embed.addTerminalField(`${currentYear} STATISTICS`,
                 `YEARLY POINTS: ${yearlyPoints}\n` +
-                `YEARLY RANK: ${yearlyRank || 'N/A'}/${yearlyLeaderboard.length}\n` +
-                `MONTHLY RANK: ${monthlyRank || 'N/A'}/${data.leaderboard.length}\n` +
                 `GAMES COMPLETED: ${stats.yearlyStats?.[currentYear]?.totalGamesCompleted || 0}\n` +
                 `ACHIEVEMENTS UNLOCKED: ${stats.yearlyStats?.[currentYear]?.totalAchievementsUnlocked || 0}\n` +
                 `HARDCORE COMPLETIONS: ${stats.yearlyStats?.[currentYear]?.hardcoreCompletions || 0}\n` +
                 `MONTHLY PARTICIPATIONS: ${stats.yearlyStats?.[currentYear]?.monthlyParticipations || 0}`
             );
 
-            // Display completed games if any
-            const completedGames = stats.completedGames?.[currentYear] || [];
-            if (completedGames.length > 0) {
-                const completionList = completedGames
-                    .map(game => `${game.gameName} (${new Date(game.completionDate).toLocaleDateString()})`)
-                    .join('\n');
-                embed.addTerminalField(`${currentYear} COMPLETIONS`, completionList);
-            }
-
-            // Add monthly achievements if any
-            const recentAchievements = stats.monthlyAchievements?.[currentYear] || {};
-            if (Object.keys(recentAchievements).length > 0) {
-                const achievementText = Object.entries(recentAchievements)
-                    .map(([month, achievement]) =>
-                        `${month}: ${achievement.place} place (${achievement.points} pts)`)
-                    .join('\n');
-                embed.addTerminalField('MONTHLY ACHIEVEMENTS', achievementText);
-            }
-
             // Add bonus points if any
-            const bonusPoints = (stats.bonusPoints || [])
+            const recentBonusPoints = (stats.bonusPoints || [])
                 .filter(bonus => bonus.year === currentYear)
-                .map(bonus => `${bonus.points} pts - ${bonus.reason}`)
+                .map(bonus => `${bonus.reason}: ${bonus.points} pts`)
                 .join('\n');
-            if (bonusPoints) {
-                embed.addTerminalField('BONUS POINTS', bonusPoints);
+
+            const totalBonusPoints = stats.bonusPoints.reduce((acc, bonus) => acc + bonus.points, 0);
+
+            if (recentBonusPoints) {
+                embed.addTerminalField('POINTS', `${recentBonusPoints}\nTotal: ${totalBonusPoints} pts`);
             }
 
             embed.setTerminalFooter();
 
-            // Send the profile embed
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
 
         } catch (error) {
-            console.error('Profile Command Error:', error.stack || error);
+            console.error('Profile Command Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
         }
     }
 };
+
