@@ -249,7 +249,36 @@ async addBonusPoints(username, points, reason) {
         throw error;
     }
 }
+async resetUserPoints(username) {
+    try {
+        const cleanUsername = username.trim().toLowerCase();
+        const user = this.stats.users[cleanUsername];
 
+        if (!user) {
+            throw new Error(`User ${username} not found.`);
+        }
+
+        const currentYear = new Date().getFullYear().toString();
+
+        // Reset points for the user
+        user.yearlyPoints[currentYear] = 0;
+
+        // Clear monthly achievements for the current year
+        if (user.monthlyAchievements && user.monthlyAchievements[currentYear]) {
+            user.monthlyAchievements[currentYear] = {};
+        }
+
+        // Clear bonus points
+        user.bonusPoints = user.bonusPoints.filter(bonus => bonus.year !== currentYear);
+
+        // Save updated stats to the database
+        await this.saveStats();
+        console.log(`Points reset for user: ${username}`);
+    } catch (error) {
+        console.error('Error resetting user points:', error);
+        throw error;
+    }
+}
     async getUserStats(username) {
         try {
             const cleanUsername = username.trim().toLowerCase();
