@@ -52,59 +52,67 @@ class UserStats {
     }
 
     async initializeUserIfNeeded(username) {
-        if (!username) return;
+    if (!username) return;
 
-        const cleanUsername = username.trim().toLowerCase();
-        if (!cleanUsername) return;
+    const cleanUsername = username.trim().toLowerCase();
+    if (!cleanUsername) return;
 
-        const year = this.currentYear.toString();
+    const year = this.currentYear.toString();
 
-        // Initialize user if they don't exist
-        if (!this.stats.users[cleanUsername]) {
-            this.stats.users[cleanUsername] = {
-                totalPoints: 0,
-                yearlyPoints: {},
-                monthlyAchievements: {},
-                bonusPoints: [],
-                completedGames: {},
-                monthlyStats: {},
-                yearlyStats: {}
-            };
-        }
-
-        const userStats = this.stats.users[cleanUsername];
-
-        // Ensure yearly structures are initialized
-        if (!userStats.yearlyPoints[year]) {
-            userStats.yearlyPoints[year] = 0;
-        }
-
-        if (!userStats.completedGames[year]) {
-            userStats.completedGames[year] = [];
-        }
-
-        if (!userStats.monthlyStats[year]) {
-            userStats.monthlyStats[year] = {};
-        }
-
-        if (!userStats.yearlyStats[year]) {
-            userStats.yearlyStats[year] = {
-                totalGamesCompleted: 0,
-                totalAchievementsUnlocked: 0,
-                hardcoreCompletions: 0,
-                softcoreCompletions: 0,
-                monthlyParticipations: 0,
-                perfectMonths: 0
-            };
-        }
-
-        if (!userStats.monthlyAchievements[year]) {
-            userStats.monthlyAchievements[year] = {};
-        }
-
-        await this.saveStats();
+    // Ensure the user object exists
+    if (!this.stats.users[cleanUsername]) {
+        this.stats.users[cleanUsername] = {
+            totalPoints: 0,
+            yearlyPoints: {},
+            monthlyAchievements: {},
+            bonusPoints: [],
+            completedGames: {},
+            monthlyStats: {},
+            yearlyStats: {}
+        };
     }
 
+    const userStats = this.stats.users[cleanUsername];
+
+    // Ensure yearlyPoints for the current year exists
+    if (!userStats.yearlyPoints) userStats.yearlyPoints = {};
+    if (!userStats.yearlyPoints[year]) {
+        userStats.yearlyPoints[year] = 0;
+    }
+
+    // Ensure completedGames for the current year exists
+    if (!userStats.completedGames) userStats.completedGames = {};
+    if (!userStats.completedGames[year]) {
+        userStats.completedGames[year] = [];
+    }
+
+    // Ensure monthlyStats for the current year exists
+    if (!userStats.monthlyStats) userStats.monthlyStats = {};
+    if (!userStats.monthlyStats[year]) {
+        userStats.monthlyStats[year] = {};
+    }
+
+    // Ensure yearlyStats for the current year exists
+    if (!userStats.yearlyStats) userStats.yearlyStats = {};
+    if (!userStats.yearlyStats[year]) {
+        userStats.yearlyStats[year] = {
+            totalGamesCompleted: 0,
+            totalAchievementsUnlocked: 0,
+            hardcoreCompletions: 0,
+            softcoreCompletions: 0,
+            monthlyParticipations: 0,
+            perfectMonths: 0
+        };
+    }
+
+    // Ensure monthlyAchievements for the current year exists
+    if (!userStats.monthlyAchievements) userStats.monthlyAchievements = {};
+    if (!userStats.monthlyAchievements[year]) {
+        userStats.monthlyAchievements[year] = {};
+    }
+
+    await this.saveStats();
+}
     async refreshUserList() {
         try {
             const response = await fetch(this.SPREADSHEET_URL);
