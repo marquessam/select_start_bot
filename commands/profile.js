@@ -60,7 +60,7 @@ module.exports = {
                 return user || { username: participant, points: 0, gamesCompleted: 0 };
             });
 
-            // Calculate yearly rank with ties using leaderboard logic
+            // Calculate yearly rank with ties
             const yearlyRankData = adjustedYearlyLeaderboard
                 .sort((a, b) => b.points - a.points)
                 .reduce((acc, user, index, sorted) => {
