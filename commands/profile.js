@@ -17,73 +17,75 @@ module.exports = {
 
             // Get all necessary data
             const [data, yearlyLeaderboard, stats, currentChallenge] = await Promise.all([
-                fetchLeaderboardData(), // Fetches current monthly leaderboard
-                userStats.getYearlyLeaderboard(), // Fetches yearly leaderboard
-                userStats.getUserStats(username), // Fetches specific user stats
-                database.getCurrentChallenge() // Fetches current challenge details
+                fetchLeaderboardData(),
+                userStats.getYearlyLeaderboard(),
+                userStats.getUserStats(username),
+                database.getCurrentChallenge()
             ]);
 
             const currentYear = new Date().getFullYear().toString();
             const yearlyPoints = stats.yearlyPoints[currentYear] || 0;
 
-            // Calculate yearly rank
-            const yearlyRank = yearlyLeaderboard.findIndex(user =>
-                user.username.toLowerCase() === username.toLowerCase()
-            ) + 1;
+            // Calculate yearly rank with ties
+            const yearlyRankData = yearlyLeaderboard.reduce((acc, user, index) => {
+                if (index === 0 || user.points !== yearlyLeaderboard[index - 1].points) {
+                    acc.currentRank = index + 1;
+                }
+                if (user.username.toLowerCase() === username.toLowerCase()) {
+                    acc.rank = acc.currentRank;
+                }
+                return acc;
+            }, { currentRank: 1, rank: null });
 
-            // Calculate monthly rank
-            const monthlyRank = data.leaderboard.findIndex(user =>
-                user.username.toLowerCase() === username.toLowerCase()
-            ) + 1;
+            // Calculate monthly rank with ties
+            const monthlyRankData = data.leaderboard.reduce((acc, user, index) => {
+                if (index === 0 || user.completionPercentage !== data.leaderboard[index - 1].completionPercentage) {
+                    acc.currentRank = index + 1;
+                }
+                if (user.username.toLowerCase() === username.toLowerCase()) {
+                    acc.rank = acc.currentRank;
+                }
+                return acc;
+            }, { currentRank: 1, rank: null });
 
-            // Get profile icon
-            const profileIcon = stats.profileIcon || `https://retroachievements.org/Images/UserPic/${username}.png`;
-
-            // Create completion list text
-            let completionList = '';
-            if (stats.completedGames?.[currentYear]) {
-                completionList = stats.completedGames[currentYear]
-                    .map(game => `${game.gameName} (${new Date(game.completionDate).toLocaleDateString()})`)
-                    .join('\n');
-            }
-
-            // Create yearly stats text
-            const yearStats = stats.yearlyStats?.[currentYear] || {
-                totalGamesCompleted: 0,
-                totalAchievementsUnlocked: 0,
-                hardcoreCompletions: 0,
-                monthlyParticipations: 0
-            };
-
-            // Get current monthly progress
-            const userProgress = data.leaderboard.find(user =>
+            // Find user's profile info in leaderboard data
+            const userLeaderboardData = data.leaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
             );
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
-                .setThumbnail(profileIcon); // Add profile icon here
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]');
 
-            if (userProgress) {
+            // Only set thumbnail if we have a valid profile image
+            if (userLeaderboardData?.profileImage) {
+                embed.setThumbnail(userLeaderboardData.profileImage);
+            }
+
+            if (userLeaderboardData) {
                 embed.addTerminalField('CURRENT CHALLENGE PROGRESS',
                     `GAME: ${currentChallenge.gameName}\n` +
-                    `PROGRESS: ${userProgress.completionPercentage}%\n` +
-                    `ACHIEVEMENTS: ${userProgress.completedAchievements}/${userProgress.totalAchievements}`
+                    `PROGRESS: ${userLeaderboardData.completionPercentage}%\n` +
+                    `ACHIEVEMENTS: ${userLeaderboardData.completedAchievements}/${userLeaderboardData.totalAchievements}`
                 );
             }
 
             embed.addTerminalField('2024 STATISTICS',
                 `YEARLY POINTS: ${yearlyPoints}\n` +
-                `YEARLY RANK: ${yearlyRank}/${yearlyLeaderboard.length}\n` +
-                `MONTHLY RANK: ${monthlyRank}/${data.leaderboard.length}\n` +
-                `GAMES COMPLETED: ${yearStats.totalGamesCompleted}\n` +
-                `ACHIEVEMENTS UNLOCKED: ${yearStats.totalAchievementsUnlocked}\n` +
-                `HARDCORE COMPLETIONS: ${yearStats.hardcoreCompletions}\n` +
-                `MONTHLY PARTICIPATIONS: ${yearStats.monthlyParticipations}`
+                `YEARLY RANK: ${yearlyRankData.rank || 'N/A'}/${yearlyLeaderboard.length}\n` +
+                `MONTHLY RANK: ${monthlyRankData.rank || 'N/A'}/${data.leaderboard.length}\n` +
+                `GAMES COMPLETED: ${stats.yearlyStats?.[currentYear]?.totalGamesCompleted || 0}\n` +
+                `ACHIEVEMENTS UNLOCKED: ${stats.yearlyStats?.[currentYear]?.totalAchievementsUnlocked || 0}\n` +
+                `HARDCORE COMPLETIONS: ${stats.yearlyStats?.[currentYear]?.hardcoreCompletions || 0}\n` +
+                `MONTHLY PARTICIPATIONS: ${stats.yearlyStats?.[currentYear]?.monthlyParticipations || 0}`
             );
 
-            if (completionList) {
+            // Display completed games if any
+            const completedGames = stats.completedGames?.[currentYear] || [];
+            if (completedGames.length > 0) {
+                const completionList = completedGames
+                    .map(game => `${game.gameName} (${new Date(game.completionDate).toLocaleDateString()})`)
+                    .join('\n');
                 embed.addTerminalField('2024 COMPLETIONS', completionList);
             }
 
@@ -98,7 +100,7 @@ module.exports = {
             }
 
             // Add bonus points if any
-            const recentBonusPoints = stats.bonusPoints
+            const recentBonusPoints = (stats.bonusPoints || [])
                 .filter(bonus => bonus.year === currentYear)
                 .map(bonus => `${bonus.points} pts - ${bonus.reason}`)
                 .join('\n');
