@@ -1,4 +1,5 @@
 const TerminalEmbed = require('../../utils/embedBuilder');
+const database = require('../../database');
 
 module.exports = {
     name: 'updatemonth',
@@ -13,10 +14,14 @@ module.exports = {
             const [month, first, second, third] = args;
             const year = new Date().getFullYear().toString();
 
+            // Get initial stats for verification
+            const initialStats = await database.getUserStats();
+
             // Validate users
             const validUsers = await userStats.getAllUsers();
             const usersToCheck = [first, second, third].filter(Boolean);
             const invalidUsers = usersToCheck.filter(user => !validUsers.includes(user.toLowerCase()));
+            
             if (invalidUsers.length > 0) {
                 await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] Invalid users: ${invalidUsers.join(', ')}\n[Ready for input]█\x1b[0m\`\`\``);
                 return;
@@ -24,12 +29,25 @@ module.exports = {
 
             await message.channel.send('```ansi\n\x1b[32m> Processing monthly rankings update...\x1b[0m\n```');
 
-            // Update monthly rankings - pass message.client for DM notifications
+            // Update monthly rankings
             await userStats.addMonthlyPoints(month, year, {
                 first,
                 second,
                 third
-            }, message.client);
+            });
+
+            // Get final stats for verification
+            const finalStats = await database.getUserStats();
+
+            // Create verification summary
+            let verificationText = '';
+            for (const username of [first, second, third]) {
+                if (username) {
+                    const beforePoints = initialStats.users[username]?.yearlyPoints[year] || 0;
+                    const afterPoints = finalStats.users[username]?.yearlyPoints[year] || 0;
+                    verificationText += `${username}: ${beforePoints} → ${afterPoints}\n`;
+                }
+            }
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('MONTHLY RANKINGS UPDATED')
@@ -39,6 +57,8 @@ module.exports = {
                     `1ST PLACE: ${first} (6 pts)\n` +
                     `2ND PLACE: ${second} (4 pts)\n` +
                     `3RD PLACE: ${third} (2 pts)`)
+                .addTerminalField('POINTS VERIFICATION',
+                    verificationText)
                 .setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
