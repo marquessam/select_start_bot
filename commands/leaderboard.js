@@ -1,6 +1,6 @@
+const { MessageActionRow, MessageSelectMenu } = require('discord.js');
 const TerminalEmbed = require('../utils/embedBuilder');
 const { fetchLeaderboardData } = require('../raAPI.js');
-const { MessageActionRow, MessageSelectMenu } = require('discord.js');
 
 module.exports = {
     name: 'leaderboard',
@@ -9,7 +9,7 @@ module.exports = {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing leaderboard options...\x1b[0m\n```');
 
-            // Create a dropdown menu for the leaderboard options
+            // Create a dropdown menu for leaderboard options
             const row = new MessageActionRow().addComponents(
                 new MessageSelectMenu()
                     .setCustomId('leaderboardMenu')
@@ -74,55 +74,31 @@ module.exports = {
             const data = await fetchLeaderboardData();
 
             const embed = new TerminalEmbed()
-                .setTerminalTitle('MONTHLY LEADERBOARD')
+                .setTerminalTitle('MONTHLY RANKINGS')
                 .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING MONTHLY RANKINGS]');
 
-            // Handle ties in the leaderboard
-            let currentRank = 1;
-            let lastPercentage = null;
-            let tieFlag = false;
+            const rankedLeaderboard = data.leaderboard
+                .sort((a, b) => b.completionPercentage - a.completionPercentage)
+                .map((user, index, sorted) => ({
+                    ...user,
+                    rank: index === 0 || user.completionPercentage !== sorted[index - 1].completionPercentage
+                        ? index + 1
+                        : sorted[index - 1].rank,
+                }));
 
-            const rankedUsers = data.leaderboard.map((user, index) => {
-                if (user.completionPercentage !== lastPercentage) {
-                    currentRank = index + 1;
-                    tieFlag = false;
-                    lastPercentage = user.completionPercentage;
-                } else {
-                    tieFlag = true;
-                }
-                return { ...user, rank: currentRank, tie: tieFlag };
-            });
-
-            // Top 3 users
-            rankedUsers.slice(0, 3).forEach((user, index) => {
-                const medals = ['🥇', '🥈', '🥉'];
-                const tieText = user.tie ? ' (tie)' : '';
+            rankedLeaderboard.forEach((user) => {
                 embed.addTerminalField(
-                    `${medals[index]} ${user.username} (RANK: ${user.rank}${tieText})`,
+                    `${user.rank}. ${user.username}`,
                     `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\nPROGRESS: ${user.completionPercentage}%`
                 );
             });
 
-            // Additional participants
-            const additionalUsers = rankedUsers.slice(3);
-            if (additionalUsers.length > 0) {
-                const additionalRankings = additionalUsers
-                    .map(user => {
-                        const tieText = user.tie ? ' (tie)' : '';
-                        return `${user.rank}. ${user.username} (${user.completionPercentage}%${tieText})`;
-                    })
-                    .join('\n');
-
-                embed.addTerminalField('ADDITIONAL PARTICIPANTS', additionalRankings);
-            }
-
             embed.setTerminalFooter();
-
             await message.channel.send({ embeds: [embed] });
         } catch (error) {
             console.error('Monthly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to display monthly leaderboard\n[Ready for input]█\x1b[0m```');
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly rankings\n[Ready for input]█\x1b[0m```');
         }
     },
 
@@ -131,48 +107,32 @@ module.exports = {
             const validUsers = await userStats.getAllUsers();
             const leaderboard = await userStats.getYearlyLeaderboard();
 
-            // Filter leaderboard to include only valid users
-            const filteredLeaderboard = leaderboard.filter(user =>
-                validUsers.includes(user.username.toLowerCase())
-            );
-
-            // Handle ties in the leaderboard
-            let currentRank = 1;
-            let currentPoints = -1;
-            let sameRankCount = 0;
-
-            const rankedLeaderboard = filteredLeaderboard.map((user, index) => {
-                if (user.points !== currentPoints) {
-                    currentRank += sameRankCount;
-                    sameRankCount = 0;
-                    currentPoints = user.points;
-                } else {
-                    sameRankCount++;
-                }
-                return { ...user, rank: currentRank };
-            });
+            const rankedLeaderboard = leaderboard
+                .filter((user) => validUsers.includes(user.username.toLowerCase()))
+                .sort((a, b) => b.points - a.points)
+                .map((user, index, sorted) => ({
+                    ...user,
+                    rank: index === 0 || user.points !== sorted[index - 1].points
+                        ? index + 1
+                        : sorted[index - 1].rank,
+                }));
 
             const embed = new TerminalEmbed()
-                .setTerminalTitle('YEARLY LEADERBOARD')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT YEARLY RANKINGS]');
+                .setTerminalTitle('YEARLY RANKINGS')
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING YEARLY RANKINGS]');
 
-            if (rankedLeaderboard.length > 0) {
+            rankedLeaderboard.forEach((user) => {
                 embed.addTerminalField(
-                    'TOP OPERATORS',
-                    rankedLeaderboard
-                        .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
-                        .join('\n')
+                    `${user.rank}. ${user.username}`,
+                    `POINTS: ${user.points}`
                 );
-            } else {
-                embed.addTerminalField('STATUS', 'No rankings available');
-            }
+            });
 
             embed.setTerminalFooter();
-
             await message.channel.send({ embeds: [embed] });
         } catch (error) {
             console.error('Yearly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to display yearly leaderboard\n[Ready for input]█\x1b[0m```');
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly rankings\n[Ready for input]█\x1b[0m```');
         }
     },
 };
