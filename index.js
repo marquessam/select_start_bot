@@ -34,12 +34,25 @@ client.once('ready', async () => {
        await userStats.loadStats();
        await announcer.initialize();
 
+       // Debug log directory contents
+       const fs = require('fs');
+       const path = require('path');
+       
+       const commandsPath = path.join(__dirname, 'commands');
+       const adminPath = path.join(commandsPath, 'admin');
+       
+       console.log('Commands directory content:', fs.readdirSync(commandsPath));
+       console.log('Admin commands directory content:', fs.readdirSync(adminPath));
+       
        // Load commands with dependencies
        await commandHandler.loadCommands({
            shadowGame,
            userStats,
            announcer
        });
+
+       console.log('Command handler initialized with commands:', 
+           Array.from(commandHandler.commands.keys()));
 
        console.log('Bot initialized successfully');
    } catch (error) {
@@ -51,6 +64,9 @@ client.on('messageCreate', async message => {
     if (message.author.bot) return;
 
     try {
+        console.log('Message received:', message.content);
+        console.log('Available commands:', Array.from(commandHandler.commands.keys()));
+
         // Only check shadow game if it was initialized successfully
         if (shadowGame) {
             await shadowGame.checkMessage(message);
@@ -65,7 +81,6 @@ client.on('messageCreate', async message => {
     } catch (error) {
         console.error('Error processing message:', error);
     }
-  });
-
+});
 
 client.login(process.env.DISCORD_TOKEN);
