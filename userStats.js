@@ -184,22 +184,29 @@ async getAllUsers() {
         }
     }
 
-   async getYearlyLeaderboard(year = null, participantList = []) {
+   aasync getYearlyLeaderboard(year = null, allParticipants = []) {
     try {
-        const targetYear = year || this.currentYear.toString();
+        console.log('[DEBUG] All Participants:', allParticipants);
+        console.log('[DEBUG] User Stats:', this.stats.users);
 
-        const leaderboard = participantList.map(username => {
-            const stats = this.stats.users[username] || {};
-            return {
+        const targetYear = year || this.currentYear.toString();
+        const leaderboard = Object.entries(this.stats.users)
+            .map(([username, stats]) => ({
                 username,
-                points: stats.yearlyPoints?.[targetYear] || 0,
+                points: stats.yearlyPoints[targetYear] || 0,
                 gamesCompleted: stats.yearlyStats?.[targetYear]?.totalGamesCompleted || 0,
                 achievementsUnlocked: stats.yearlyStats?.[targetYear]?.totalAchievementsUnlocked || 0,
-                monthlyParticipations: stats.yearlyStats?.[targetYear]?.monthlyParticipations || 0
-            };
-        });
+                monthlyParticipations: stats.yearlyStats?.[targetYear]?.monthlyParticipations || 0,
+            }))
+            .filter(entry => allParticipants.includes(entry.username.toLowerCase()));
 
-        return leaderboard.sort((a, b) => 
+        console.log('[DEBUG] Leaderboard Data:', leaderboard);
+
+        if (leaderboard.length === 0) {
+            throw new Error('No leaderboard data available.');
+        }
+
+        return leaderboard.sort((a, b) =>
             b.points - a.points || b.gamesCompleted - a.gamesCompleted
         );
     } catch (error) {
