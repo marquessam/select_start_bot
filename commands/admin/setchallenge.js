@@ -1,3 +1,4 @@
+// setchallenge.js
 const TerminalEmbed = require('../../utils/embedBuilder');
 const database = require('../../database');
 
@@ -15,7 +16,7 @@ module.exports = {
             const endDate = restArgs.pop();
             const startDate = restArgs.pop();
             const gameIcon = restArgs.pop();
-            const gameName = restArgs.join(' ').replace(/"/g, ''); // Remove quotes if present
+            const gameName = restArgs.join(' ').replace(/"/g, '');
 
             const challengeData = {
                 gameId,
