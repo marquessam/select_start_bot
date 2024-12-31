@@ -1,3 +1,5 @@
+const TerminalEmbed = require('../utils/embedBuilder');
+
 module.exports = {
     name: 'yearlyboard',
     description: 'Displays yearly rankings',
