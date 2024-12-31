@@ -18,23 +18,23 @@ module.exports = {
             // Calculate ranks with tie handling
             let currentRank = 1;
             let lastPercentage = null;
-            let sameRankCount = 0;
+            let tieFlag = false;
 
             const rankedUsers = data.leaderboard.map((user, index) => {
                 if (user.completionPercentage !== lastPercentage) {
-                    currentRank += sameRankCount; // Increment rank only when percentage changes
-                    sameRankCount = 0; // Reset tie count
-                    lastPercentage = user.completionPercentage; // Update last percentage
+                    currentRank = index + 1; // Set the rank based on current position
+                    tieFlag = false; // Reset tie flag
+                    lastPercentage = user.completionPercentage;
                 } else {
-                    sameRankCount++; // Increment tie count
+                    tieFlag = true; // Flag as tie if percentage matches previous
                 }
-                return { ...user, rank: currentRank };
+                return { ...user, rank: currentRank, tie: tieFlag };
             });
 
             // Top 3 users with medals
             rankedUsers.slice(0, 3).forEach((user, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
-                const tieText = sameRankCount > 0 ? ' (tie)' : '';
+                const tieText = user.tie ? ' (tie)' : '';
                 embed.addTerminalField(
                     `${medals[index]} ${user.username} (RANK: ${user.rank}${tieText})`,
                     `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\nPROGRESS: ${user.completionPercentage}%`
@@ -45,7 +45,10 @@ module.exports = {
             const additionalUsers = rankedUsers.slice(3);
             if (additionalUsers.length > 0) {
                 const additionalRankings = additionalUsers
-                    .map(user => `${user.rank}. ${user.username} (${user.completionPercentage}%)`)
+                    .map(user => {
+                        const tieText = user.tie ? ' (tie)' : '';
+                        return `${user.rank}. ${user.username} (${user.completionPercentage}%${tieText})`;
+                    })
                     .join('\n');
                     
                 embed.addTerminalField(
