@@ -17,37 +17,52 @@ module.exports = {
 
             const currentYear = new Date().getFullYear().toString();
 
+            // Fetch participants from Google Sheet
+            const allParticipants = await userStats.refreshUserList();
+
             // Get all necessary data
             const [data, yearlyLeaderboard, stats, currentChallenge] = await Promise.all([
                 fetchLeaderboardData(),
-                userStats.getYearlyLeaderboard(),
+                userStats.getYearlyLeaderboard(currentYear, allParticipants),
                 userStats.getUserStats(username),
                 database.getCurrentChallenge()
             ]);
 
-            const yearlyPoints = stats.yearlyPoints[currentYear] || 0;
-
-            // Calculate yearly rank with ties
-            const yearlyRankData = yearlyLeaderboard.reduce((acc, user, index) => {
-                if (index === 0 || user.points !== yearlyLeaderboard[index - 1].points) {
-                    acc.currentRank = index + 1;
-                }
-                if (user.username.toLowerCase() === username.toLowerCase()) {
-                    acc.rank = acc.currentRank;
-                }
-                return acc;
-            }, { currentRank: 1, rank: null });
+            // Ensure the monthly leaderboard includes all participants
+            data.leaderboard = allParticipants.map(participant => {
+                const user = data.leaderboard.find(u => u.username.toLowerCase() === participant.toLowerCase());
+                return user || { username: participant, completionPercentage: 0, completedAchievements: 0, totalAchievements: 0 };
+            });
 
             // Calculate monthly rank with ties
-            const monthlyRankData = data.leaderboard.reduce((acc, user, index) => {
-                if (index === 0 || user.completionPercentage !== data.leaderboard[index - 1].completionPercentage) {
-                    acc.currentRank = index + 1;
-                }
-                if (user.username.toLowerCase() === username.toLowerCase()) {
-                    acc.rank = acc.currentRank;
-                }
-                return acc;
-            }, { currentRank: 1, rank: null });
+            const monthlyRankData = data.leaderboard
+                .sort((a, b) => b.completionPercentage - a.completionPercentage)
+                .map((user, index, sorted) => {
+                    return {
+                        username: user.username,
+                        rank: index + 1,
+                        tie: index > 0 && sorted[index - 1].completionPercentage === user.completionPercentage
+                    };
+                });
+
+            const monthlyRank = monthlyRankData.find(user => user.username.toLowerCase() === username.toLowerCase());
+            const monthlyRankText = monthlyRank
+                ? `${monthlyRank.rank}/${data.leaderboard.length}${monthlyRank.tie ? ' (tie)' : ''}`
+                : 'N/A';
+
+            // Calculate yearly rank with ties
+            const yearlyRankData = yearlyLeaderboard.map((user, index, sorted) => {
+                return {
+                    username: user.username,
+                    rank: index + 1,
+                    tie: index > 0 && sorted[index - 1].points === user.points
+                };
+            });
+
+            const yearlyRank = yearlyRankData.find(user => user.username.toLowerCase() === username.toLowerCase());
+            const yearlyRankText = yearlyRank
+                ? `${yearlyRank.rank}/${yearlyLeaderboard.length}${yearlyRank.tie ? ' (tie)' : ''}`
+                : 'N/A';
 
             // Find user's profile info in leaderboard data
             const userLeaderboardData = data.leaderboard.find(user => 
@@ -71,12 +86,12 @@ module.exports = {
             }
 
             embed.addTerminalField('RANKINGS',
-                `MONTHLY RANK: ${monthlyRankData.rank || 'N/A'}/${data.leaderboard.length}\n` +
-                `YEARLY RANK: ${yearlyRankData.rank || 'N/A'}/${yearlyLeaderboard.length}`
+                `MONTHLY RANK: ${monthlyRankText}\n` +
+                `YEARLY RANK: ${yearlyRankText}`
             );
 
             embed.addTerminalField(`${currentYear} STATISTICS`,
-                `YEARLY POINTS: ${yearlyPoints}\n` +
+                `YEARLY POINTS: ${stats.yearlyPoints[currentYear] || 0}\n` +
                 `GAMES COMPLETED: ${stats.yearlyStats?.[currentYear]?.totalGamesCompleted || 0}\n` +
                 `ACHIEVEMENTS UNLOCKED: ${stats.yearlyStats?.[currentYear]?.totalAchievementsUnlocked || 0}\n` +
                 `HARDCORE COMPLETIONS: ${stats.yearlyStats?.[currentYear]?.hardcoreCompletions || 0}\n` +
@@ -91,9 +106,7 @@ module.exports = {
 
             const totalBonusPoints = stats.bonusPoints.reduce((acc, bonus) => acc + bonus.points, 0);
 
-            if (recentBonusPoints) {
-                embed.addTerminalField('POINTS', `${recentBonusPoints}\nTotal: ${totalBonusPoints} pts`);
-            }
+            embed.addTerminalField('POINTS', `${recentBonusPoints}\nTotal: ${totalBonusPoints} pts`);
 
             embed.setTerminalFooter();
 
@@ -106,4 +119,3 @@ module.exports = {
         }
     }
 };
-
