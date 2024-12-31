@@ -184,12 +184,15 @@ async getAllUsers() {
         }
     }
 
-   async getYearlyLeaderboard(year = null, allParticipants = []) {
+  async getYearlyLeaderboard(year = null, allParticipants = []) {
     try {
-        console.log('[DEBUG] All Participants:', allParticipants);
-        console.log('[DEBUG] User Stats:', this.stats.users);
-
+        console.log('[DEBUG] getYearlyLeaderboard called');
         const targetYear = year || this.currentYear.toString();
+
+        if (!this.stats.users) {
+            throw new Error('No user data available.');
+        }
+
         const leaderboard = Object.entries(this.stats.users)
             .map(([username, stats]) => ({
                 username,
@@ -200,7 +203,7 @@ async getAllUsers() {
             }))
             .filter(entry => allParticipants.includes(entry.username.toLowerCase()));
 
-        console.log('[DEBUG] Leaderboard Data:', leaderboard);
+        console.log('[DEBUG] Generated leaderboard:', leaderboard);
 
         if (leaderboard.length === 0) {
             throw new Error('No leaderboard data available.');
@@ -214,6 +217,7 @@ async getAllUsers() {
         throw error;
     }
 }
+
 
     async getUserStats(username) {
         try {
