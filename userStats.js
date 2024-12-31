@@ -184,7 +184,7 @@ async getAllUsers() {
         }
     }
 
-   aasync getYearlyLeaderboard(year = null, allParticipants = []) {
+   async getYearlyLeaderboard(year = null, allParticipants = []) {
     try {
         console.log('[DEBUG] All Participants:', allParticipants);
         console.log('[DEBUG] User Stats:', this.stats.users);
