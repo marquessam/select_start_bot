@@ -1,112 +1,138 @@
-const fetch = require('node-fetch');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const database = require('./database');
 
-const API_KEY = process.env.RA_API_KEY;
-const API_USER = process.env.RA_USER;
-const API_BASE_URL = 'https://retroachievements.org/API';
+async function fetchNominations() {
+    try {
+        const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSpV_1nLVtIVvXtNVqpzqXV6NQVi8l6pm5wQR41tYm7ooAmxfH0ln__TuEcC9so6KFRanFW0yCiJOM/pub?output=csv';
+        
+        console.log('Fetching nominations from:', SPREADSHEET_URL);
+        const response = await fetch(SPREADSHEET_URL);
+        console.log('Response status:', response.status);
+        
+        const csvText = await response.text();
+        console.log('CSV content (first 100 chars):', csvText.substring(0, 100));
+        
+        const nominations = csvText
+            .split('\n')
+            .slice(1)
+            .map(line => {
+                console.log('Processing line:', line);
+                const [gameTitle, platform] = line.trim().split(',').map(item => item.trim());
+                return { platform, game: gameTitle };
+            })
+            .filter(nom => nom.platform && nom.game);
+
+        console.log('Processed nominations:', nominations);
+
+        const groupedNominations = nominations.reduce((groups, nom) => {
+            if (!groups[nom.platform]) {
+                groups[nom.platform] = [];
+            }
+            groups[nom.platform].push(nom.game);
+            return groups;
+        }, {});
+
+        console.log('Grouped nominations:', groupedNominations);
+
+        return groupedNominations;
+    } catch (error) {
+        console.error('Detailed nominations error:', error);
+        throw error;
+    }
+}
 
 async function fetchLeaderboardData() {
     try {
         // Get current challenge from database instead of file
-        const currentChallenge = await database.getCurrentChallenge();
-        console.log('Current challenge data:', currentChallenge);
+        const challenge = await database.getCurrentChallenge();
+        if (!challenge || !challenge.gameId) {
+            throw new Error('No active challenge found in database');
+        }
+
+        const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
+
+        // Fetch users from spreadsheet
+        const csvResponse = await fetch(SPREADSHEET_URL);
+        const csvText = await csvResponse.text();
+        const users = csvText
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line)
+            .slice(1);
+
+        let validGameInfo = null;
+        const usersProgress = [];
+
+        for (const username of users) {
+            try {
+                await delay(300);
+
+                const params = new URLSearchParams({
+                    z: process.env.RA_USERNAME,
+                    y: process.env.RA_API_KEY,
+                    g: challenge.gameId,  // Updated to use database structure
+                    u: username
+                });
+
+                const url = `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+
+                if (!validGameInfo && data.Title && data.ImageIcon) {
+                    validGameInfo = {
+                        Title: data.Title,
+                        ImageIcon: data.ImageIcon
+                    };
+                }
+
+                const numAchievements = data.Achievements ? Object.keys(data.Achievements).length : 0;
+                const completed = data.Achievements ? 
+                    Object.values(data.Achievements).filter(ach => parseInt(ach.DateEarned) > 0).length : 0;
+                const completionPct = numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : "0.00";
+
+                usersProgress.push({
+                    username,
+                    profileImage: `https://retroachievements.org/UserPic/${username}.png`,
+                    profileUrl: `https://retroachievements.org/user/${username}`,
+                    completedAchievements: completed,
+                    totalAchievements: numAchievements,
+                    completionPercentage: parseFloat(completionPct) || 0
+                });
+            } catch (error) {
+                console.error(`Error fetching data for ${username}:`, error);
+            }
+        }
         
-        if (!currentChallenge || !currentChallenge.gameId) {
-            console.log('No game ID found in current challenge');
-            // Return dummy data if no challenge is set
-            return {
-                gameInfo: {
-                    ImageIcon: '/path/to/default/icon',
-                },
-                leaderboard: [{
-                    username: 'No Active Challenge',
-                    completedAchievements: 0,
-                    totalAchievements: 0,
-                    completionPercentage: '0.0',
-                    profileUrl: '#',
-                    profileImage: '/path/to/default/profile'
-                }]
-            };
-        }
+        const sortedUsers = usersProgress
+            .filter(user => !user.error)
+            .sort((a, b) => b.completionPercentage - a.completionPercentage);
 
-        console.log('Fetching game info for ID:', currentChallenge.gameId);
-        const endpoint = `${API_BASE_URL}/API_GetGameInfoAndUserProgress.php`;
-        const params = new URLSearchParams({
-            z: API_USER,
-            y: API_KEY,
-            u: API_USER,
-            g: currentChallenge.gameId
-        });
-
-        const response = await fetch(`${endpoint}?${params}`);
-        console.log('Game info API response status:', response.status);
-        if (!response.ok) {
-            throw new Error(`Game info API request failed with status ${response.status}`);
-        }
-
-        const gameData = await response.json();
-        console.log('Game data received:', gameData ? 'yes' : 'no');
-
-        // Fetch achievement list for the game
-        console.log('Fetching achievements data...');
-        const achievementsEndpoint = `${API_BASE_URL}/API_GetGameInfoExtended.php`;
-        const achievementsParams = new URLSearchParams({
-            z: API_USER,
-            y: API_KEY,
-            g: currentChallenge.gameId
-        });
-
-        const achievementsResponse = await fetch(`${achievementsEndpoint}?${achievementsParams}`);
-        console.log('Achievements API response status:', achievementsResponse.status);
-        if (!achievementsResponse.ok) {
-            console.error('Achievement API error. Full URL:', `${achievementsEndpoint}?${achievementsParams}`);
-            throw new Error(`Achievements API request failed with status ${achievementsResponse.status}`);
-        }
-
-        const achievementsData = await achievementsResponse.json();
-        const totalAchievements = Object.keys(achievementsData.Achievements || {}).length;
-        console.log('Total achievements found:', totalAchievements);
-
-        // Fetch user list
-        const userList = gameData && gameData.UserCompletion ? gameData.UserCompletion : [];
-        console.log('Number of users found:', userList.length);
-
-        // Process users
-        const leaderboard = userList.map(user => ({
-            username: user.User,
-            completedAchievements: user.NumAwarded,
-            totalAchievements: totalAchievements,
-            completionPercentage: ((user.NumAwarded / totalAchievements) * 100).toFixed(1),
-            profileUrl: `https://retroachievements.org/user/${user.User}`,
-            profileImage: `https://retroachievements.org${user.UserPic}`
-        }));
+        const topTen = sortedUsers.slice(0, 10);
+        const additionalParticipants = sortedUsers.slice(10).map(user => user.username);
 
         return {
-            gameInfo: {
-                ...gameData,
-                ImageIcon: gameData.ImageIcon || currentChallenge.gameIcon
+            gameInfo: validGameInfo || { 
+                Title: challenge.gameName,
+                ImageIcon: challenge.gameIcon
             },
-            leaderboard: leaderboard.sort((a, b) => b.completedAchievements - a.completedAchievements)
+            leaderboard: topTen,
+            additionalParticipants: additionalParticipants,
+            lastUpdated: new Date().toISOString()
         };
+
     } catch (error) {
         console.error('API Error:', error);
-        // Return dummy data in case of error
-        return {
-            gameInfo: {
-                ImageIcon: '/path/to/default/icon',
-            },
-            leaderboard: [{
-                username: error.message || 'Error fetching data',
-                completedAchievements: 0,
-                totalAchievements: 0,
-                completionPercentage: '0.0',
-                profileUrl: '#',
-                profileImage: '/path/to/default/profile'
-            }]
-        };
+        throw error;
     }
 }
 
-module.exports = {
-    fetchLeaderboardData
+module.exports = { 
+    fetchLeaderboardData,
+    fetchNominations 
 };
