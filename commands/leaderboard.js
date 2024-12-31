@@ -26,18 +26,18 @@ module.exports = {
                 // Calculate ranks considering ties
                 const leaderboardWithTies = data.leaderboard
                     .sort((a, b) => b.completionPercentage - a.completionPercentage)
-                    .map((user, index, sorted) => ({
-                        ...user,
-                        rank: index > 0 && sorted[index - 1].completionPercentage === user.completionPercentage
+                    .map((user, index, sorted) => {
+                        const rank = index > 0 && sorted[index - 1].completionPercentage === user.completionPercentage
                             ? sorted[index - 1].rank
-                            : index + 1
-                    }));
+                            : index + 1;
+                        return { ...user, rank };
+                    });
 
                 // Display top 3 with medals
                 leaderboardWithTies.slice(0, 3).forEach((user, index) => {
                     const medals = ['🥇', '🥈', '🥉'];
                     embed.addTerminalField(
-                        `${medals[index]} ${user.username}`,
+                        `${medals[index]} ${user.username} (RANK: ${user.rank})`,
                         `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\nPROGRESS: ${user.completionPercentage}%`
                     );
                 });
@@ -47,7 +47,7 @@ module.exports = {
                 if (additionalUsers.length > 0) {
                     const additionalRankings = additionalUsers
                         .map(user =>
-                            `${user.rank}. ${user.username} (${user.completionPercentage}%)`
+                            `${user.rank}. ${user.username} (${user.completionPercentage}%${user.rank > 1 ? ' (tie)' : ''})`
                         )
                         .join('\n');
 
@@ -59,22 +59,44 @@ module.exports = {
             } else if (option === 'year') {
                 // Fetch and display yearly leaderboard
                 await message.channel.send('```ansi\n\x1b[32m> Accessing yearly leaderboard...\x1b[0m\n```');
-                const yearlyLeaderboard = await userStats.getYearlyLeaderboard();
+
+                const validUsers = await userStats.getAllUsers();
+                const leaderboard = await userStats.getYearlyLeaderboard(null, validUsers);
+
+                let currentRank = 1;
+                let currentPoints = -1;
+                let sameRankCount = 0;
+
+                const rankedLeaderboard = leaderboard.map((user, index) => {
+                    if (user.points !== currentPoints) {
+                        currentRank += sameRankCount;
+                        sameRankCount = 0;
+                        currentPoints = user.points;
+                    } else {
+                        sameRankCount++;
+                    }
+                    return {
+                        ...user,
+                        rank: currentRank
+                    };
+                });
 
                 const embed = new TerminalEmbed()
-                    .setTerminalTitle('YEARLY LEADERBOARD')
-                    .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING YEARLY RANKINGS]');
+                    .setTerminalTitle('YEARLY RANKINGS')
+                    .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
 
-                // Display top participants
-                yearlyLeaderboard.slice(0, 10).forEach((user, index) => {
-                    embed.addTerminalField(
-                        `${index + 1}. ${user.username}`,
-                        `POINTS: ${user.points}\nGAMES COMPLETED: ${user.gamesCompleted}`
-                    );
-                });
+                if (rankedLeaderboard.length > 0) {
+                    embed.addTerminalField('TOP OPERATORS',
+                        rankedLeaderboard
+                            .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
+                            .join('\n'));
+                } else {
+                    embed.addTerminalField('STATUS', 'No rankings available');
+                }
 
                 embed.setTerminalFooter();
                 await message.channel.send({ embeds: [embed] });
+                await message.channel.send('```ansi\n\x1b[32m> Type !profile <user> for detailed stats\n[Ready for input]█\x1b[0m```');
             }
         } catch (error) {
             console.error('Leaderboard Error:', error);
