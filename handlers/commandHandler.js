@@ -10,17 +10,25 @@ class CommandHandler {
         try {
             console.log('Starting command loading process...');
             
+            // Debug current directory
+            console.log('Current directory:', __dirname);
+            console.log('Parent directory:', path.join(__dirname, '..'));
+            console.log('Root directory files:', fs.readdirSync(path.join(__dirname, '..')));
+            
             // Load regular commands from root/commands
             const commandsPath = path.join(__dirname, '..', 'commands');
-            console.log('Loading commands from:', commandsPath);
+            console.log('Attempting to load commands from:', commandsPath);
             
             if (!fs.existsSync(commandsPath)) {
-                fs.mkdirSync(commandsPath, { recursive: true });
-                console.log('Created commands directory');
+                console.error('Commands directory does not exist at:', commandsPath);
+                return;
             }
 
-            const commandFiles = fs.readdirSync(commandsPath)
-                .filter(file => file.endsWith('.js'));
+            // Check contents of commands directory
+            const commandDirContents = fs.readdirSync(commandsPath);
+            console.log('Commands directory contents:', commandDirContents);
+
+            const commandFiles = commandDirContents.filter(file => file.endsWith('.js'));
             console.log('Found command files:', commandFiles);
 
             for (const file of commandFiles) {
@@ -28,47 +36,54 @@ class CommandHandler {
                     const filePath = path.join(commandsPath, file);
                     console.log('Loading command file:', filePath);
                     
-                    delete require.cache[require.resolve(filePath)];
+                    // Attempt to load the command
                     const command = require(filePath);
+                    console.log('Command module loaded:', command);
                     
                     if (command.name) {
-                        console.log('Loaded command:', command.name);
+                        console.log('Adding command:', command.name);
                         this.commands.set(command.name, command);
+                    } else {
+                        console.warn('Command file missing name property:', file);
                     }
                 } catch (error) {
                     console.error(`Error loading command ${file}:`, error);
                 }
             }
 
-            // Load admin commands from root/commands/admin
+            // Load admin commands
             const adminPath = path.join(commandsPath, 'admin');
-            if (!fs.existsSync(adminPath)) {
-                fs.mkdirSync(adminPath, { recursive: true });
-                console.log('Created admin commands directory');
-            }
+            console.log('Checking for admin directory:', adminPath);
+            
+            if (fs.existsSync(adminPath)) {
+                console.log('Admin directory exists, checking contents');
+                const adminFiles = fs.readdirSync(adminPath)
+                    .filter(file => file.endsWith('.js'));
+                console.log('Found admin files:', adminFiles);
 
-            const adminFiles = fs.readdirSync(adminPath)
-                .filter(file => file.endsWith('.js'));
-            console.log('Found admin files:', adminFiles);
-
-            for (const file of adminFiles) {
-                try {
-                    const filePath = path.join(adminPath, file);
-                    console.log('Loading admin file:', filePath);
-                    
-                    delete require.cache[require.resolve(filePath)];
-                    const command = require(filePath);
-                    
-                    if (command.name) {
-                        console.log('Loaded admin command:', command.name);
-                        this.commands.set(command.name, command);
+                for (const file of adminFiles) {
+                    try {
+                        const filePath = path.join(adminPath, file);
+                        console.log('Loading admin file:', filePath);
+                        
+                        const command = require(filePath);
+                        console.log('Admin command module loaded:', command);
+                        
+                        if (command.name) {
+                            console.log('Adding admin command:', command.name);
+                            this.commands.set(command.name, command);
+                        } else {
+                            console.warn('Admin command file missing name property:', file);
+                        }
+                    } catch (error) {
+                        console.error(`Error loading admin command ${file}:`, error);
                     }
-                } catch (error) {
-                    console.error(`Error loading admin command ${file}:`, error);
                 }
+            } else {
+                console.warn('Admin directory not found at:', adminPath);
             }
 
-            console.log('All loaded commands:', Array.from(this.commands.keys()));
+            console.log('Command loading complete. Available commands:', Array.from(this.commands.keys()));
         } catch (error) {
             console.error('Error in loadCommands:', error);
             throw error;
