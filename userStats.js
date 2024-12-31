@@ -217,7 +217,38 @@ async getAllUsers() {
         throw error;
     }
 }
+async addBonusPoints(username, points, reason) {
+    try {
+        console.log('Adding bonus points to:', username);
+        // Refresh users to ensure the latest data
+        await this.refreshUserList();
 
+        const cleanUsername = username.trim().toLowerCase();
+        const user = this.stats.users[cleanUsername];
+
+        if (!user) {
+            throw new Error(`User ${username} not found`);
+        }
+
+        const year = this.currentYear.toString();
+
+        // Update bonus points
+        if (!user.bonusPoints) {
+            user.bonusPoints = [];
+        }
+        user.bonusPoints.push({ points, reason, year, date: new Date().toISOString() });
+
+        // Update yearly stats
+        user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
+
+        // Save stats
+        await this.saveStats();
+        console.log(`Successfully added ${points} points to ${username} for ${reason}`);
+    } catch (error) {
+        console.error('Error in addBonusPoints:', error);
+        throw error;
+    }
+}
 
     async getUserStats(username) {
         try {
