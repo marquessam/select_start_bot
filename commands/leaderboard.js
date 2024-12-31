@@ -3,13 +3,13 @@ const { fetchLeaderboardData } = require('../raAPI.js');
 
 module.exports = {
     name: 'leaderboard',
-    description: 'Displays current achievement rankings. Use "!leaderboard month" or "!leaderboard year".',
+    description: 'Displays monthly or yearly rankings. Use "!leaderboard month" or "!leaderboard year".',
     async execute(message, args, { userStats }) {
         try {
             const option = args[0]?.toLowerCase();
 
             if (!option || !['month', 'year'].includes(option)) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid query\nSyntax: !leaderboard month | !leaderboard year\n[Ready for input]█\x1b[0m```');
+                await message.channel.send('```ansi\n\x1b[32m[LEADERBOARD OPTIONS]\n1. Input "!leaderboard month" for the monthly leaderboard\n2. Input "!leaderboard year" for the yearly leaderboard\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
