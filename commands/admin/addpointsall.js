@@ -73,7 +73,7 @@ module.exports = {
 
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !yearlyboard to verify points\n[Ready for input]█\x1b[0m```');
+            await message.channel.send('```ansi\n\x1b[32m> Type !leaderboard year to verify points\n[Ready for input]█\x1b[0m```');
 
         } catch (error) {
             console.error('Add Points All Error:', error);
