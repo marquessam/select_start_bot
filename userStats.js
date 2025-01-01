@@ -241,6 +241,9 @@ async addBonusPoints(username, points, reason) {
         // Update yearly stats
         user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
 
+         // Update bonus points with reason
+        userStats.bonusPoints.push({ year: currentYear, points, reason });
+
         // Save stats
         await this.saveStats();
         console.log(`Successfully added ${points} points to ${username} for ${reason}`);
