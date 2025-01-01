@@ -1,6 +1,4 @@
-// addpoints.js
 const TerminalEmbed = require('../../utils/embedBuilder');
-const database = require('../../database');
 
 module.exports = {
     name: 'addpoints',
@@ -12,7 +10,7 @@ module.exports = {
                 return;
             }
 
-            const username = args[0];
+            const username = args[0].toLowerCase();
             const points = parseInt(args[1]);
             const reason = args.slice(2).join(' ');
 
@@ -21,24 +19,20 @@ module.exports = {
                 return;
             }
 
-            // Verify user exists in database
             const validUsers = await userStats.getAllUsers();
-            if (!validUsers.includes(username.toLowerCase())) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in participant list\n[Ready for input]█\x1b[0m```');
+            if (!validUsers.includes(username)) {
+                await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" not found\n[Ready for input]█\x1b[0m\`\`\``);
                 return;
             }
 
             await message.channel.send('```ansi\n\x1b[32m> Processing points allocation...\x1b[0m\n```');
-            
-            // Get current stats for verification
+
             const beforeStats = await userStats.getUserStats(username);
             const currentYear = new Date().getFullYear().toString();
             const pointsBefore = beforeStats.yearlyPoints[currentYear] || 0;
 
-            // Add points
             await userStats.addBonusPoints(username, points, reason);
 
-            // Get updated stats for verification
             const afterStats = await userStats.getUserStats(username);
             const pointsAfter = afterStats.yearlyPoints[currentYear] || 0;
 
@@ -52,11 +46,11 @@ module.exports = {
                 .addTerminalField('VERIFICATION',
                     `POINTS BEFORE: ${pointsBefore}\n` +
                     `POINTS AFTER: ${pointsAfter}\n` +
-                    `CHANGE: ${pointsAfter - pointsBefore}`)
+                    `CHANGE: ${points}`)
                 .setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !profile ' + username + ' to verify points\n[Ready for input]█\x1b[0m```');
+            await message.channel.send(`\`\`\`ansi\n\x1b[32m> Type !profile ${username} to verify points\n[Ready for input]█\x1b[0m\`\`\``);
         } catch (error) {
             console.error('Add Points Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to allocate points\n[Ready for input]█\x1b[0m```');
