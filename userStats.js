@@ -256,12 +256,12 @@ async resetUserPoints(username) {
         const user = this.stats.users[cleanUsername];
 
         if (!user) {
-            throw new Error(`User ${username} not found.`);
+            throw new Error(`User "${username}" not found.`);
         }
 
         const currentYear = new Date().getFullYear().toString();
 
-        // Reset points for the user
+        // Reset yearly points
         user.yearlyPoints[currentYear] = 0;
 
         // Clear monthly achievements for the current year
@@ -280,6 +280,7 @@ async resetUserPoints(username) {
         throw error;
     }
 }
+
     async getUserStats(username) {
         try {
             const cleanUsername = username.trim().toLowerCase();
