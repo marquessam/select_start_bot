@@ -220,6 +220,7 @@ async getAllUsers() {
 async addBonusPoints(username, points, reason) {
     try {
         console.log('Adding bonus points to:', username);
+
         // Refresh users to ensure the latest data
         await this.refreshUserList();
 
@@ -240,9 +241,6 @@ async addBonusPoints(username, points, reason) {
 
         // Update yearly stats
         user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
-
-         // Update bonus points with reason
-        userStats.bonusPoints.push({ year: currentYear, points, reason });
 
         // Save stats
         await this.saveStats();
