@@ -36,7 +36,7 @@ module.exports = {
             let currentRank = 1;
             let sameRankCount = 0;
             let lastPoints = -1;
-            const rankedYearlyLeaderboard = adjustedYearlyLeaderboard.sort((a, b) => b.points - a.points).map((user, index) => {
+            const rankedYearlyLeaderboard = adjustedYearlyLeaderboard.map((user, index) => {
                 if (user.points !== lastPoints) {
                     currentRank += sameRankCount;
                     sameRankCount = 0;
@@ -78,6 +78,16 @@ module.exports = {
                 ? `${monthlyRank.rank}/${data.leaderboard.length}${monthlyRank.tie ? ' (tie)' : ''}`
                 : 'N/A';
 
+            // Filter bonus points for the current year
+            const recentBonusPoints = (stats.bonusPoints || [])
+                .filter(bonus => bonus.year === currentYear)
+                .map(bonus => `${bonus.reason}: ${bonus.points} pts`)
+                .join('\n');
+
+            const totalBonusPoints = stats.bonusPoints
+                .filter(bonus => bonus.year === currentYear)
+                .reduce((acc, bonus) => acc + bonus.points, 0);
+
             // Construct profile embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
@@ -95,16 +105,9 @@ module.exports = {
                     `GAMES COMPLETED: ${stats.yearlyStats?.[currentYear]?.totalGamesCompleted || 0}\n` +
                     `ACHIEVEMENTS UNLOCKED: ${stats.yearlyStats?.[currentYear]?.totalAchievementsUnlocked || 0}\n` +
                     `HARDCORE COMPLETIONS: ${stats.yearlyStats?.[currentYear]?.hardcoreCompletions || 0}\n` +
-                    `MONTHLY PARTICIPATIONS: ${stats.yearlyStats?.[currentYear]?.monthlyParticipations || 0}`);
-
-            const recentBonusPoints = (stats.bonusPoints || [])
-                .filter(bonus => bonus.year === currentYear)
-                .map(bonus => `${bonus.reason}: ${bonus.points} pts`)
-                .join('\n');
-
-            const totalBonusPoints = stats.bonusPoints.reduce((acc, bonus) => acc + bonus.points, 0);
-            embed.addTerminalField('POINTS', `${recentBonusPoints}\nTotal: ${totalBonusPoints} pts`);
-            embed.setTerminalFooter();
+                    `MONTHLY PARTICIPATIONS: ${stats.yearlyStats?.[currentYear]?.monthlyParticipations || 0}`)
+                .addTerminalField('POINTS', `${recentBonusPoints}\nTotal: ${totalBonusPoints} pts`)
+                .setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
@@ -114,4 +117,3 @@ module.exports = {
         }
     },
 };
-
