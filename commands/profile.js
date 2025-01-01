@@ -36,7 +36,7 @@ module.exports = {
             let currentRank = 1;
             let sameRankCount = 0;
             let lastPoints = -1;
-            const rankedYearlyLeaderboard = adjustedYearlyLeaderboard.map((user, index) => {
+            const rankedYearlyLeaderboard = adjustedYearlyLeaderboard.sort((a, b) => b.points - a.points).map((user, index) => {
                 if (user.points !== lastPoints) {
                     currentRank += sameRankCount;
                     sameRankCount = 0;
@@ -114,3 +114,4 @@ module.exports = {
         }
     },
 };
+
