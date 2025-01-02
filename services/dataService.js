@@ -41,9 +41,8 @@ class DataService {
             totalAchievements: 0,
         };
     }
-}
 
- static async getRAProfileImage(username) {
+    static async getRAProfileImage(username) {
         try {
             const profile = await raAPI.getUserProfile(username); // Replace with the correct API method
             return profile?.imageURL || null; // Adjust property based on RA API response
