@@ -8,7 +8,7 @@ module.exports = {
     description: 'Displays enhanced user profile and stats',
     async execute(message, args) {
         try {
-            const username = args[0];
+            const username = args[0]?.toLowerCase();
             if (!username) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid query\nSyntax: !profile <username>\n[Ready for input]█\x1b[0m```');
                 return;
@@ -25,6 +25,13 @@ module.exports = {
             const userStats = await database.getUserStats(username);
             const currentChallenge = await database.getCurrentChallenge();
 
+            // Validate user exists in the Google Sheet
+            const validUsers = leaderboardCache.getValidUsers(); // Assume `leaderboardCache` has this method
+            if (!validUsers.includes(username)) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in participant list\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
             // Ensure stats exist for the current year
             const yearlyPoints = userStats.yearlyPoints?.[currentYear] || 0;
             const yearlyStats = userStats.yearlyStats?.[currentYear] || {
@@ -34,52 +41,31 @@ module.exports = {
                 monthlyParticipations: 0,
             };
 
+            // Filter bonus points for the current year
+            const bonusPoints = userStats.bonusPoints?.filter(bonus => bonus.year === currentYear) || [];
+            const recentBonusPoints = bonusPoints
+                .map(bonus => `${bonus.reason}: ${bonus.points} pts`)
+                .join('\n') || 'No bonus points yet.';
+            const totalBonusPoints = bonusPoints.reduce((acc, bonus) => acc + bonus.points, 0);
+
             // Determine user's rank and handle ties
-            let currentRank = 1;
-            let tieCount = 0;
-            let lastPoints = -1;
+            const yearlyRank = yearlyLeaderboard.findIndex(user => user.username === username) + 1;
+            const monthlyRank = monthlyLeaderboard.findIndex(user => user.username === username) + 1;
 
-            const rankedYearlyLeaderboard = yearlyLeaderboard.map((user, index) => {
-                if (user.points !== lastPoints) {
-                    currentRank += tieCount;
-                    tieCount = 0;
-                    lastPoints = user.points;
-                } else {
-                    tieCount++;
-                }
-
-                return {
-                    ...user,
-                    rank: currentRank,
-                };
-            });
-
-            const userYearlyData = rankedYearlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase());
-            const yearlyRankText = userYearlyData
-                ? `${userYearlyData.rank}/${rankedYearlyLeaderboard.length} (tie)`
+            const yearlyRankText = yearlyRank
+                ? `${yearlyRank}/${yearlyLeaderboard.length} (tie)`
                 : 'N/A';
 
-            // Determine monthly data
-            const monthlyData = monthlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase()) || {
+            const monthlyRankText = monthlyRank
+                ? `${monthlyRank}/${monthlyLeaderboard.length} (tie)`
+                : 'N/A';
+
+            // Monthly data
+            const monthlyData = monthlyLeaderboard.find(user => user.username === username) || {
                 completionPercentage: 0,
                 completedAchievements: 0,
                 totalAchievements: 0,
             };
-
-            const monthlyRank = monthlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
-            const monthlyRankText = monthlyRank >= 0
-                ? `${monthlyRank + 1}/${monthlyLeaderboard.length} (tie)`
-                : 'N/A';
-
-            // Filter bonus points for the current year
-            const recentBonusPoints = (userStats.bonusPoints || [])
-                .filter(bonus => bonus.year === currentYear)
-                .map(bonus => `${bonus.reason}: ${bonus.points} pts`)
-                .join('\n');
-
-            const totalBonusPoints = (userStats.bonusPoints || [])
-                .filter(bonus => bonus.year === currentYear)
-                .reduce((acc, bonus) => acc + bonus.points, 0);
 
             // Construct profile embed
             const embed = new TerminalEmbed()
@@ -98,7 +84,8 @@ module.exports = {
                     `ACHIEVEMENTS UNLOCKED: ${yearlyStats.totalAchievementsUnlocked}\n` +
                     `HARDCORE COMPLETIONS: ${yearlyStats.hardcoreCompletions}\n` +
                     `MONTHLY PARTICIPATIONS: ${yearlyStats.monthlyParticipations}`)
-                .addTerminalField('POINTS', `${recentBonusPoints}\nTotal: ${totalBonusPoints} pts`);
+                .addTerminalField('POINTS BREAKDOWN',
+                    `${recentBonusPoints}\nTotal Points: ${totalBonusPoints}`);
 
             if (userProfile?.profileImage?.startsWith('http')) {
                 embed.setThumbnail(userProfile.profileImage);
