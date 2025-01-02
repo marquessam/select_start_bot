@@ -24,17 +24,24 @@ module.exports = {
             const userProfile = await fetchUserProfile(username);
             const userStats = await database.getUserStats(username);
 
-            // Find user's rank and stats in leaderboards
-            const yearlyRank = yearlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase()) + 1;
-            const monthlyRank = monthlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase()) + 1;
+            // Determine user's rank and stats in leaderboards
+            const yearlyRankIndex = yearlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
+            const monthlyRankIndex = monthlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
 
-            const yearlyRankText = yearlyRank
-                ? `${yearlyRank}/${yearlyLeaderboard.length} (tie)`
+            const yearlyRankText = yearlyRankIndex >= 0
+                ? `${yearlyRankIndex + 1}/${yearlyLeaderboard.length} (tie)`
                 : 'N/A';
 
-            const monthlyRankText = monthlyRank
-                ? `${monthlyRank}/${monthlyLeaderboard.length} (tie)`
+            const monthlyRankText = monthlyRankIndex >= 0
+                ? `${monthlyRankIndex + 1}/${monthlyLeaderboard.length} (tie)`
                 : 'N/A';
+
+            // Get user data from monthly leaderboard
+            const monthlyData = monthlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase()) || {
+                completionPercentage: 0,
+                completedAchievements: 0,
+                totalAchievements: 0
+            };
 
             // Filter bonus points for the current year
             const recentBonusPoints = (userStats.bonusPoints || [])
@@ -51,10 +58,9 @@ module.exports = {
                 .setTerminalTitle(`USER PROFILE: ${username}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
                 .addTerminalField('CURRENT CHALLENGE PROGRESS',
-                    `GAME: ${leaderboardCache.getMonthlyGame()?.Title || 'N/A'}\n` +
-                    `PROGRESS: ${monthlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase())?.completionPercentage || 0}%\n` +
-                    `ACHIEVEMENTS: ${monthlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase())?.completedAchievements || 0}/` +
-                    `${monthlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase())?.totalAchievements || 0}`)
+                    `GAME: ${leaderboardCache.getMonthlyLeaderboard()?.Title || 'N/A'}\n` +
+                    `PROGRESS: ${monthlyData.completionPercentage || 0}%\n` +
+                    `ACHIEVEMENTS: ${monthlyData.completedAchievements}/${monthlyData.totalAchievements}`)
                 .addTerminalField('RANKINGS',
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
@@ -66,7 +72,7 @@ module.exports = {
                     `MONTHLY PARTICIPATIONS: ${userStats.yearlyStats?.[currentYear]?.monthlyParticipations || 0}`)
                 .addTerminalField('POINTS', `${recentBonusPoints}\nTotal: ${totalBonusPoints} pts`);
 
-            if (userProfile.profileImage && userProfile.profileImage.startsWith('http')) {
+            if (userProfile?.profileImage?.startsWith('http')) {
                 embed.setThumbnail(userProfile.profileImage);
             }
 
