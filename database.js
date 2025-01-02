@@ -1,4 +1,5 @@
 const { MongoClient } = require('mongodb');
+const ErrorHandler = require('./utils/errorHandler');
 
 class Database {
     constructor() {
@@ -6,35 +7,34 @@ class Database {
         this.db = null;
     }
 
-    async connect() {
-        try {
-            if (!process.env.MONGODB_URI) {
-                throw new Error('MONGODB_URI environment variable is not defined');
-            }
-
-            if (!this.client) {
-                this.client = new MongoClient(process.env.MONGODB_URI, {
-                    maxPoolSize: 10, // Maximum number of connections
-                    minPoolSize: 5  // Minimum number of connections
-                });
-
-                await this.client.connect();
-                this.db = this.client.db(process.env.DB_NAME || 'selectstart');
-                console.log('Connected to MongoDB');
-
-                this.client.on('error', (error) => {
-                    console.error('MongoDB connection error:', error);
-                    this.reconnect();
-                });
-
-                // Initialize indexes
-                await this.createIndexes();
-            }
-        } catch (error) {
-            console.error('MongoDB connection error:', error);
-            throw error;
+  async connect() {
+    try {
+        if (!process.env.MONGODB_URI) {
+            throw new Error('MONGODB_URI environment variable is not defined');
         }
+
+        if (!this.client) {
+            this.client = new MongoClient(process.env.MONGODB_URI, {
+                maxPoolSize: 10, // Maximum number of connections
+                minPoolSize: 5  // Minimum number of connections
+            });
+
+            await this.client.connect();
+            this.db = this.client.db(process.env.DB_NAME || 'selectstart');
+            console.log('Connected to MongoDB');
+
+            this.client.on('error', (error) => {
+                ErrorHandler.logError(error, 'MongoDB Client');
+                this.reconnect();
+            });
+
+            await this.createIndexes();
+        }
+    } catch (error) {
+        ErrorHandler.logError(error, 'Database Connect');
+        throw error;
     }
+}
 
     async createIndexes() {
         try {
@@ -61,29 +61,30 @@ class Database {
     }
 
     async reconnect() {
-        console.log('Attempting to reconnect to MongoDB...');
-        try {
-            await this.disconnect();
-            await this.connect();
-        } catch (error) {
-            console.error('Failed to reconnect:', error);
-            setTimeout(() => this.reconnect(), 5000);
-        }
+    console.log('Attempting to reconnect to MongoDB...');
+    try {
+        await this.disconnect();
+        await this.connect();
+    } catch (error) {
+        ErrorHandler.logError(error, 'Database Reconnect');
+        setTimeout(() => this.reconnect(), 5000); // Retry after delay
     }
+}
 
-    async disconnect() {
-        try {
-            if (this.client) {
-                await this.client.close();
-                this.client = null;
-                this.db = null;
-                console.log('Disconnected from MongoDB');
-            }
-        } catch (error) {
-            console.error('Error disconnecting from MongoDB:', error);
-            throw error;
+
+  async disconnect() {
+    try {
+        if (this.client) {
+            await this.client.close();
+            this.client = null;
+            this.db = null;
+            console.log('Disconnected from MongoDB');
         }
+    } catch (error) {
+        ErrorHandler.logError(error, 'Database Disconnect');
+        throw error;
     }
+}
 
     async getCollection(collectionName) {
         if (!this.db) {
@@ -92,7 +93,8 @@ class Database {
         return this.db.collection(collectionName);
     }
 
-    async getUserStats() {
+  async getUserStats() {
+    try {
         const collection = await this.getCollection('userstats');
         const stats = await collection.findOne({ _id: 'stats' });
         const year = new Date().getFullYear().toString();
@@ -126,7 +128,12 @@ class Database {
                 }
             }
         };
+    } catch (error) {
+        ErrorHandler.logError(error, 'Get User Stats');
+        throw error;
     }
+}
+
 
     async saveUserStats(stats) {
         const collection = await this.getCollection('userstats');
