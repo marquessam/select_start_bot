@@ -231,6 +231,45 @@ async removeUser(username) {
         return []; // Return empty leaderboard instead of throwing error
     }
 }
+    async updateMonthlyParticipation(data) {
+    try {
+        const currentYear = new Date().getFullYear().toString();
+
+        // Get all users who have at least one achievement
+        const participants = data.leaderboard.filter(user => user.completedAchievements > 0);
+
+        // Update participation count for each user
+        for (const user of participants) {
+            const username = user.username.toLowerCase();
+            if (!this.stats.users[username]) continue;
+
+            // Initialize yearly stats if needed
+            if (!this.stats.users[username].yearlyStats[currentYear]) {
+                this.stats.users[username].yearlyStats[currentYear] = {
+                    monthlyParticipations: 0
+                };
+            }
+
+            // Increment participation count if this is a new month
+            const currentMonth = new Date().getMonth();
+            const participationKey = `${currentYear}-${currentMonth}`;
+            
+            if (!this.stats.users[username].participationMonths) {
+                this.stats.users[username].participationMonths = [];
+            }
+
+            if (!this.stats.users[username].participationMonths.includes(participationKey)) {
+                this.stats.users[username].participationMonths.push(participationKey);
+                this.stats.users[username].yearlyStats[currentYear].monthlyParticipations++;
+                console.log(`Updated participation for ${username}: ${this.stats.users[username].yearlyStats[currentYear].monthlyParticipations}`);
+            }
+        }
+
+        await this.saveStats();
+    } catch (error) {
+        console.error('Error updating monthly participation:', error);
+    }
+}
     
 async addBonusPoints(username, points, reason) {
     try {
