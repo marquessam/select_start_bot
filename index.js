@@ -24,21 +24,17 @@ const userStats = new UserStats();
 const commandHandler = new CommandHandler();
 const ANNOUNCEMENT_CHANNEL_ID = process.env.ANNOUNCEMENT_CHANNEL_ID;
 
-// Initialize leaderboard cache with error handling
-setInterval(() => {
-    try {
-        leaderboardCache.updateLeaderboards();
-    } catch (error) {
-        console.error('Error updating leaderboard cache:', error);
-    }
-}, 60 * 60 * 1000); // Update every hour
+const UserStats = require('./userStats');
+const leaderboardCache = require('./leaderboardCache');
+const userStats = new UserStats();
 
-// Initial leaderboard cache update
-try {
+// Pass userStats to leaderboardCache
+leaderboardCache.setUserStats(userStats);
+
+// Start periodic updates
+setInterval(() => {
     leaderboardCache.updateLeaderboards();
-} catch (error) {
-    console.error('Error during initial leaderboard cache update:', error);
-}
+}, 60 * 60 * 1000); // 1 hour
 
 // Debug logs at startup
 console.log('=== DEBUG START ===');
