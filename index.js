@@ -1,26 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const leaderboardCache = require('./leaderboardCache');
-// Update leaderboards every hour
-setInterval(() => {
-    leaderboardCache.updateLeaderboards();
-}, 60 * 60 * 1000); // 1 hour
-
-// Initial load
-leaderboardCache.updateLeaderboards();
-
-// Debug logs at startup
-console.log('=== DEBUG START ===');
-console.log('Current directory:', __dirname);
-console.log('Directory contents:', fs.readdirSync(__dirname));
-
-if (fs.existsSync(path.join(__dirname, 'commands'))) {
-    console.log('Commands directory contents:', fs.readdirSync(path.join(__dirname, 'commands')));
-} else {
-    console.log('Commands directory not found!');
-}
-
-
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const ShadowGame = require('./shadowGame.js');
@@ -29,13 +9,14 @@ const CommandHandler = require('./handlers/commandHandler.js');
 const Announcer = require('./utils/announcer');
 const database = require('./database');
 
+// Create client with necessary intents
 const client = new Client({
-   intents: [
-       GatewayIntentBits.Guilds,
-       GatewayIntentBits.GuildMessages,
-       GatewayIntentBits.MessageContent,
-       GatewayIntentBits.GuildMembers
-   ]
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
+    ]
 });
 
 let shadowGame;
@@ -43,36 +24,61 @@ const userStats = new UserStats();
 const commandHandler = new CommandHandler();
 const ANNOUNCEMENT_CHANNEL_ID = process.env.ANNOUNCEMENT_CHANNEL_ID;
 
+// Initialize leaderboard cache with error handling
+setInterval(() => {
+    try {
+        leaderboardCache.updateLeaderboards();
+    } catch (error) {
+        console.error('Error updating leaderboard cache:', error);
+    }
+}, 60 * 60 * 1000); // Update every hour
+
+// Initial leaderboard cache update
+try {
+    leaderboardCache.updateLeaderboards();
+} catch (error) {
+    console.error('Error during initial leaderboard cache update:', error);
+}
+
+// Debug logs at startup
+console.log('=== DEBUG START ===');
+console.log('Current directory:', __dirname);
+console.log('Directory contents:', fs.readdirSync(__dirname));
+if (fs.existsSync(path.join(__dirname, 'commands'))) {
+    console.log('Commands directory contents:', fs.readdirSync(path.join(__dirname, 'commands')));
+} else {
+    console.log('Commands directory not found!');
+}
+
 // Create announcer after client is initialized
 const announcer = new Announcer(client, userStats, ANNOUNCEMENT_CHANNEL_ID);
 
 client.once('ready', async () => {
-   console.log(`Logged in as ${client.user.tag}!`);
-   try {
-       // Initialize MongoDB connection
-       await database.connect();
-       console.log('MongoDB connected successfully');
+    console.log(`Logged in as ${client.user.tag}!`);
 
-       // Initialize bot components
-       shadowGame = new ShadowGame();
-       await shadowGame.loadConfig();
-       await userStats.loadStats();
-       await announcer.initialize();
+    try {
+        // Initialize MongoDB connection
+        await database.connect();
+        console.log('MongoDB connected successfully');
 
-       // Load commands with dependencies
-       await commandHandler.loadCommands({
-           shadowGame,
-           userStats,
-           announcer
-       });
+        // Initialize bot components
+        shadowGame = new ShadowGame();
+        await shadowGame.loadConfig();
+        await userStats.loadStats();
+        await announcer.initialize();
 
-       console.log('Command handler initialized with commands:', 
-           Array.from(commandHandler.commands.keys()));
+        // Load commands with dependencies
+        await commandHandler.loadCommands({
+            shadowGame,
+            userStats,
+            announcer
+        });
 
-       console.log('Bot initialized successfully');
-   } catch (error) {
-       console.error('Error during initialization:', error);
-   }
+        console.log('Command handler initialized with commands:', Array.from(commandHandler.commands.keys()));
+        console.log('Bot initialized successfully');
+    } catch (error) {
+        console.error('Error during initialization:', error);
+    }
 });
 
 client.on('messageCreate', async message => {
@@ -80,7 +86,6 @@ client.on('messageCreate', async message => {
 
     try {
         console.log('Message received:', message.content);
-        console.log('Available commands:', Array.from(commandHandler.commands.keys()));
 
         // Only check shadow game if it was initialized successfully
         if (shadowGame) {
@@ -95,6 +100,22 @@ client.on('messageCreate', async message => {
         });
     } catch (error) {
         console.error('Error processing message:', error);
+    }
+});
+
+// Graceful shutdown handling
+process.on('SIGINT', async () => {
+    console.log('Shutting down bot...');
+
+    try {
+        // Disconnect database and destroy client
+        await database.disconnect();
+        client.destroy();
+        console.log('Bot shut down successfully');
+    } catch (error) {
+        console.error('Error during shutdown:', error);
+    } finally {
+        process.exit(0);
     }
 });
 
