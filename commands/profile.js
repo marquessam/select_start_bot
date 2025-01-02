@@ -1,6 +1,7 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const leaderboardCache = require('../leaderboardCache');
 const { fetchUserProfile } = require('../raAPI');
+const { fetchLeaderboardData } = require('./leaderboard');
 const database = require('../database');
 
 // Helper function to calculate rank
