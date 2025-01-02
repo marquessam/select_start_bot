@@ -1,6 +1,6 @@
 const TerminalEmbed = require('../utils/embedBuilder');
-const database = require('../database');
 const leaderboardCache = require('../leaderboardCache');
+const database = require('../database');
 
 module.exports = {
     name: 'profile',
@@ -16,39 +16,34 @@ module.exports = {
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
             const currentYear = new Date().getFullYear().toString();
-            const stats = await userStats.getUserStats(username);
-            const currentChallenge = await database.getCurrentChallenge();
-
-            // Fetch cached leaderboards
-            const yearlyLeaderboard = leaderboardCache.getYearlyLeaderboard();
             const monthlyLeaderboard = leaderboardCache.getMonthlyLeaderboard();
+            const yearlyLeaderboard = leaderboardCache.getYearlyLeaderboard();
 
-            if (!yearlyLeaderboard || !monthlyLeaderboard) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Leaderboard data not available. Please try again later.\n[Ready for input]█\x1b[0m```');
-                return;
-            }
-
-            // Find user's yearly rank
-            const yearlyUser = yearlyLeaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
-            const yearlyRankText = yearlyUser
-                ? `${yearlyUser.rank}/${yearlyLeaderboard.length} (tie)`
-                : 'N/A';
+            // Fetch user stats
+            const stats = await userStats.getUserStats(username);
 
             // Find user's monthly rank
-            const monthlyUser = monthlyLeaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
-            const monthlyRankText = monthlyUser
-                ? `${monthlyUser.rank}/${monthlyLeaderboard.length}${monthlyUser.tie ? ' (tie)' : ''}`
+            const monthlyRankData = monthlyLeaderboard.find((user) => user.username.toLowerCase() === username.toLowerCase());
+            const monthlyRank = monthlyLeaderboard.findIndex((user) => user.username.toLowerCase() === username.toLowerCase()) + 1;
+            const monthlyRankText = monthlyRankData
+                ? `${monthlyRank}/${monthlyLeaderboard.length}${monthlyRank > 1 ? ' (tie)' : ''}`
                 : 'N/A';
 
-            // Construct profile embed
+            // Find user's yearly rank
+            const yearlyRankData = yearlyLeaderboard.find((user) => user.username.toLowerCase() === username.toLowerCase());
+            const yearlyRank = yearlyLeaderboard.findIndex((user) => user.username.toLowerCase() === username.toLowerCase()) + 1;
+            const yearlyRankText = yearlyRankData
+                ? `${yearlyRank}/${yearlyLeaderboard.length}${yearlyRank > 1 ? ' (tie)' : ''}`
+                : 'N/A';
+
+            // Build the profile embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
                 .addTerminalField('CURRENT CHALLENGE PROGRESS',
-                    `GAME: ${currentChallenge.gameName}\n` +
-                    `PROGRESS: ${monthlyUser?.completionPercentage || 0}%\n` +
-                    `ACHIEVEMENTS: ${monthlyUser?.completedAchievements || 0}/` +
-                    `${monthlyUser?.totalAchievements || 0}`)
+                    `GAME: ${leaderboardCache.getMonthlyGame() || 'N/A'}\n` +
+                    `PROGRESS: ${monthlyRankData?.completionPercentage || 0}%\n` +
+                    `ACHIEVEMENTS: ${monthlyRankData?.completedAchievements || 0}/${monthlyRankData?.totalAchievements || 0}`)
                 .addTerminalField('RANKINGS',
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
@@ -60,14 +55,11 @@ module.exports = {
                     `MONTHLY PARTICIPATIONS: ${stats.yearlyStats?.[currentYear]?.monthlyParticipations || 0}`);
 
             const recentBonusPoints = (stats.bonusPoints || [])
-                .filter(bonus => bonus.year === currentYear)
-                .map(bonus => `${bonus.reason}: ${bonus.points} pts`)
+                .filter((bonus) => bonus.year === currentYear)
+                .map((bonus) => `${bonus.reason}: ${bonus.points} pts`)
                 .join('\n');
 
-            const totalBonusPoints = stats.bonusPoints
-                .filter(bonus => bonus.year === currentYear)
-                .reduce((acc, bonus) => acc + bonus.points, 0);
-
+            const totalBonusPoints = stats.bonusPoints.reduce((acc, bonus) => acc + bonus.points, 0);
             embed.addTerminalField('POINTS', `${recentBonusPoints}\nTotal: ${totalBonusPoints} pts`);
             embed.setTerminalFooter();
 
