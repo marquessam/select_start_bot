@@ -12,19 +12,21 @@ class Database {
                 throw new Error('MONGODB_URI environment variable is not defined');
             }
 
-            this.client = new MongoClient(process.env.MONGODB_URI, {
-                maxPoolSize: 10
-            });
-            
-            await this.client.connect();
-            this.db = this.client.db('selectstart');
-            console.log('Connected to MongoDB');
+            if (!this.client) {
+                this.client = new MongoClient(process.env.MONGODB_URI, {
+                    maxPoolSize: 10, // Maximum number of connections
+                    minPoolSize: 5  // Minimum number of connections
+                });
 
-            this.client.on('error', (error) => {
-                console.error('MongoDB connection error:', error);
-                this.reconnect();
-            });
+                await this.client.connect();
+                this.db = this.client.db(process.env.DB_NAME || 'selectstart');
+                console.log('Connected to MongoDB');
 
+                this.client.on('error', (error) => {
+                    console.error('MongoDB connection error:', error);
+                    this.reconnect();
+                });
+            }
         } catch (error) {
             console.error('MongoDB connection error:', error);
             throw error;
@@ -56,8 +58,15 @@ class Database {
         }
     }
 
+    async getCollection(collectionName) {
+        if (!this.db) {
+            throw new Error('Database not initialized. Call `connect()` first.');
+        }
+        return this.db.collection(collectionName);
+    }
+
     async getUserStats() {
-        const collection = this.db.collection('userstats');
+        const collection = await this.getCollection('userstats');
         const stats = await collection.findOne({ _id: 'stats' });
         const year = new Date().getFullYear().toString();
 
@@ -93,7 +102,7 @@ class Database {
     }
 
     async saveUserStats(stats) {
-        const collection = this.db.collection('userstats');
+        const collection = await this.getCollection('userstats');
         await collection.updateOne(
             { _id: 'stats' },
             { $set: stats },
@@ -102,7 +111,7 @@ class Database {
     }
 
     async getCommunityRecords() {
-        const collection = this.db.collection('records');
+        const collection = await this.getCollection('records');
         const records = await collection.findOne({ _id: 'records' });
         const year = new Date().getFullYear().toString();
 
@@ -141,7 +150,7 @@ class Database {
     }
 
     async saveCommunityRecords(records) {
-        const collection = this.db.collection('records');
+        const collection = await this.getCollection('records');
         await collection.updateOne(
             { _id: 'records' },
             { $set: records },
@@ -151,7 +160,7 @@ class Database {
 
     async getCurrentChallenge() {
         try {
-            const collection = this.db.collection('challenges');
+            const collection = await this.getCollection('challenges');
             const challenge = await collection.findOne({ _id: 'current' });
             return challenge || {
                 gameId: "",
@@ -187,7 +196,7 @@ class Database {
     }
 
     async saveCurrentChallenge(challenge) {
-        const collection = this.db.collection('challenges');
+        const collection = await this.getCollection('challenges');
         await collection.updateOne(
             { _id: 'current' },
             { $set: challenge },
@@ -196,13 +205,13 @@ class Database {
     }
 
     async getNextChallenge() {
-        const collection = this.db.collection('challenges');
+        const collection = await this.getCollection('challenges');
         const challenge = await collection.findOne({ _id: 'next' });
         return challenge || null;
     }
 
     async saveNextChallenge(challenge) {
-        const collection = this.db.collection('challenges');
+        const collection = await this.getCollection('challenges');
         await collection.updateOne(
             { _id: 'next' },
             { $set: challenge },
@@ -211,7 +220,7 @@ class Database {
     }
 
     async getConfiguration() {
-        const collection = this.db.collection('config');
+        const collection = await this.getCollection('config');
         const config = await collection.findOne({ _id: 'settings' });
         return config || {
             defaultRules: [
@@ -248,19 +257,19 @@ class Database {
     }
 
     async saveConfiguration(config) {
-        const collection = this.db.collection('config');
+        const collection = await this.getCollection('config');
         await collection.updateOne(
             { _id: 'settings' },
             { $set: config },
             { upsert: true }
         );
     }
-    
-   async removeUser(username) {
+
+    async removeUser(username) {
         try {
             const cleanUsername = username.trim().toLowerCase();
             const stats = await this.getUserStats();
-            
+
             if (stats && stats.users && stats.users[cleanUsername]) {
                 delete stats.users[cleanUsername];
                 await this.saveUserStats(stats);
@@ -275,9 +284,9 @@ class Database {
             throw error;
         }
     }
-    
+
     async getShadowGame() {
-        const collection = this.db.collection('shadowgame');
+        const collection = await this.getCollection('shadowgame');
         const game = await collection.findOne({ _id: 'current' });
         return game || {
             active: false,
@@ -292,7 +301,7 @@ class Database {
     }
 
     async saveShadowGame(game) {
-        const collection = this.db.collection('shadowgame');
+        const collection = await this.getCollection('shadowgame');
         await collection.updateOne(
             { _id: 'current' },
             { $set: game },
@@ -301,7 +310,7 @@ class Database {
     }
 
     async getHighScores() {
-        const collection = this.db.collection('highscores');
+        const collection = await this.getCollection('highscores');
         const highscores = await collection.findOne({ _id: 'highscores' });
         return highscores || {
             games: {
@@ -318,7 +327,7 @@ class Database {
     }
 
     async saveHighScores(highscores) {
-        const collection = this.db.collection('highscores');
+        const collection = await this.getCollection('highscores');
         await collection.updateOne(
             { _id: 'highscores' },
             { $set: highscores },
