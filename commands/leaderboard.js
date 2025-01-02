@@ -180,3 +180,5 @@ module.exports = {
         }
     }
 };
+
+module.exports = { fetchLeaderboardData };
