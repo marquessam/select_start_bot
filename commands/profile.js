@@ -3,6 +3,13 @@ const leaderboardCache = require('../leaderboardCache');
 const { fetchUserProfile } = require('../raAPI');
 const database = require('../database');
 
+// Helper function to calculate rank
+function calculateRank(username, leaderboard, rankMetric) {
+    const sortedLeaderboard = leaderboard.sort((a, b) => rankMetric(b) - rankMetric(a));
+    const rank = sortedLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase()) + 1;
+    return rank > 0 ? `#${rank}` : 'Unranked';
+}
+
 module.exports = {
     name: 'profile',
     description: 'Displays enhanced user profile and stats',
