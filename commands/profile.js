@@ -26,11 +26,18 @@ module.exports = {
             const currentChallenge = await database.getCurrentChallenge();
 
             // Validate user exists in the Google Sheet
-            const validUsers = leaderboardCache.getValidUsers(); // Assume `leaderboardCache` has this method
-            if (!validUsers.includes(username)) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found in participant list\n[Ready for input]█\x1b[0m```');
-                return;
-            }
+            const validUsers = leaderboardCache.getValidUsers();
+
+if (!validUsers) {
+    await message.channel.send('```ansi\n\x1b[32m[ERROR] User list not available. Try again later.\n[Ready for input]█\x1b[0m```');
+    return;
+}
+
+if (!validUsers.includes(username.toLowerCase())) {
+    await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" not found in the participant list.\n[Ready for input]█\x1b[0m\`\`\``);
+    return;
+}
+
 
             // Ensure stats exist for the current year
             const yearlyPoints = userStats.yearlyPoints?.[currentYear] || 0;
