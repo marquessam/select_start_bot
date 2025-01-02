@@ -43,14 +43,14 @@ class DataService {
     }
 
     static async getRAProfileImage(username) {
-        try {
-            const profile = await raAPI.getUserProfile(username); // Replace with the correct API method
-            return profile?.imageURL || null; // Adjust property based on RA API response
-        } catch (error) {
-            console.error('Error fetching RA profile image:', error);
-            return null; // Return null if there's an error
-        }
+    try {
+        const profile = await raAPI.getUserProfile(username); // Fetch user profile data
+        return profile?.profileImage || null; // Return the constructed profile image URL
+    } catch (error) {
+        console.error('Error fetching RA profile image:', error);
+        return null; // Return null if there's an error
     }
+}
 }
 
 module.exports = DataService;
