@@ -48,17 +48,39 @@ module.exports = {
             const totalBonusPoints = bonusPoints.reduce((acc, bonus) => acc + bonus.points, 0);
 
             // Determine user's ranks
-            const yearlyRank = yearlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase()) + 1;
-            const monthlyRank = monthlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase()) + 1;
+             // Calculate ranks with ties
+            const calculateRank = (username, leaderboard, getScore) => {
+                if (!leaderboard || leaderboard.length === 0) return 'Not ranked';
+                
+                // Sort users by score in descending order
+                const sortedUsers = [...leaderboard].sort((a, b) => getScore(b) - getScore(a));
+                
+                let currentRank = 1;
+                let currentScore = getScore(sortedUsers[0]);
+                let rankMap = new Map();
 
-            const yearlyRankText = yearlyRank ? 
-                `${yearlyRank}/${yearlyLeaderboard.length}` : 
-                'Not ranked';
+                sortedUsers.forEach((user, index) => {
+                    const score = getScore(user);
+                    if (score < currentScore) {
+                        currentRank = index + 1;
+                        currentScore = score;
+                    }
+                    rankMap.set(user.username.toLowerCase(), currentRank);
+                });
 
-            const monthlyRankText = monthlyRank ? 
-                `${monthlyRank}/${monthlyLeaderboard.length}` : 
-                'Not participating';
+                const userRank = rankMap.get(username.toLowerCase());
+                return userRank ? `${userRank}/${leaderboard.length}` : 'Not ranked';
+            };
 
+            // Calculate yearly rank (based on points)
+            const yearlyRankText = calculateRank(username, yearlyLeaderboard, 
+                user => user.points || 0
+            );
+
+            // Calculate monthly rank (based on completion percentage)
+            const monthlyRankText = calculateRank(username, monthlyLeaderboard, 
+                user => user.completionPercentage || 0
+            );
             // Get monthly data
             const monthlyData = monthlyLeaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
