@@ -1,12 +1,11 @@
-// leaderboard.js
 const TerminalEmbed = require('../utils/embedBuilder');
-const { fetchLeaderboardData } = require('../raAPI');
-const database = require('../database');
+const DataService = require('../services/dataService');
 
 module.exports = {
     name: 'leaderboard',
     description: 'Displays monthly, yearly, or high score leaderboards',
-    async execute(message, args, { userStats }) {
+
+    async execute(message, args) {
         try {
             if (!args.length) {
                 await message.channel.send('```ansi\n\x1b[32m> Accessing leaderboard options...\x1b[0m\n```');
@@ -29,7 +28,7 @@ module.exports = {
             if (subcommand === 'month') {
                 await this.displayMonthlyLeaderboard(message);
             } else if (subcommand === 'year') {
-                await this.displayYearlyLeaderboard(message, userStats);
+                await this.displayYearlyLeaderboard(message);
             } else if (subcommand === 'highscores') {
                 await this.displayHighScores(message, args.slice(1));
             } else {
@@ -45,14 +44,15 @@ module.exports = {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
 
-            const data = await fetchLeaderboardData();
+            const leaderboardData = await DataService.getLeaderboard('monthly');
+            const currentChallenge = await DataService.getCurrentChallenge();
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('USER RANKINGS')
-                .setThumbnail(`https://retroachievements.org${data.gameInfo.ImageIcon}`)
+                .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]');
 
-            data.leaderboard.slice(0, 3).forEach((user, index) => {
+            leaderboardData.slice(0, 3).forEach((user, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 embed.addTerminalField(
                     `${medals[index]} ${user.username}`,
@@ -60,7 +60,7 @@ module.exports = {
                 );
             });
 
-            const additionalParticipants = data.leaderboard.slice(3)
+            const additionalParticipants = leaderboardData.slice(3)
                 .map(user => `${user.username} (${user.completionPercentage}%)`)
                 .join('\n');
 
@@ -76,18 +76,17 @@ module.exports = {
         }
     },
 
-    async displayYearlyLeaderboard(message, userStats) {
+    async displayYearlyLeaderboard(message) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
-            const validUsers = await userStats.getAllUsers();
-            const leaderboard = await userStats.getYearlyLeaderboard(null, validUsers);
+            const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
 
             let currentRank = 1;
             let currentPoints = -1;
             let sameRankCount = 0;
 
-            const rankedLeaderboard = leaderboard.map((user, index) => {
+            const rankedLeaderboard = yearlyLeaderboard.map((user) => {
                 if (user.points !== currentPoints) {
                     currentRank += sameRankCount;
                     sameRankCount = 0;
@@ -97,7 +96,7 @@ module.exports = {
                 }
                 return {
                     ...user,
-                    rank: currentRank
+                    rank: currentRank,
                 };
             });
 
@@ -124,7 +123,7 @@ module.exports = {
 
     async displayHighScores(message, args) {
         try {
-            const highscores = await database.getHighScores();
+            const highscores = await DataService.getHighScores();
 
             if (!args.length) {
                 await message.channel.send('```ansi\n\x1b[32m> Accessing high score database...\x1b[0m\n```');
@@ -165,7 +164,7 @@ module.exports = {
                     gameData.scores
                         .map((score, index) => {
                             const medals = ['🥇', '🥈', '🥉'];
-                            return `${medals[index]} ${score.username}: ${score.score}`;
+                            return `${medals[index] || ''} ${score.username}: ${score.score}`;
                         })
                         .join('\n'));
             } else {
@@ -178,7 +177,5 @@ module.exports = {
             console.error('High Scores Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve high scores\n[Ready for input]█\x1b[0m```');
         }
-    }
+    },
 };
-
-module.exports = { fetchLeaderboardData };
