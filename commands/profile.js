@@ -24,12 +24,21 @@ module.exports = {
 
             const currentYear = new Date().getFullYear().toString();
 
-            // Fetch data from various sources
+           // Fetch data from various sources
             const yearlyLeaderboard = leaderboardCache.getYearlyLeaderboard() || [];
             const monthlyLeaderboard = leaderboardCache.getMonthlyLeaderboard() || [];
             const userProfile = await fetchUserProfile(username);
             const userStats = await database.getUserStats(username);
             const currentChallenge = await database.getCurrentChallenge();
+
+// Get monthly data (moved up for proper initialization)
+            const monthlyData = monthlyLeaderboard.find(user => 
+                user.username.toLowerCase() === username.toLowerCase()
+        ) || {
+                completionPercentage: 0,
+                completedAchievements: 0,
+                totalAchievements: 0,
+};;
 
             // Ensure stats exist for the current year
              const yearlyData = yearlyLeaderboard.find(user => 
@@ -75,15 +84,7 @@ module.exports = {
             const monthlyRankText = calculateRank(username, monthlyLeaderboard, 
                 user => user.completionPercentage || 0
             );
-            // Get monthly data
-            const monthlyData = monthlyLeaderboard.find(user => 
-                user.username.toLowerCase() === username.toLowerCase()
-            ) || {
-                completionPercentage: 0,
-                completedAchievements: 0,
-                totalAchievements: 0,
-            };
-
+           
             if (userProfile?.profileImage) {
                 embed.setThumbnail(userProfile.profileImage);
             }
