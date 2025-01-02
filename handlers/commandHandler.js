@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { Collection } = require('discord.js');
+const { Collection, PermissionFlagsBits } = require('discord.js');
 
 class CommandHandler {
     constructor() {
@@ -88,7 +88,7 @@ class CommandHandler {
     hasAdminPermission(message) {
         // Check if user has admin role or is a server admin
         return message.member && (
-            message.member.permissions.has('ADMINISTRATOR') ||
+            message.member.permissions.has(PermissionFlagsBits.Administrator) ||
             message.member.roles.cache.some(role => 
                 role.id === process.env.ADMIN_ROLE_ID
             )
