@@ -106,7 +106,15 @@ class Database {
             },
         });
     }
-
+    
+    async saveUserStats(stats) {
+        const collection = await this.getCollection('userstats');
+        await collection.updateOne(
+            { _id: 'stats' },
+            { $set: stats },
+            { upsert: true }
+    );
+}
     async getCommunityRecords() {
         const collection = await this.getCollection('records');
         return await fetchData(collection, { _id: 'records' }, {
