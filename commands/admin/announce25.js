@@ -31,8 +31,8 @@ module.exports = {
                '> Applies to any monthly challenge game\n' +
                '> Can be earned at any time during 2025')
            .addTerminalField('BONUS OBJECTIVES',
-               '> Earn 1 point completing a game.' +
-               '> Participate in the highscores boards.' +
+               '> Earn 1 point completing a game.\n' +
+               '> Participate in the highscores boards.\n' +
                '> Earn bonus points through community participation\n' +
                '> Special events and activities offer point opportunities')
            .addTerminalField('FINAL MISSION - DECEMBER 2025',
