@@ -6,6 +6,7 @@ class LeaderboardCache {
         this.monthlyLeaderboard = null;
         this.lastUpdated = null;
         this.userStats = null; // Placeholder for userStats instance
+        this.validUsers = []; // Cache for valid users from the Google Sheet
     }
 
     // Set the userStats instance
@@ -21,15 +22,17 @@ class LeaderboardCache {
         }
 
         try {
-            const allUsers = await this.userStats.getAllUsers();
+            console.log('[LEADERBOARD CACHE] Fetching valid users from the Google Sheet...');
+            this.validUsers = await this.userStats.getAllUsers();
+
             const currentYear = new Date().getFullYear().toString();
 
             console.log('[LEADERBOARD CACHE] Updating yearly leaderboard...');
-            this.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(currentYear, allUsers);
+            this.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(currentYear, this.validUsers);
 
             console.log('[LEADERBOARD CACHE] Updating monthly leaderboard...');
             const monthlyData = await fetchLeaderboardData();
-            this.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData, allUsers);
+            this.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
 
             this.lastUpdated = new Date();
             console.log('[LEADERBOARD CACHE] Leaderboards updated successfully at', this.lastUpdated);
@@ -54,14 +57,22 @@ class LeaderboardCache {
         return this.monthlyLeaderboard;
     }
 
+    // Get the valid users
+    getValidUsers() {
+        if (!this.validUsers || this.validUsers.length === 0) {
+            console.warn('[LEADERBOARD CACHE] Valid users not yet fetched.');
+        }
+        return this.validUsers;
+    }
+
     // Get the timestamp of the last update
     getLastUpdated() {
         return this.lastUpdated;
     }
 
     // Construct the monthly leaderboard
-    _constructMonthlyLeaderboard(monthlyData, allUsers) {
-        const monthlyParticipants = allUsers.map(participant => {
+    _constructMonthlyLeaderboard(monthlyData) {
+        const monthlyParticipants = this.validUsers.map(participant => {
             const user = monthlyData.leaderboard.find(
                 u => u.username.toLowerCase() === participant.toLowerCase()
             );
