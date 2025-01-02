@@ -26,9 +26,36 @@ class Database {
                     console.error('MongoDB connection error:', error);
                     this.reconnect();
                 });
+
+                // Initialize indexes
+                await this.createIndexes();
             }
         } catch (error) {
             console.error('MongoDB connection error:', error);
+            throw error;
+        }
+    }
+
+    async createIndexes() {
+        try {
+            // User Stats Collection
+            await this.db.collection('userstats').createIndex({ _id: 1 });
+
+            // Challenges Collection
+            await this.db.collection('challenges').createIndex({ _id: 1 });
+
+            // Records Collection
+            await this.db.collection('records').createIndex({ _id: 1 });
+
+            // High Scores Collection
+            await this.db.collection('highscores').createIndex({ _id: 1 });
+
+            // Additional indexes as needed (example for username)
+            await this.db.collection('userstats').createIndex({ username: 1 });
+
+            console.log('Indexes created successfully');
+        } catch (error) {
+            console.error('Error creating indexes:', error);
             throw error;
         }
     }
