@@ -201,13 +201,15 @@ async removeUser(username) {
         }
     }
 
-  async getYearlyLeaderboard(year = null, allParticipants = []) {
+ async getYearlyLeaderboard(year = null, allParticipants = []) {
     try {
         console.log('[DEBUG] getYearlyLeaderboard called');
         const targetYear = year || this.currentYear.toString();
 
         if (!this.stats.users) {
-            throw new Error('No user data available.');
+            // Return empty leaderboard instead of throwing error
+            console.log('[DEBUG] No user data available, returning empty leaderboard');
+            return [];
         }
 
         const leaderboard = Object.entries(this.stats.users)
@@ -221,19 +223,15 @@ async removeUser(username) {
             .filter(entry => allParticipants.includes(entry.username.toLowerCase()));
 
         console.log('[DEBUG] Generated leaderboard:', leaderboard);
-
-        if (leaderboard.length === 0) {
-            throw new Error('No leaderboard data available.');
-        }
-
         return leaderboard.sort((a, b) =>
             b.points - a.points || b.gamesCompleted - a.gamesCompleted
         );
     } catch (error) {
         console.error('Error in getYearlyLeaderboard:', error);
-        throw error;
+        return []; // Return empty leaderboard instead of throwing error
     }
 }
+    
 async addBonusPoints(username, points, reason) {
     try {
         console.log('Adding bonus points to:', username);
