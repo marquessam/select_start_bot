@@ -16,20 +16,21 @@ class UserStats {
     }
     
 async getAllUsers() {
-        try {
-            // Ensure that user data is initialized properly
-            if (!this.stats.users) {
-                throw new Error('User data is not initialized.');
-            }
-
-            // Return all user keys in lowercase
-            return Object.keys(this.stats.users).map(user => user.toLowerCase());
-        } catch (error) {
-            console.error('Error fetching all users:', error);
-            throw error;
+    try {
+        // Ensure stats and users are initialized
+        if (!this.stats || !this.stats.users) {
+            console.warn('User data not initialized. Returning empty list.');
+            return [];
         }
+
+        // Convert all user keys to lowercase
+        return Object.keys(this.stats.users).map(user => user.toLowerCase());
+    } catch (error) {
+        console.error('Error fetching all users:', error);
+        throw error;
     }
-    
+}
+
     async loadStats() {
         try {
             // Load stats from MongoDB
