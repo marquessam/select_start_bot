@@ -10,14 +10,7 @@ class ErrorHandler {
         console.error(logMessage); // Log to console
         fs.appendFileSync(logPath, logMessage); // Append to a log file
     }
-
-    static createErrorEmbed(message) {
-        return {
-            title: 'Error',
-            description: message,
-            color: 0xff0000
-        };
-    }
 }
 
 module.exports = ErrorHandler;
+
