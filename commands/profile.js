@@ -14,30 +14,22 @@ module.exports = {
                 return;
             }
 
+            // Check if user is in the valid users list
+            if (!leaderboardCache.isValidUser(username)) {
+                await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" is not a registered participant\n[Ready for input]█\x1b[0m\`\`\``);
+                return;
+            }
+
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
             const currentYear = new Date().getFullYear().toString();
 
-            // Fetch data from leaderboard cache, user profile, and current challenge
+            // Fetch data from various sources
             const yearlyLeaderboard = leaderboardCache.getYearlyLeaderboard() || [];
             const monthlyLeaderboard = leaderboardCache.getMonthlyLeaderboard() || [];
             const userProfile = await fetchUserProfile(username);
             const userStats = await database.getUserStats(username);
             const currentChallenge = await database.getCurrentChallenge();
-
-            // Validate user exists in the Google Sheet
-            const validUsers = leaderboardCache.getValidUsers();
-
-if (!validUsers) {
-    await message.channel.send('```ansi\n\x1b[32m[ERROR] User list not available. Try again later.\n[Ready for input]█\x1b[0m```');
-    return;
-}
-
-if (!validUsers.includes(username.toLowerCase())) {
-    await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" not found in the participant list.\n[Ready for input]█\x1b[0m\`\`\``);
-    return;
-}
-
 
             // Ensure stats exist for the current year
             const yearlyPoints = userStats.yearlyPoints?.[currentYear] || 0;
@@ -55,26 +47,28 @@ if (!validUsers.includes(username.toLowerCase())) {
                 .join('\n') || 'No bonus points yet.';
             const totalBonusPoints = bonusPoints.reduce((acc, bonus) => acc + bonus.points, 0);
 
-            // Determine user's rank and handle ties
-            const yearlyRank = yearlyLeaderboard.findIndex(user => user.username === username) + 1;
-            const monthlyRank = monthlyLeaderboard.findIndex(user => user.username === username) + 1;
+            // Determine user's ranks
+            const yearlyRank = yearlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase()) + 1;
+            const monthlyRank = monthlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase()) + 1;
 
-            const yearlyRankText = yearlyRank
-                ? `${yearlyRank}/${yearlyLeaderboard.length} (tie)`
-                : 'N/A';
+            const yearlyRankText = yearlyRank ? 
+                `${yearlyRank}/${yearlyLeaderboard.length}` : 
+                'Not ranked';
 
-            const monthlyRankText = monthlyRank
-                ? `${monthlyRank}/${monthlyLeaderboard.length} (tie)`
-                : 'N/A';
+            const monthlyRankText = monthlyRank ? 
+                `${monthlyRank}/${monthlyLeaderboard.length}` : 
+                'Not participating';
 
-            // Monthly data
-            const monthlyData = monthlyLeaderboard.find(user => user.username === username) || {
+            // Get monthly data
+            const monthlyData = monthlyLeaderboard.find(user => 
+                user.username.toLowerCase() === username.toLowerCase()
+            ) || {
                 completionPercentage: 0,
                 completedAchievements: 0,
                 totalAchievements: 0,
             };
 
-            // Construct profile embed
+            // Create embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
@@ -92,15 +86,17 @@ if (!validUsers.includes(username.toLowerCase())) {
                     `HARDCORE COMPLETIONS: ${yearlyStats.hardcoreCompletions}\n` +
                     `MONTHLY PARTICIPATIONS: ${yearlyStats.monthlyParticipations}`)
                 .addTerminalField('POINTS BREAKDOWN',
-                    `${recentBonusPoints}\nTotal Points: ${totalBonusPoints}`);
+                    `${recentBonusPoints}\nTotal Bonus Points: ${totalBonusPoints}`);
 
-            if (userProfile?.profileImage?.startsWith('http')) {
+            if (userProfile?.profileImage) {
                 embed.setThumbnail(userProfile.profileImage);
             }
 
             embed.setTerminalFooter();
+            
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
+
         } catch (error) {
             console.error('Profile Command Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
