@@ -18,43 +18,58 @@ module.exports = {
 
             const currentYear = new Date().getFullYear().toString();
 
-            // Fetch data from leaderboard cache and user profile
+            // Fetch data from leaderboard cache, user profile, and current challenge
             const yearlyLeaderboard = leaderboardCache.getYearlyLeaderboard() || [];
             const monthlyLeaderboard = leaderboardCache.getMonthlyLeaderboard() || [];
             const userProfile = await fetchUserProfile(username);
             const userStats = await database.getUserStats(username);
+            const currentChallenge = await database.getCurrentChallenge();
 
-            // Default stats if the year is missing
-            const defaultYearStats = {
+            // Ensure stats exist for the current year
+            const yearlyPoints = userStats.yearlyPoints?.[currentYear] || 0;
+            const yearlyStats = userStats.yearlyStats?.[currentYear] || {
                 totalGamesCompleted: 0,
                 totalAchievementsUnlocked: 0,
                 hardcoreCompletions: 0,
                 monthlyParticipations: 0,
-                yearlyPoints: 0,
             };
 
-            // Ensure yearly points and stats exist for the current year
-            const yearlyPoints = userStats.yearlyPoints?.[currentYear] || 0;
-            const yearlyStats = userStats.yearlyStats?.[currentYear] || defaultYearStats;
+            // Determine user's rank and handle ties
+            let currentRank = 1;
+            let tieCount = 0;
+            let lastPoints = -1;
 
-            // Determine user's rank and stats in leaderboards
-            const yearlyRankIndex = yearlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
-            const monthlyRankIndex = monthlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
+            const rankedYearlyLeaderboard = yearlyLeaderboard.map((user, index) => {
+                if (user.points !== lastPoints) {
+                    currentRank += tieCount;
+                    tieCount = 0;
+                    lastPoints = user.points;
+                } else {
+                    tieCount++;
+                }
 
-            const yearlyRankText = yearlyRankIndex >= 0
-                ? `${yearlyRankIndex + 1}/${yearlyLeaderboard.length} (tie)`
+                return {
+                    ...user,
+                    rank: currentRank,
+                };
+            });
+
+            const userYearlyData = rankedYearlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase());
+            const yearlyRankText = userYearlyData
+                ? `${userYearlyData.rank}/${rankedYearlyLeaderboard.length} (tie)`
                 : 'N/A';
 
-            const monthlyRankText = monthlyRankIndex >= 0
-                ? `${monthlyRankIndex + 1}/${monthlyLeaderboard.length} (tie)`
-                : 'N/A';
-
-            // Get user data from monthly leaderboard
+            // Determine monthly data
             const monthlyData = monthlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase()) || {
                 completionPercentage: 0,
                 completedAchievements: 0,
                 totalAchievements: 0,
             };
+
+            const monthlyRank = monthlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
+            const monthlyRankText = monthlyRank >= 0
+                ? `${monthlyRank + 1}/${monthlyLeaderboard.length} (tie)`
+                : 'N/A';
 
             // Filter bonus points for the current year
             const recentBonusPoints = (userStats.bonusPoints || [])
@@ -71,7 +86,7 @@ module.exports = {
                 .setTerminalTitle(`USER PROFILE: ${username}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
                 .addTerminalField('CURRENT CHALLENGE PROGRESS',
-                    `GAME: ${leaderboardCache.getMonthlyLeaderboard()?.Title || 'N/A'}\n` +
+                    `GAME: ${currentChallenge?.gameName || 'N/A'}\n` +
                     `PROGRESS: ${monthlyData.completionPercentage}%\n` +
                     `ACHIEVEMENTS: ${monthlyData.completedAchievements}/${monthlyData.totalAchievements}`)
                 .addTerminalField('RANKINGS',
