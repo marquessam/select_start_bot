@@ -1,5 +1,6 @@
 const database = require('../database');
 const leaderboardCache = require('../leaderboardCache');
+const raAPI = require('../raAPI');
 
 class DataService {
     static async getUserStats(username) {
@@ -39,6 +40,17 @@ class DataService {
             completedAchievements: 0,
             totalAchievements: 0,
         };
+    }
+}
+
+ static async getRAProfileImage(username) {
+        try {
+            const profile = await raAPI.getUserProfile(username); // Replace with the correct API method
+            return profile?.imageURL || null; // Adjust property based on RA API response
+        } catch (error) {
+            console.error('Error fetching RA profile image:', error);
+            return null; // Return null if there's an error
+        }
     }
 }
 
