@@ -1,8 +1,5 @@
 const TerminalEmbed = require('../utils/embedBuilder');
-const leaderboardCache = require('../leaderboardCache');
-const { fetchUserProfile } = require('../raAPI');
-const { fetchLeaderboardData } = require('./leaderboard');
-const database = require('../database');
+const DataService = require('../services/dataService');
 
 // Helper function to calculate rank
 function calculateRank(username, leaderboard, rankMetric) {
@@ -44,7 +41,8 @@ module.exports = {
             }
 
             // Check if user is in the valid users list
-            if (!leaderboardCache.isValidUser(username)) {
+            const validUsers = await DataService.getLeaderboard('monthly');
+            if (!validUsers.some(user => user.username.toLowerCase() === username)) {
                 await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" is not a registered participant\n[Ready for input]█\x1b[0m\`\`\``);
                 return;
             }
@@ -53,22 +51,12 @@ module.exports = {
 
             const currentYear = new Date().getFullYear().toString();
 
-            // Fetch data from various sources
-            const yearlyLeaderboard = leaderboardCache.getYearlyLeaderboard() || [];
-            const monthlyLeaderboard = leaderboardCache.getMonthlyLeaderboard() || [];
-            const userProfile = await fetchUserProfile(username);
-            const userStats = await database.getUserStats(username);
-            const currentChallenge = await database.getCurrentChallenge();
+            // Fetch data from DataService
+            const userStats = await DataService.getUserStats(username);
+            const userProgress = await DataService.getUserProgress(username);
+            const currentChallenge = await DataService.getCurrentChallenge();
+            const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
 
-            // Get monthly data
-           const leaderboardData = await fetchLeaderboardData();
-           const monthlyData = leaderboardData.leaderboard.find(user => 
-            user.username.toLowerCase() === username.toLowerCase()
-) || {
-             completionPercentage: 0,
-             completedAchievements: 0,
-             totalAchievements: 0,
-};
             // Ensure stats exist for the current year
             const yearlyData = yearlyLeaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
@@ -91,7 +79,7 @@ module.exports = {
             );
 
             // Calculate monthly rank (based on completion percentage)
-            const monthlyRankText = calculateRank(username, monthlyLeaderboard, 
+            const monthlyRankText = calculateRank(username, validUsers, 
                 user => user.completionPercentage || 0
             );
 
@@ -101,8 +89,8 @@ module.exports = {
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
                 .addTerminalField('CURRENT CHALLENGE PROGRESS',
                     `GAME: ${currentChallenge?.gameName || 'N/A'}\n` +
-                    `PROGRESS: ${monthlyData.completionPercentage}%\n` +
-                    `ACHIEVEMENTS: ${monthlyData.completedAchievements}/${monthlyData.totalAchievements}`)
+                    `PROGRESS: ${userProgress.completionPercentage}%\n` +
+                    `ACHIEVEMENTS: ${userProgress.completedAchievements}/${userProgress.totalAchievements}`)
                 .addTerminalField('RANKINGS',
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
@@ -114,8 +102,8 @@ module.exports = {
                 .addTerminalField('BONUS POINTS',
                     recentBonusPoints);
 
-            if (userProfile?.profileImage) {
-                embed.setThumbnail(userProfile.profileImage);
+            if (userStats?.profileImage) {
+                embed.setThumbnail(userStats.profileImage);
             }
 
             embed.setTerminalFooter();
