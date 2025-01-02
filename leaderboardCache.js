@@ -1,5 +1,3 @@
-// leaderboardCache.js
-const userStats = require('./userStats');
 const { fetchLeaderboardData } = require('./raAPI.js');
 
 class LeaderboardCache {
@@ -7,15 +5,25 @@ class LeaderboardCache {
         this.yearlyLeaderboard = null;
         this.monthlyLeaderboard = null;
         this.lastUpdated = null;
+        this.userStats = null; // Placeholder for userStats instance
+    }
+
+    setUserStats(userStatsInstance) {
+        this.userStats = userStatsInstance;
     }
 
     async updateLeaderboards() {
+        if (!this.userStats) {
+            console.error('[LEADERBOARD CACHE] userStats not set.');
+            return;
+        }
+
         try {
-            const allUsers = await userStats.getAllUsers();
+            const allUsers = await this.userStats.getAllUsers();
             const currentYear = new Date().getFullYear().toString();
 
             console.log('[LEADERBOARD CACHE] Updating yearly leaderboard...');
-            this.yearlyLeaderboard = await userStats.getYearlyLeaderboard(currentYear, allUsers);
+            this.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(currentYear, allUsers);
 
             console.log('[LEADERBOARD CACHE] Updating monthly leaderboard...');
             const monthlyData = await fetchLeaderboardData();
