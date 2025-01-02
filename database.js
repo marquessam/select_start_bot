@@ -255,7 +255,27 @@ class Database {
             { upsert: true }
         );
     }
-
+    
+   async removeUser(username) {
+        try {
+            const cleanUsername = username.trim().toLowerCase();
+            const stats = await this.getUserStats();
+            
+            if (stats && stats.users && stats.users[cleanUsername]) {
+                delete stats.users[cleanUsername];
+                await this.saveUserStats(stats);
+                console.log(`User "${username}" removed successfully`);
+                return true;
+            } else {
+                console.log(`User "${username}" not found in database`);
+                return false;
+            }
+        } catch (error) {
+            console.error('Error removing user:', error);
+            throw error;
+        }
+    }
+    
     async getShadowGame() {
         const collection = this.db.collection('shadowgame');
         const game = await collection.findOne({ _id: 'current' });
