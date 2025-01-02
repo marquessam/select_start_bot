@@ -30,7 +30,23 @@ async getAllUsers() {
         throw error;
     }
 }
-
+    
+async removeUser(username) {
+    try {
+        const cleanUsername = username.trim().toLowerCase();
+        if (this.stats.users[cleanUsername]) {
+            delete this.stats.users[cleanUsername];
+            await this.saveStats();
+            console.log(`User "${username}" removed successfully.`);
+        } else {
+            console.log(`User "${username}" not found.`);
+        }
+    } catch (error) {
+        console.error('Error removing user:', error);
+        throw error;
+    }
+}
+    
     async loadStats() {
         try {
             // Load stats from MongoDB
