@@ -56,6 +56,8 @@ module.exports = {
             const userProgress = await DataService.getUserProgress(username);
             const currentChallenge = await DataService.getCurrentChallenge();
             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
+            const raProfileImage = await DataService.getRAProfileImage(username);
+
 
             // Ensure stats exist for the current year
             const yearlyData = yearlyLeaderboard.find(user => 
@@ -102,8 +104,9 @@ module.exports = {
                 .addTerminalField('BONUS POINTS',
                     recentBonusPoints);
 
-           if (raProfileImage) {
-    embed.setThumbnail(raProfileImage);
+            // Add the profile image if available
+               if (raProfileImage) {
+                embed.setThumbnail(raProfileImage);
 }
 
             
