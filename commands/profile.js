@@ -1,5 +1,6 @@
 const TerminalEmbed = require('../utils/embedBuilder');
-const leaderboardCache = require('../leaderboardCache'); // Ensure this is imported correctly
+const leaderboardCache = require('../leaderboardCache');
+const { fetchUserProfile } = require('../raAPI'); // Import the function to fetch RetroAchievements profile data
 
 module.exports = {
     name: 'profile',
@@ -24,6 +25,9 @@ module.exports = {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Leaderboard data not available. Try again later.\n[Ready for input]█\x1b[0m```');
                 return;
             }
+
+            // Fetch RetroAchievements profile data
+            const raProfile = await fetchUserProfile(username);
 
             // Calculate yearly rank
             let currentYearRank = 1;
@@ -68,6 +72,7 @@ module.exports = {
                     `YEARLY POINTS: ${userYearlyData?.points || 0}\n` +
                     `GAMES COMPLETED: ${userYearlyData?.gamesCompleted || 0}\n` +
                     `ACHIEVEMENTS UNLOCKED: ${userYearlyData?.achievementsUnlocked || 0}`)
+                .setThumbnail(raProfile?.profileIcon || '') // Add the RetroAchievements profile icon if available
                 .setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
