@@ -5,9 +5,30 @@ const database = require('../database');
 
 // Helper function to calculate rank
 function calculateRank(username, leaderboard, rankMetric) {
-    const sortedLeaderboard = leaderboard.sort((a, b) => rankMetric(b) - rankMetric(a));
-    const rank = sortedLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase()) + 1;
-    return rank > 0 ? `#${rank}` : 'Unranked';
+    // Sort the leaderboard based on the provided metric (descending)
+    const sortedLeaderboard = [...leaderboard].sort((a, b) => rankMetric(b) - rankMetric(a));
+
+    // Find the rank of the user
+    let rank = 1;
+    let previousValue = null;
+
+    for (let i = 0; i < sortedLeaderboard.length; i++) {
+        const currentValue = rankMetric(sortedLeaderboard[i]);
+
+        // Update rank only if the current value is different from the previous
+        if (currentValue !== previousValue) {
+            rank = i + 1;
+            previousValue = currentValue;
+        }
+
+        // Check if the current user matches
+        if (sortedLeaderboard[i].username.toLowerCase() === username.toLowerCase()) {
+            return `#${rank}`;
+        }
+    }
+
+    // Return 'Unranked' if the user isn't found
+    return 'Unranked';
 }
 
 module.exports = {
