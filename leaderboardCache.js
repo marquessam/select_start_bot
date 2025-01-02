@@ -8,13 +8,15 @@ class LeaderboardCache {
         this.userStats = null; // Placeholder for userStats instance
     }
 
+    // Set the userStats instance
     setUserStats(userStatsInstance) {
         this.userStats = userStatsInstance;
     }
 
+    // Update leaderboards for both yearly and monthly rankings
     async updateLeaderboards() {
         if (!this.userStats) {
-            console.error('[LEADERBOARD CACHE] userStats not set.');
+            console.error('[LEADERBOARD CACHE] userStats instance not set.');
             return;
         }
 
@@ -27,29 +29,51 @@ class LeaderboardCache {
 
             console.log('[LEADERBOARD CACHE] Updating monthly leaderboard...');
             const monthlyData = await fetchLeaderboardData();
-            const monthlyParticipants = allUsers.map(participant => {
-                const user = monthlyData.leaderboard.find(u => u.username.toLowerCase() === participant.toLowerCase());
-                return user || { username: participant, completionPercentage: 0, completedAchievements: 0, totalAchievements: 0 };
-            });
-            this.monthlyLeaderboard = monthlyParticipants.sort((a, b) => b.completionPercentage - a.completionPercentage);
+            this.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData, allUsers);
 
             this.lastUpdated = new Date();
-            console.log('[LEADERBOARD CACHE] Leaderboards updated successfully.');
+            console.log('[LEADERBOARD CACHE] Leaderboards updated successfully at', this.lastUpdated);
         } catch (error) {
             console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
         }
     }
 
+    // Get the yearly leaderboard
     getYearlyLeaderboard() {
+        if (!this.yearlyLeaderboard) {
+            console.warn('[LEADERBOARD CACHE] Yearly leaderboard not yet updated.');
+        }
         return this.yearlyLeaderboard;
     }
 
+    // Get the monthly leaderboard
     getMonthlyLeaderboard() {
+        if (!this.monthlyLeaderboard) {
+            console.warn('[LEADERBOARD CACHE] Monthly leaderboard not yet updated.');
+        }
         return this.monthlyLeaderboard;
     }
 
+    // Get the timestamp of the last update
     getLastUpdated() {
         return this.lastUpdated;
+    }
+
+    // Construct the monthly leaderboard
+    _constructMonthlyLeaderboard(monthlyData, allUsers) {
+        const monthlyParticipants = allUsers.map(participant => {
+            const user = monthlyData.leaderboard.find(
+                u => u.username.toLowerCase() === participant.toLowerCase()
+            );
+            return user || {
+                username: participant,
+                completionPercentage: 0,
+                completedAchievements: 0,
+                totalAchievements: 0
+            };
+        });
+
+        return monthlyParticipants.sort((a, b) => b.completionPercentage - a.completionPercentage);
     }
 }
 
