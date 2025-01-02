@@ -60,14 +60,14 @@ module.exports = {
             const currentChallenge = await database.getCurrentChallenge();
 
             // Get monthly data
-            const monthlyData = monthlyLeaderboard.find(user => 
-                user.username.toLowerCase() === username.toLowerCase()
-            ) || {
-                completionPercentage: 0,
-                completedAchievements: 0,
-                totalAchievements: 0,
-            };
-
+           const leaderboardData = await fetchLeaderboardData();
+           const monthlyData = leaderboardData.leaderboard.find(user => 
+            user.username.toLowerCase() === username.toLowerCase()
+) || {
+             completionPercentage: 0,
+             completedAchievements: 0,
+             totalAchievements: 0,
+};
             // Ensure stats exist for the current year
             const yearlyData = yearlyLeaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
