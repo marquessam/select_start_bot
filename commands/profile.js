@@ -102,9 +102,11 @@ module.exports = {
                 .addTerminalField('BONUS POINTS',
                     recentBonusPoints);
 
-            if (userStats?.profileImage) {
-                embed.setThumbnail(userStats.profileImage);
-            }
+           if (raProfileImage) {
+    embed.setThumbnail(raProfileImage);
+}
+
+            
 
             embed.setTerminalFooter();
             
