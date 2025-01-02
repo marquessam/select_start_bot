@@ -5,7 +5,7 @@ const database = require('./database');
 // Rate limiting setup
 const rateLimiter = {
     requests: new Map(),
-    cooldown: 2000, // 2 seconds between requests
+    cooldown: 1000, // 1 second between requests
     queue: [],
     processing: false,
 
