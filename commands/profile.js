@@ -24,24 +24,24 @@ module.exports = {
 
             const currentYear = new Date().getFullYear().toString();
 
-           // Fetch data from various sources
+            // Fetch data from various sources
             const yearlyLeaderboard = leaderboardCache.getYearlyLeaderboard() || [];
             const monthlyLeaderboard = leaderboardCache.getMonthlyLeaderboard() || [];
             const userProfile = await fetchUserProfile(username);
             const userStats = await database.getUserStats(username);
             const currentChallenge = await database.getCurrentChallenge();
 
-// Get monthly data (moved up for proper initialization)
+            // Get monthly data
             const monthlyData = monthlyLeaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
-        ) || {
+            ) || {
                 completionPercentage: 0,
                 completedAchievements: 0,
                 totalAchievements: 0,
-};;
+            };
 
             // Ensure stats exist for the current year
-             const yearlyData = yearlyLeaderboard.find(user => 
+            const yearlyData = yearlyLeaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
             ) || {
                 points: 0,
@@ -56,6 +56,16 @@ module.exports = {
                 bonusPoints.map(bonus => `${bonus.reason}: ${bonus.points} pts`).join('\n') :
                 'No bonus points';
 
+            // Calculate yearly rank (based on points)
+            const yearlyRankText = calculateRank(username, yearlyLeaderboard, 
+                user => user.points || 0
+            );
+
+            // Calculate monthly rank (based on completion percentage)
+            const monthlyRankText = calculateRank(username, monthlyLeaderboard, 
+                user => user.completionPercentage || 0
+            );
+
             // Create embed with updated points display
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
@@ -68,23 +78,13 @@ module.exports = {
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
                 .addTerminalField(`${currentYear} STATISTICS`,
-                    `YEARLY POINTS: ${yearlyData.points}\n` +  // Changed to use yearlyData
+                    `YEARLY POINTS: ${yearlyData.points}\n` + 
                     `GAMES COMPLETED: ${yearlyData.gamesCompleted}\n` +
                     `ACHIEVEMENTS UNLOCKED: ${yearlyData.achievementsUnlocked}\n` +
                     `MONTHLY PARTICIPATIONS: ${yearlyData.monthlyParticipations}`)
                 .addTerminalField('BONUS POINTS',
                     recentBonusPoints);
 
-            // Calculate yearly rank (based on points)
-            const yearlyRankText = calculateRank(username, yearlyLeaderboard, 
-                user => user.points || 0
-            );
-
-            // Calculate monthly rank (based on completion percentage)
-            const monthlyRankText = calculateRank(username, monthlyLeaderboard, 
-                user => user.completionPercentage || 0
-            );
-           
             if (userProfile?.profileImage) {
                 embed.setThumbnail(userProfile.profileImage);
             }
