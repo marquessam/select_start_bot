@@ -24,6 +24,19 @@ module.exports = {
             const userProfile = await fetchUserProfile(username);
             const userStats = await database.getUserStats(username);
 
+            // Default stats if the year is missing
+            const defaultYearStats = {
+                totalGamesCompleted: 0,
+                totalAchievementsUnlocked: 0,
+                hardcoreCompletions: 0,
+                monthlyParticipations: 0,
+                yearlyPoints: 0,
+            };
+
+            // Ensure yearly points and stats exist for the current year
+            const yearlyPoints = userStats.yearlyPoints?.[currentYear] || 0;
+            const yearlyStats = userStats.yearlyStats?.[currentYear] || defaultYearStats;
+
             // Determine user's rank and stats in leaderboards
             const yearlyRankIndex = yearlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
             const monthlyRankIndex = monthlyLeaderboard.findIndex(user => user.username.toLowerCase() === username.toLowerCase());
@@ -40,7 +53,7 @@ module.exports = {
             const monthlyData = monthlyLeaderboard.find(user => user.username.toLowerCase() === username.toLowerCase()) || {
                 completionPercentage: 0,
                 completedAchievements: 0,
-                totalAchievements: 0
+                totalAchievements: 0,
             };
 
             // Filter bonus points for the current year
@@ -59,17 +72,17 @@ module.exports = {
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
                 .addTerminalField('CURRENT CHALLENGE PROGRESS',
                     `GAME: ${leaderboardCache.getMonthlyLeaderboard()?.Title || 'N/A'}\n` +
-                    `PROGRESS: ${monthlyData.completionPercentage || 0}%\n` +
+                    `PROGRESS: ${monthlyData.completionPercentage}%\n` +
                     `ACHIEVEMENTS: ${monthlyData.completedAchievements}/${monthlyData.totalAchievements}`)
                 .addTerminalField('RANKINGS',
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
                 .addTerminalField(`${currentYear} STATISTICS`,
-                    `YEARLY POINTS: ${userStats.yearlyPoints[currentYear] || 0}\n` +
-                    `GAMES COMPLETED: ${userStats.yearlyStats?.[currentYear]?.totalGamesCompleted || 0}\n` +
-                    `ACHIEVEMENTS UNLOCKED: ${userStats.yearlyStats?.[currentYear]?.totalAchievementsUnlocked || 0}\n` +
-                    `HARDCORE COMPLETIONS: ${userStats.yearlyStats?.[currentYear]?.hardcoreCompletions || 0}\n` +
-                    `MONTHLY PARTICIPATIONS: ${userStats.yearlyStats?.[currentYear]?.monthlyParticipations || 0}`)
+                    `YEARLY POINTS: ${yearlyPoints}\n` +
+                    `GAMES COMPLETED: ${yearlyStats.totalGamesCompleted}\n` +
+                    `ACHIEVEMENTS UNLOCKED: ${yearlyStats.totalAchievementsUnlocked}\n` +
+                    `HARDCORE COMPLETIONS: ${yearlyStats.hardcoreCompletions}\n` +
+                    `MONTHLY PARTICIPATIONS: ${yearlyStats.monthlyParticipations}`)
                 .addTerminalField('POINTS', `${recentBonusPoints}\nTotal: ${totalBonusPoints} pts`);
 
             if (userProfile?.profileImage?.startsWith('http')) {
