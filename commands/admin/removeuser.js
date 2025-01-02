@@ -1,20 +1,22 @@
 const database = require('./database');
 
-async function removeUser(username) {
+async function removeUserCommand(username) {
     try {
-        // Fetch user stats
-        const userStats = await database.getUserStats(username);
-
-        if (!userStats) {
-            console.log(`User "${username}" not found in the database.`);
+        if (!username) {
+            console.log('Username is required to remove a user.');
             return;
         }
 
-        // Remove user from the database
-        await database.removeUser(username);
+        const success = await database.removeUser(username);
 
-        console.log(`User "${username}" has been successfully removed.`);
+        if (success) {
+            console.log(`User "${username}" has been successfully removed.`);
+        } else {
+            console.log(`User "${username}" does not exist in the database.`);
+        }
     } catch (error) {
         console.error(`Error removing user "${username}":`, error);
     }
 }
+
+module.exports = { removeUserCommand };
