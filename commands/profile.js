@@ -32,45 +32,39 @@ module.exports = {
             const currentChallenge = await database.getCurrentChallenge();
 
             // Ensure stats exist for the current year
-            const yearlyPoints = userStats.yearlyPoints?.[currentYear] || 0;
-            const yearlyStats = userStats.yearlyStats?.[currentYear] || {
-                totalGamesCompleted: 0,
-                totalAchievementsUnlocked: 0,
-                hardcoreCompletions: 0,
-                monthlyParticipations: 0,
+             const yearlyData = yearlyLeaderboard.find(user => 
+                user.username.toLowerCase() === username.toLowerCase()
+            ) || {
+                points: 0,
+                gamesCompleted: 0,
+                achievementsUnlocked: 0,
+                monthlyParticipations: 0
             };
 
-            // Filter bonus points for the current year
+            // Filter bonus points for display
             const bonusPoints = userStats.bonusPoints?.filter(bonus => bonus.year === currentYear) || [];
-            const recentBonusPoints = bonusPoints
-                .map(bonus => `${bonus.reason}: ${bonus.points} pts`)
-                .join('\n') || 'No bonus points yet.';
-            const totalBonusPoints = bonusPoints.reduce((acc, bonus) => acc + bonus.points, 0);
+            const recentBonusPoints = bonusPoints.length > 0 ?
+                bonusPoints.map(bonus => `${bonus.reason}: ${bonus.points} pts`).join('\n') :
+                'No bonus points';
 
-            // Determine user's ranks
-             // Calculate ranks with ties
-            const calculateRank = (username, leaderboard, getScore) => {
-                if (!leaderboard || leaderboard.length === 0) return 'Not ranked';
-                
-                // Sort users by score in descending order
-                const sortedUsers = [...leaderboard].sort((a, b) => getScore(b) - getScore(a));
-                
-                let currentRank = 1;
-                let currentScore = getScore(sortedUsers[0]);
-                let rankMap = new Map();
-
-                sortedUsers.forEach((user, index) => {
-                    const score = getScore(user);
-                    if (score < currentScore) {
-                        currentRank = index + 1;
-                        currentScore = score;
-                    }
-                    rankMap.set(user.username.toLowerCase(), currentRank);
-                });
-
-                const userRank = rankMap.get(username.toLowerCase());
-                return userRank ? `${userRank}/${leaderboard.length}` : 'Not ranked';
-            };
+            // Create embed with updated points display
+            const embed = new TerminalEmbed()
+                .setTerminalTitle(`USER PROFILE: ${username}`)
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
+                .addTerminalField('CURRENT CHALLENGE PROGRESS',
+                    `GAME: ${currentChallenge?.gameName || 'N/A'}\n` +
+                    `PROGRESS: ${monthlyData.completionPercentage}%\n` +
+                    `ACHIEVEMENTS: ${monthlyData.completedAchievements}/${monthlyData.totalAchievements}`)
+                .addTerminalField('RANKINGS',
+                    `MONTHLY RANK: ${monthlyRankText}\n` +
+                    `YEARLY RANK: ${yearlyRankText}`)
+                .addTerminalField(`${currentYear} STATISTICS`,
+                    `YEARLY POINTS: ${yearlyData.points}\n` +  // Changed to use yearlyData
+                    `GAMES COMPLETED: ${yearlyData.gamesCompleted}\n` +
+                    `ACHIEVEMENTS UNLOCKED: ${yearlyData.achievementsUnlocked}\n` +
+                    `MONTHLY PARTICIPATIONS: ${yearlyData.monthlyParticipations}`)
+                .addTerminalField('BONUS POINTS',
+                    recentBonusPoints);
 
             // Calculate yearly rank (based on points)
             const yearlyRankText = calculateRank(username, yearlyLeaderboard, 
@@ -89,26 +83,6 @@ module.exports = {
                 completedAchievements: 0,
                 totalAchievements: 0,
             };
-
-            // Create embed
-            const embed = new TerminalEmbed()
-                .setTerminalTitle(`USER PROFILE: ${username}`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
-                .addTerminalField('CURRENT CHALLENGE PROGRESS',
-                    `GAME: ${currentChallenge?.gameName || 'N/A'}\n` +
-                    `PROGRESS: ${monthlyData.completionPercentage}%\n` +
-                    `ACHIEVEMENTS: ${monthlyData.completedAchievements}/${monthlyData.totalAchievements}`)
-                .addTerminalField('RANKINGS',
-                    `MONTHLY RANK: ${monthlyRankText}\n` +
-                    `YEARLY RANK: ${yearlyRankText}`)
-                .addTerminalField(`${currentYear} STATISTICS`,
-                    `YEARLY POINTS: ${yearlyPoints}\n` +
-                    `GAMES COMPLETED: ${yearlyStats.totalGamesCompleted}\n` +
-                    `ACHIEVEMENTS UNLOCKED: ${yearlyStats.totalAchievementsUnlocked}\n` +
-                    `HARDCORE COMPLETIONS: ${yearlyStats.hardcoreCompletions}\n` +
-                    `MONTHLY PARTICIPATIONS: ${yearlyStats.monthlyParticipations}`)
-                .addTerminalField('POINTS BREAKDOWN',
-                    `${recentBonusPoints}\nTotal Bonus Points: ${totalBonusPoints}`);
 
             if (userProfile?.profileImage) {
                 embed.setThumbnail(userProfile.profileImage);
