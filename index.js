@@ -1,5 +1,13 @@
 const fs = require('fs');
 const path = require('path');
+const leaderboardCache = require('./leaderboardCache');
+// Update leaderboards every hour
+setInterval(() => {
+    leaderboardCache.updateLeaderboards();
+}, 60 * 60 * 1000); // 1 hour
+
+// Initial load
+leaderboardCache.updateLeaderboards();
 
 // Debug logs at startup
 console.log('=== DEBUG START ===');
@@ -11,6 +19,7 @@ if (fs.existsSync(path.join(__dirname, 'commands'))) {
 } else {
     console.log('Commands directory not found!');
 }
+
 
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
