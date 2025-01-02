@@ -1,5 +1,6 @@
 const { MongoClient } = require('mongodb');
 const ErrorHandler = require('./utils/errorHandler');
+const { fetchData } = require('./utils/dataFetcher');
 
 class Database {
     constructor() {
@@ -7,84 +8,75 @@ class Database {
         this.db = null;
     }
 
-  async connect() {
-    try {
-        if (!process.env.MONGODB_URI) {
-            throw new Error('MONGODB_URI environment variable is not defined');
+    async connect() {
+        try {
+            if (!process.env.MONGODB_URI) {
+                throw new Error('MONGODB_URI environment variable is not defined');
+            }
+
+            if (!this.client) {
+                this.client = new MongoClient(process.env.MONGODB_URI, {
+                    maxPoolSize: 10,
+                    minPoolSize: 5,
+                });
+
+                await this.client.connect();
+                this.db = this.client.db(process.env.DB_NAME || 'selectstart');
+                console.log('Connected to MongoDB');
+
+                this.client.on('error', (error) => {
+                    ErrorHandler.logError(error, 'MongoDB Client');
+                    this.reconnect();
+                });
+
+                await this.createIndexes();
+            }
+        } catch (error) {
+            ErrorHandler.logError(error, 'Database Connect');
+            throw error;
         }
-
-        if (!this.client) {
-            this.client = new MongoClient(process.env.MONGODB_URI, {
-                maxPoolSize: 10, // Maximum number of connections
-                minPoolSize: 5  // Minimum number of connections
-            });
-
-            await this.client.connect();
-            this.db = this.client.db(process.env.DB_NAME || 'selectstart');
-            console.log('Connected to MongoDB');
-
-            this.client.on('error', (error) => {
-                ErrorHandler.logError(error, 'MongoDB Client');
-                this.reconnect();
-            });
-
-            await this.createIndexes();
-        }
-    } catch (error) {
-        ErrorHandler.logError(error, 'Database Connect');
-        throw error;
     }
-}
 
     async createIndexes() {
         try {
-            // User Stats Collection
+            // Define indexes for collections
             await this.db.collection('userstats').createIndex({ _id: 1 });
-
-            // Challenges Collection
             await this.db.collection('challenges').createIndex({ _id: 1 });
-
-            // Records Collection
             await this.db.collection('records').createIndex({ _id: 1 });
-
-            // High Scores Collection
             await this.db.collection('highscores').createIndex({ _id: 1 });
-
-            // Additional indexes as needed (example for username)
             await this.db.collection('userstats').createIndex({ username: 1 });
 
             console.log('Indexes created successfully');
         } catch (error) {
-            console.error('Error creating indexes:', error);
+            ErrorHandler.logError(error, 'Create Indexes');
             throw error;
         }
     }
 
     async reconnect() {
-    console.log('Attempting to reconnect to MongoDB...');
-    try {
-        await this.disconnect();
-        await this.connect();
-    } catch (error) {
-        ErrorHandler.logError(error, 'Database Reconnect');
-        setTimeout(() => this.reconnect(), 5000); // Retry after delay
-    }
-}
-
-
-  async disconnect() {
-    try {
-        if (this.client) {
-            await this.client.close();
-            this.client = null;
-            this.db = null;
-            console.log('Disconnected from MongoDB');
+        console.log('Attempting to reconnect to MongoDB...');
+        try {
+            await this.disconnect();
+            await this.connect();
+        } catch (error) {
+            ErrorHandler.logError(error, 'Database Reconnect');
+            setTimeout(() => this.reconnect(), 5000);
         }
-    } catch (error) {
-        ErrorHandler.logError(error, 'Database Disconnect');
-        throw error;
     }
-}
+
+    async disconnect() {
+        try {
+            if (this.client) {
+                await this.client.close();
+                this.client = null;
+                this.db = null;
+                console.log('Disconnected from MongoDB');
+            }
+        } catch (error) {
+            ErrorHandler.logError(error, 'Database Disconnect');
+            throw error;
+        }
+    }
 
     async getCollection(collectionName) {
         if (!this.db) {
@@ -93,280 +85,121 @@ class Database {
         return this.db.collection(collectionName);
     }
 
-  async getUserStats() {
-    try {
+    async getUserStats() {
         const collection = await this.getCollection('userstats');
-        const stats = await collection.findOne({ _id: 'stats' });
-        const year = new Date().getFullYear().toString();
-
-        return stats || {
+        return await fetchData(collection, { _id: 'stats' }, {
             users: {},
-            yearlyStats: {
-                [year]: {
-                    communityAchievements: 0,
-                    totalParticipants: 0,
-                    averageCompletion: 0,
-                    monthlyStats: {}
-                }
-            },
+            yearlyStats: {},
             monthlyStats: {},
             gameCompletions: {},
             achievementStats: {},
             communityRecords: {
                 fastestCompletions: {},
                 highestScores: {},
-                monthlyRecords: {
-                    highestParticipation: 0,
-                    mostCompetitive: "",
-                    highestAverageCompletion: 0
-                },
+                monthlyRecords: {},
                 milestones: [],
                 hallOfFame: {
                     perfectMonths: [],
                     speedrunners: [],
-                    completionists: []
-                }
-            }
-        };
-    } catch (error) {
-        ErrorHandler.logError(error, 'Get User Stats');
-        throw error;
-    }
-}
-
-
-    async saveUserStats(stats) {
-        const collection = await this.getCollection('userstats');
-        await collection.updateOne(
-            { _id: 'stats' },
-            { $set: stats },
-            { upsert: true }
-        );
+                    completionists: [],
+                },
+            },
+        });
     }
 
     async getCommunityRecords() {
         const collection = await this.getCollection('records');
-        const records = await collection.findOne({ _id: 'records' });
-        const year = new Date().getFullYear().toString();
-
-        return records || {
+        return await fetchData(collection, { _id: 'records' }, {
             fastestCompletions: {},
             highestScores: {},
-            monthlyRecords: {
-                highestParticipation: 0,
-                mostCompetitive: "",
-                highestAverageCompletion: 0
-            },
-            yearlyRecords: {
-                [year]: {
-                    mostAchievements: {
-                        user: "",
-                        count: 0
-                    },
-                    fastestCompletion: {
-                        user: "",
-                        game: "",
-                        time: 0
-                    },
-                    highestPoints: {
-                        user: "",
-                        points: 0
-                    }
-                }
-            },
+            monthlyRecords: {},
+            yearlyRecords: {},
             milestones: [],
             hallOfFame: {
                 perfectMonths: [],
                 speedrunners: [],
-                completionists: []
-            }
-        };
-    }
-
-    async saveCommunityRecords(records) {
-        const collection = await this.getCollection('records');
-        await collection.updateOne(
-            { _id: 'records' },
-            { $set: records },
-            { upsert: true }
-        );
+                completionists: [],
+            },
+        });
     }
 
     async getCurrentChallenge() {
-        try {
-            const collection = await this.getCollection('challenges');
-            const challenge = await collection.findOne({ _id: 'current' });
-            return challenge || {
-                gameId: "",
-                gameName: "",
-                gameIcon: "",
-                startDate: "",
-                endDate: "",
-                rules: [
-                    "Hardcore mode must be enabled",
-                    "All achievements are eligible",
-                    "Progress tracked via retroachievements",
-                    "No hacks/save states/cheats allowed"
-                ],
-                points: {
-                    first: 6,
-                    second: 4,
-                    third: 2
-                },
-                stats: {
-                    participants: 0,
-                    totalAchievements: 0,
-                    averageCompletion: 0,
-                    startDate: null,
-                    lastUpdate: null,
-                    dailyStats: {},
-                    leaderboardHistory: []
-                }
-            };
-        } catch (error) {
-            console.error('Error getting current challenge:', error);
-            throw error;
-        }
-    }
-
-    async saveCurrentChallenge(challenge) {
         const collection = await this.getCollection('challenges');
-        await collection.updateOne(
-            { _id: 'current' },
-            { $set: challenge },
-            { upsert: true }
-        );
+        return await fetchData(collection, { _id: 'current' }, {
+            gameId: "",
+            gameName: "",
+            gameIcon: "",
+            startDate: "",
+            endDate: "",
+            rules: [
+                "Hardcore mode must be enabled",
+                "All achievements are eligible",
+                "Progress tracked via retroachievements",
+                "No hacks/save states/cheats allowed",
+            ],
+            points: {
+                first: 6,
+                second: 4,
+                third: 2,
+            },
+            stats: {
+                participants: 0,
+                totalAchievements: 0,
+                averageCompletion: 0,
+                startDate: null,
+                lastUpdate: null,
+                dailyStats: {},
+                leaderboardHistory: [],
+            },
+        });
     }
 
     async getNextChallenge() {
         const collection = await this.getCollection('challenges');
-        const challenge = await collection.findOne({ _id: 'next' });
-        return challenge || null;
-    }
-
-    async saveNextChallenge(challenge) {
-        const collection = await this.getCollection('challenges');
-        await collection.updateOne(
-            { _id: 'next' },
-            { $set: challenge },
-            { upsert: true }
-        );
+        return await fetchData(collection, { _id: 'next' }, null);
     }
 
     async getConfiguration() {
         const collection = await this.getCollection('config');
-        const config = await collection.findOne({ _id: 'settings' });
-        return config || {
+        return await fetchData(collection, { _id: 'settings' }, {
             defaultRules: [
                 "Hardcore mode must be enabled",
                 "All achievements are eligible",
                 "Progress tracked via retroachievements",
-                "No hacks/save states/cheats allowed"
+                "No hacks/save states/cheats allowed",
             ],
             defaultPoints: {
                 first: 6,
                 second: 4,
-                third: 2
+                third: 2,
             },
             channels: {
-                announcements: '1301710352261709895',
+                announcements: '',
                 submissions: '',
-                leaderboard: ''
+                leaderboard: '',
             },
             betaTesters: [],
             admins: [],
             nominatedGames: [],
             achievements: {
-                titles: {
-                    "Speedrunner": { requirement: "Complete 3 games in under 24 hours" },
-                    "Completionist": { requirement: "100% complete 5 games" },
-                    "Competitor": { requirement: "Place in top 3 for 3 months" }
-                },
-                badges: {
-                    "First Blood": { requirement: "First to complete an achievement" },
-                    "Perfect Month": { requirement: "100% completion in monthly challenge" }
-                }
-            }
-        };
-    }
-
-    async saveConfiguration(config) {
-        const collection = await this.getCollection('config');
-        await collection.updateOne(
-            { _id: 'settings' },
-            { $set: config },
-            { upsert: true }
-        );
-    }
-
-    async removeUser(username) {
-        try {
-            const cleanUsername = username.trim().toLowerCase();
-            const stats = await this.getUserStats();
-
-            if (stats && stats.users && stats.users[cleanUsername]) {
-                delete stats.users[cleanUsername];
-                await this.saveUserStats(stats);
-                console.log(`User "${username}" removed successfully`);
-                return true;
-            } else {
-                console.log(`User "${username}" not found in database`);
-                return false;
-            }
-        } catch (error) {
-            console.error('Error removing user:', error);
-            throw error;
-        }
+                titles: {},
+                badges: {},
+            },
+        });
     }
 
     async getShadowGame() {
         const collection = await this.getCollection('shadowgame');
-        const game = await collection.findOne({ _id: 'current' });
-        return game || {
+        return await fetchData(collection, { _id: 'current' }, {
             active: false,
             currentProgress: 0,
             puzzles: [],
             finalReward: {
                 gameId: "",
                 gameName: "",
-                points: 0
-            }
-        };
-    }
-
-    async saveShadowGame(game) {
-        const collection = await this.getCollection('shadowgame');
-        await collection.updateOne(
-            { _id: 'current' },
-            { $set: game },
-            { upsert: true }
-        );
-    }
-
-    async getHighScores() {
-        const collection = await this.getCollection('highscores');
-        const highscores = await collection.findOne({ _id: 'highscores' });
-        return highscores || {
-            games: {
-                'Tony Hawk\'s Pro Skater': { platform: 'PSX', scores: [] },
-                'Mr. Driller': { platform: 'PSX', scores: [] },
-                'Tetris': { platform: 'Game Boy', scores: [] },
-                'Ms. Pac-Man': { platform: 'NES', scores: [] },
-                'Raiden Trad': { platform: 'SNES', scores: [] },
-                'Community Game 1': { platform: 'TBA', scores: [] },
-                'Community Game 2': { platform: 'TBA', scores: [] },
-                'Community Game 3': { platform: 'TBA', scores: [] }
-            }
-        };
-    }
-
-    async saveHighScores(highscores) {
-        const collection = await this.getCollection('highscores');
-        await collection.updateOne(
-            { _id: 'highscores' },
-            { $set: highscores },
-            { upsert: true }
-        );
+                points: 0,
+            },
+        });
     }
 }
 
