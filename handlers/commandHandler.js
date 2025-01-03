@@ -9,7 +9,6 @@ class CommandHandler {
 
     async loadCommands(dependencies) {
         try {
-            // Load regular commands from root/commands
             const commandsPath = path.join(__dirname, '..', 'commands');
             
             if (!fs.existsSync(commandsPath)) {
@@ -17,7 +16,6 @@ class CommandHandler {
                 return;
             }
 
-            // Load regular commands
             const commandFiles = fs.readdirSync(commandsPath)
                 .filter(file => file.endsWith('.js'));
 
@@ -34,7 +32,6 @@ class CommandHandler {
                 }
             }
 
-            // Load admin commands
             const adminPath = path.join(commandsPath, 'admin');
             if (fs.existsSync(adminPath)) {
                 const adminFiles = fs.readdirSync(adminPath)
@@ -46,7 +43,7 @@ class CommandHandler {
                         const command = require(filePath);
                         
                         if (command.name) {
-                            command.isAdmin = true; // Mark as admin command
+                            command.isAdmin = true;
                             this.commands.set(command.name, command);
                         }
                     } catch (error) {
@@ -62,7 +59,7 @@ class CommandHandler {
         }
     }
 
-    async handleCommand(message, dependencies) {
+    async handleCommand(message, { shadowGame, userStats, announcer, leaderboardCache }) {
         if (!message.content.startsWith('!')) return;
 
         const args = message.content.slice(1).split(/ +/);
@@ -71,14 +68,13 @@ class CommandHandler {
         const command = this.commands.get(commandName);
         if (!command) return;
 
-        // Check if it's an admin command and the user has admin permissions
         if (command.isAdmin && !this.hasAdminPermission(message)) {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
             return;
         }
 
         try {
-            await command.execute(message, args, dependencies);
+            await command.execute(message, args, { shadowGame, userStats, announcer, leaderboardCache });
         } catch (error) {
             console.error(`Error executing command ${commandName}:`, error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Command execution failed\n[Ready for input]█\x1b[0m```');
@@ -86,7 +82,6 @@ class CommandHandler {
     }
 
     hasAdminPermission(message) {
-        // Check if user has admin role or is a server admin
         return message.member && (
             message.member.permissions.has(PermissionFlagsBits.Administrator) ||
             message.member.roles.cache.some(role => 
