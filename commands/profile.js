@@ -93,11 +93,9 @@ module.exports = {
                     `GAMES COMPLETED: ${yearlyData.gamesCompleted}\n` +
                     `ACHIEVEMENTS UNLOCKED: ${yearlyData.achievementsUnlocked || userProgress.completedAchievements || 0}\n` +
                     `MONTHLY PARTICIPATIONS: ${yearlyData.monthlyParticipations}`)
-                .addTerminalField('BONUS POINTS',
+                .addTerminalField('POINT BREAKDOWN',
                     recentBonusPoints)
-                .addTerminalField('POINT TOTALS',
-                    `TOTAL BONUS POINTS: ${totalBonusPoints}\n` +
-                    `TOTAL POINTS: ${yearlyData.points}`);
+                .addTerminalField('POINT TOTAL: ${yearlyData.points}',
 
             // Add the profile image if available
             if (raProfileImage) {
