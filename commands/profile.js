@@ -1,5 +1,5 @@
 const TerminalEmbed = require('../utils/embedBuilder');
-const DataService = require('../services/dataService'); // Re-added import for DataService
+const DataService = require('../services/dataService');
 
 function calculateRank(username, leaderboard, rankMetric) {
     const sortedLeaderboard = [...leaderboard].sort((a, b) => rankMetric(b) - rankMetric(a));
@@ -22,7 +22,7 @@ function calculateRank(username, leaderboard, rankMetric) {
 module.exports = {
     name: 'profile',
     description: 'Displays enhanced user profile and stats',
-    async execute(message, args, { shadowGame }) {
+    async execute(message, args) {
         try {
             const username = args[0]?.toLowerCase();
             if (!username) {
@@ -30,22 +30,30 @@ module.exports = {
                 return;
             }
 
-            // Refresh user list first
-            await shadowGame.refreshUserList();
-
-            // Check if user is valid
-            const validUsers = await DataService.getLeaderboard('monthly');
-            if (!validUsers.some(user => user.username.toLowerCase() === username)) {
-                await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" is not a registered participant\n[Ready for input]█\x1b[0m\`\`\``);
-                return;
-            }
-
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
+
+            // Fetch user list and check validity
+            let validUsers = await DataService.getLeaderboard('monthly');
+            let isUserValid = validUsers.some(user => user.username.toLowerCase() === username);
+
+            if (!isUserValid) {
+                console.log(`User "${username}" not recognized. Refreshing user list...`);
+                await DataService.refreshUserList();
+
+                // Re-fetch the updated user list
+                validUsers = await DataService.getLeaderboard('monthly');
+                isUserValid = validUsers.some(user => user.username.toLowerCase() === username);
+
+                if (!isUserValid) {
+                    await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" is not a registered participant\n[Ready for input]█\x1b[0m\`\`\``);
+                    return;
+                }
+            }
 
             const currentYear = new Date().getFullYear().toString();
 
             // Fetch user data
-            const fetchedUserStats = await DataService.getUserStats(username);
+            const userStats = await DataService.getUserStats(username);
             const userProgress = await DataService.getUserProgress(username);
             const currentChallenge = await DataService.getCurrentChallenge();
             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
@@ -60,7 +68,7 @@ module.exports = {
                 monthlyParticipations: 0,
             };
 
-            const bonusPoints = fetchedUserStats.bonusPoints?.filter(bonus => bonus.year === currentYear) || [];
+            const bonusPoints = userStats.bonusPoints?.filter(bonus => bonus.year === currentYear) || [];
             const recentBonusPoints = bonusPoints.length > 0 ?
                 bonusPoints.map(bonus => `${bonus.reason}: ${bonus.points} pts`).join('\n') :
                 'No bonus points';
@@ -98,8 +106,7 @@ module.exports = {
             
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
-            await shadowGame.tryShowError(message);
-            
+
         } catch (error) {
             console.error('Profile Command Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
