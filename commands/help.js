@@ -16,8 +16,6 @@ module.exports = {
                 '\x1b[37m=== USER STATS ===\x1b[0m\n' +
                 '\x1b[32m!profile <user> - Access user achievement data\x1b[0m\n' +
                 '\x1b[32m!viewarchive <month> - View historical rankings\x1b[0m\n\n' +
-                '\x1b[37m=== HIGH SCORES ===\x1b[0m\n' +
-                '\x1b[32m!highscores - View all game high scores\x1b[0m\n\n' +
                 '\x1b[37m=== GENERAL ===\x1b[0m\n' +
                 '\x1b[32m!help - Display available commands\x1b[0m\n\n' +
                 '\x1b[32m[Ready for input]█\x1b[0m'
