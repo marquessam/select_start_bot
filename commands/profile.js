@@ -1,7 +1,28 @@
+const TerminalEmbed = require('../utils/embedBuilder');
+const DataService = require('../services/dataService'); // Re-added import for DataService
+
+function calculateRank(username, leaderboard, rankMetric) {
+    const sortedLeaderboard = [...leaderboard].sort((a, b) => rankMetric(b) - rankMetric(a));
+    let rank = 1;
+    let previousValue = null;
+
+    for (let i = 0; i < sortedLeaderboard.length; i++) {
+        const currentValue = rankMetric(sortedLeaderboard[i]);
+        if (currentValue !== previousValue) {
+            rank = i + 1;
+            previousValue = currentValue;
+        }
+        if (sortedLeaderboard[i].username.toLowerCase() === username.toLowerCase()) {
+            return `#${rank}`;
+        }
+    }
+    return 'Unranked';
+}
+
 module.exports = {
     name: 'profile',
     description: 'Displays enhanced user profile and stats',
-    async execute(message, args, { shadowGame, userStats }) {
+    async execute(message, args, { shadowGame }) {
         try {
             const username = args[0]?.toLowerCase();
             if (!username) {
@@ -10,9 +31,9 @@ module.exports = {
             }
 
             // Refresh user list first
-            await userStats.refreshUserList();
+            await shadowGame.refreshUserList();
 
-            // Then check if user is valid
+            // Check if user is valid
             const validUsers = await DataService.getLeaderboard('monthly');
             if (!validUsers.some(user => user.username.toLowerCase() === username)) {
                 await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" is not a registered participant\n[Ready for input]█\x1b[0m\`\`\``);
@@ -23,6 +44,7 @@ module.exports = {
 
             const currentYear = new Date().getFullYear().toString();
 
+            // Fetch user data
             const fetchedUserStats = await DataService.getUserStats(username);
             const userProgress = await DataService.getUserProgress(username);
             const currentChallenge = await DataService.getCurrentChallenge();
