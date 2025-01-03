@@ -3,29 +3,20 @@ const DataService = require('../services/dataService');
 
 // Helper function to calculate rank
 function calculateRank(username, leaderboard, rankMetric) {
-    // Sort the leaderboard based on the provided metric (descending)
     const sortedLeaderboard = [...leaderboard].sort((a, b) => rankMetric(b) - rankMetric(a));
-
-    // Find the rank of the user
     let rank = 1;
     let previousValue = null;
 
     for (let i = 0; i < sortedLeaderboard.length; i++) {
         const currentValue = rankMetric(sortedLeaderboard[i]);
-
-        // Update rank only if the current value is different from the previous
         if (currentValue !== previousValue) {
             rank = i + 1;
             previousValue = currentValue;
         }
-
-        // Check if the current user matches
         if (sortedLeaderboard[i].username.toLowerCase() === username.toLowerCase()) {
             return `#${rank}`;
         }
     }
-
-    // Return 'Unranked' if the user isn't found
     return 'Unranked';
 }
 
@@ -58,7 +49,6 @@ module.exports = {
             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
             const raProfileImage = await DataService.getRAProfileImage(username);
 
-
             // Ensure stats exist for the current year
             const yearlyData = yearlyLeaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
@@ -69,18 +59,21 @@ module.exports = {
                 monthlyParticipations: 0
             };
 
-            // Filter bonus points for display
+            // Filter and format bonus points
             const bonusPoints = userStats.bonusPoints?.filter(bonus => bonus.year === currentYear) || [];
             const recentBonusPoints = bonusPoints.length > 0 ?
                 bonusPoints.map(bonus => `${bonus.reason}: ${bonus.points} pts`).join('\n') :
                 'No bonus points';
 
-            // Calculate yearly rank (based on points)
+            // Calculate total bonus points
+            const totalBonusPoints = bonusPoints.reduce((sum, bonus) => sum + bonus.points, 0);
+
+            // Calculate yearly rank
             const yearlyRankText = calculateRank(username, yearlyLeaderboard, 
                 user => user.points || 0
             );
 
-            // Calculate monthly rank (based on completion percentage)
+            // Calculate monthly rank
             const monthlyRankText = calculateRank(username, validUsers, 
                 user => user.completionPercentage || 0
             );
@@ -96,24 +89,20 @@ module.exports = {
                 .addTerminalField('RANKINGS',
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
-               .addTerminalField(`${currentYear} STATISTICS`,
-                    `YEARLY POINTS: ${yearlyData.points}\n` + 
+                .addTerminalField(`${currentYear} STATISTICS`,
                     `GAMES COMPLETED: ${yearlyData.gamesCompleted}\n` +
                     `ACHIEVEMENTS UNLOCKED: ${yearlyData.achievementsUnlocked}\n` +
                     `MONTHLY PARTICIPATIONS: ${yearlyData.monthlyParticipations}`)
-                .addTerminalField('BONUS POINTS BREAKDOWN',
+                .addTerminalField('BONUS POINTS',
                     recentBonusPoints)
                 .addTerminalField('POINT TOTALS',
-                    `TOTAL BONUS POINTS: ${bonusPoints.reduce((sum, bonus) => sum + bonus.points, 0)}\n` +
-                    `COMPETITION POINTS: ${monthlyCompPoints}\n` +
-                    `TOTAL YEARLY POINTS: ${yearlyData.points}`);
+                    `TOTAL BONUS POINTS: ${totalBonusPoints}\n` +
+                    `TOTAL POINTS: ${yearlyData.points}`);
 
             // Add the profile image if available
-               if (raProfileImage) {
+            if (raProfileImage) {
                 embed.setThumbnail(raProfileImage);
-}
-
-            
+            }
 
             embed.setTerminalFooter();
             
