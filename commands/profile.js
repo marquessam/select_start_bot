@@ -23,7 +23,7 @@ function calculateRank(username, leaderboard, rankMetric) {
 module.exports = {
     name: 'profile',
     description: 'Displays enhanced user profile and stats',
-    async execute(message, args) {
+     async execute(message, args, { shadowGame }) {
         try {
             const username = args[0]?.toLowerCase();
             if (!username) {
