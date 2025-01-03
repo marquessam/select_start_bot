@@ -234,6 +234,7 @@ async removeUser(username) {
     async updateMonthlyParticipation(data) {
     try {
         const currentYear = new Date().getFullYear().toString();
+        const currentChallenge = await database.getCurrentChallenge();
 
         // Get all users who have at least one achievement
         const participants = data.leaderboard.filter(user => user.completedAchievements > 0);
@@ -250,7 +251,7 @@ async removeUser(username) {
                 };
             }
 
-            // Increment participation count if this is a new month
+            // Check for participation tracking
             const currentMonth = new Date().getMonth();
             const participationKey = `${currentYear}-${currentMonth}`;
             
@@ -258,12 +259,61 @@ async removeUser(username) {
                 this.stats.users[username].participationMonths = [];
             }
 
+            // First participation in the month
             if (!this.stats.users[username].participationMonths.includes(participationKey)) {
                 this.stats.users[username].participationMonths.push(participationKey);
                 this.stats.users[username].yearlyStats[currentYear].monthlyParticipations++;
-                console.log(`Updated participation for ${username}: ${this.stats.users[username].yearlyStats[currentYear].monthlyParticipations}`);
+                
+                // Award participation point
+                await this.addBonusPoints(
+                    username, 
+                    1, 
+                    `${currentChallenge.gameName} - participation`
+                );
+            }
+
+            // Check for game completion (beating the game)
+            if (user.hasCompletion) {
+                const completionKey = `completion-${currentYear}-${currentMonth}`;
+                if (!this.stats.users[username].completionMonths) {
+                    this.stats.users[username].completionMonths = [];
+                }
+
+                if (!this.stats.users[username].completionMonths.includes(completionKey)) {
+                    // Add completion tracking and bonus point
+                    this.stats.users[username].completionMonths.push(completionKey);
+                    await this.addBonusPoints(
+                        username,
+                        1,
+                        `${currentChallenge.gameName} - completion`
+                    );
+                }
+            }
+
+            // Check for mastery (100% achievements)
+            if (user.completedAchievements === user.totalAchievements && user.totalAchievements > 0) {
+                const masteryKey = `mastery-${currentYear}-${currentMonth}`;
+                if (!this.stats.users[username].masteryMonths) {
+                    this.stats.users[username].masteryMonths = [];
+                }
+
+                if (!this.stats.users[username].masteryMonths.includes(masteryKey)) {
+                    // Add mastery tracking and bonus points
+                    this.stats.users[username].masteryMonths.push(masteryKey);
+                    await this.addBonusPoints(
+                        username,
+                        5,
+                        `${currentChallenge.gameName} - mastery`
+                    );
+                }
             }
         }
+
+        await this.saveStats();
+    } catch (error) {
+        console.error('Error updating monthly participation:', error);
+    }
+}
 
         await this.saveStats();
     } catch (error) {
