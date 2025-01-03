@@ -299,35 +299,48 @@ class UserStats {
         }
     }
     
-    async addBonusPoints(username, points, reason) {
-        try {
-            console.log('Adding bonus points to:', username);
+   async addBonusPoints(username, points, reason) {
+    try {
+        console.log('Adding bonus points to:', username);
 
-            await this.refreshUserList();
+        await this.refreshUserList();
 
-            const cleanUsername = username.trim().toLowerCase();
-            const user = this.stats.users[cleanUsername];
+        const cleanUsername = username.trim().toLowerCase();
+        const user = this.stats.users[cleanUsername];
 
-            if (!user) {
-                throw new Error(`User ${username} not found`);
-            }
-
-            const year = this.currentYear.toString();
-
-            if (!user.bonusPoints) {
-                user.bonusPoints = [];
-            }
-            user.bonusPoints.push({ points, reason, year, date: new Date().toISOString() });
-
-            user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
-
-            await this.saveStats();
-            console.log(`Successfully added ${points} points to ${username} for ${reason}`);
-        } catch (error) {
-            console.error('Error in addBonusPoints:', error);
-            throw error;
+        if (!user) {
+            throw new Error(`User ${username} not found`);
         }
+
+        const year = this.currentYear.toString();
+
+        if (!user.bonusPoints) {
+            user.bonusPoints = [];
+        }
+        user.bonusPoints.push({ points, reason, year, date: new Date().toISOString() });
+
+        // Update yearly points
+        user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
+
+        // Calculate total points from all sources
+        const totalPoints = user.bonusPoints
+            .filter(bonus => bonus.year === year)
+            .reduce((sum, bonus) => sum + bonus.points, 0);
+
+        user.totalPoints = totalPoints;
+
+        await this.saveStats();
+        console.log(`Successfully added ${points} points to ${username} for ${reason}`);
+
+        // Force leaderboard cache update
+        if (global.leaderboardCache) {
+            global.leaderboardCache.updateLeaderboards();
+        }
+    } catch (error) {
+        console.error('Error in addBonusPoints:', error);
+        throw error;
     }
+}
 
     async resetUserPoints(username) {
         try {
