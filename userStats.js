@@ -270,6 +270,8 @@ async removeUser(username) {
                     1, 
                     `${currentChallenge.gameName} - participation`
                 );
+
+                console.log(`Updated participation for ${username}: ${this.stats.users[username].yearlyStats[currentYear].monthlyParticipations}`);
             }
 
             // Check for game completion (beating the game)
@@ -308,6 +310,12 @@ async removeUser(username) {
                 }
             }
         }
+
+        await this.saveStats();
+    } catch (error) {
+        console.error('Error updating monthly participation:', error);
+    }
+}
 
         await this.saveStats();
     } catch (error) {
