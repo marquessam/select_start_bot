@@ -189,6 +189,13 @@ async removeUser(username) {
             userStats.monthlyAchievements[year] = {};
         }
 
+        // Return the promise instead of awaiting it here
+        return this.saveStats();
+    }
+        if (!userStats.monthlyAchievements[year]) {
+            userStats.monthlyAchievements[year] = {};
+        }
+
         await this.saveStats();
     }
 
