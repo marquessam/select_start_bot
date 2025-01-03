@@ -102,7 +102,8 @@ module.exports = {
             
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
-
+            await shadowGame.tryShowError(message);
+            
         } catch (error) {
             console.error('Profile Command Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
