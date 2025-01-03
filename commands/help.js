@@ -1,5 +1,4 @@
-const TerminalEmbed = require('../utils/embedBuilder');
-
+// commands/help.js
 module.exports = {
     name: 'help',
     description: 'Shows all available commands',
@@ -10,12 +9,15 @@ module.exports = {
             .setTerminalTitle('SELECT START TERMINAL')
             .setTerminalDescription(
                 '\x1b[37m=== CHALLENGE INFO ===\x1b[0m\n' +
-                '\x1b[32m!challenge - Display current challenge\x1b[0m\n' +
-                '\x1b[32m!leaderboard - Display rankings (monthly, yearly, highscores)\x1b[0m\n' +
+                '\x1b[32m!challenge - Display current monthly challenge\x1b[0m\n' +
+                '\x1b[32m!leaderboard - View leaderboards (month/year)\x1b[0m\n' +
                 '\x1b[32m!nominations - Display nominated games\x1b[0m\n\n' +
                 '\x1b[37m=== USER STATS ===\x1b[0m\n' +
-                '\x1b[32m!profile <user> - Access user achievement data\x1b[0m\n' +
+                '\x1b[32m!profile <user> - View user stats and progress\x1b[0m\n' +
                 '\x1b[32m!viewarchive <month> - View historical rankings\x1b[0m\n\n' +
+                '\x1b[37m=== ARCADE CHALLENGE ===\x1b[0m\n' +
+                '\x1b[32m!arcade - View all arcade games and scores\x1b[0m\n' +
+                '\x1b[32m!arcade <number> - View specific game rankings\x1b[0m\n\n' +
                 '\x1b[37m=== GENERAL ===\x1b[0m\n' +
                 '\x1b[32m!help - Display available commands\x1b[0m\n\n' +
                 '\x1b[32m[Ready for input]█\x1b[0m'
