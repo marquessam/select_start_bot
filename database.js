@@ -40,7 +40,7 @@ class Database {
     
     async getArcadeScores() {
     const collection = await this.getCollection('arcadechallenge');
-    return await this.fetchData(collection, { _id: 'scores' }, {
+    return await fetchData(collection, { _id: 'scores' }, {
         games: {
             "Tony Hawk's Pro Skater": {
                 platform: "PSX",
