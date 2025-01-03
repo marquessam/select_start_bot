@@ -1,4 +1,6 @@
 // commands/admin/adminhelp.js
+const TerminalEmbed = require('../utils/embedBuilder');
+
 module.exports = {
     name: 'adminhelp',
     description: 'Shows all available admin commands',
