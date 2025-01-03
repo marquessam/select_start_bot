@@ -44,6 +44,14 @@ class DataService {
             totalAchievements: 0,
         };
     }
+static async refreshUserList() {
+    try {
+        await leaderboardCache.updateLeaderboards(); // Ensure this refreshes the cache
+        console.log('User list refreshed successfully.');
+    } catch (error) {
+        console.error('Error refreshing user list:', error);
+    }
+}
 
    static async getRAProfileImage(username) {
     try {
