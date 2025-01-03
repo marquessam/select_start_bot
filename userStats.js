@@ -224,41 +224,63 @@ class UserStats {
     }
 
     async updateMonthlyParticipation(data) {
-        try {
-            const currentYear = new Date().getFullYear().toString();
-            const currentChallenge = await database.getCurrentChallenge();
+    try {
+        const currentYear = new Date().getFullYear().toString();
+        const currentChallenge = await database.getCurrentChallenge();
 
-            const participants = data.leaderboard.filter(user => user.completedAchievements > 0);
+        // Get all users who have at least one achievement
+        const participants = data.leaderboard.filter(user => user.completedAchievements > 0);
 
-            for (const user of participants) {
-                const username = user.username.toLowerCase();
-                if (!this.stats.users[username]) continue;
+        // Update participation count for each user
+        for (const user of participants) {
+            const username = user.username.toLowerCase();
+            if (!this.stats.users[username]) continue;
 
-                if (!this.stats.users[username].yearlyStats[currentYear]) {
-                    this.stats.users[username].yearlyStats[currentYear] = {
-                        monthlyParticipations: 0
-                    };
-                }
+            // Initialize yearly stats if needed
+            if (!this.stats.users[username].yearlyStats[currentYear]) {
+                this.stats.users[username].yearlyStats[currentYear] = {
+                    monthlyParticipations: 0,
+                    totalAchievementsUnlocked: 0 // Ensure this is initialized
+                };
+            }
 
-                const currentMonth = new Date().getMonth();
-                const participationKey = `${currentYear}-${currentMonth}`;
+            // Keep track of monthly achievements
+            const currentMonth = new Date().getMonth();
+            const monthlyKey = `${currentYear}-${currentMonth}`;
+
+            // Store monthly achievement count
+            if (!this.stats.users[username].monthlyAchievements[currentYear]) {
+                this.stats.users[username].monthlyAchievements[currentYear] = {};
+            }
+            
+            // Only update if achievement count has changed
+            if (this.stats.users[username].monthlyAchievements[currentYear][monthlyKey] !== user.completedAchievements) {
+                // Update achievement count
+                this.stats.users[username].monthlyAchievements[currentYear][monthlyKey] = user.completedAchievements;
                 
-                if (!this.stats.users[username].participationMonths) {
-                    this.stats.users[username].participationMonths = [];
-                }
+                // Update total achievements for the year
+                this.stats.users[username].yearlyStats[currentYear].totalAchievementsUnlocked = 
+                    Object.values(this.stats.users[username].monthlyAchievements[currentYear])
+                        .reduce((total, count) => total + count, 0);
+            }
 
-                if (!this.stats.users[username].participationMonths.includes(participationKey)) {
-                    this.stats.users[username].participationMonths.push(participationKey);
-                    this.stats.users[username].yearlyStats[currentYear].monthlyParticipations++;
-                    
-                    await this.addBonusPoints(
-                        username, 
-                        1, 
-                        `${currentChallenge.gameName} - participation`
-                    );
+            // Rest of the existing participation, completion, and mastery logic...
+            const participationKey = `${currentYear}-${currentMonth}`;
+            
+            if (!this.stats.users[username].participationMonths) {
+                this.stats.users[username].participationMonths = [];
+            }
 
-                    console.log(`Updated participation for ${username}: ${this.stats.users[username].yearlyStats[currentYear].monthlyParticipations}`);
-                }
+            if (!this.stats.users[username].participationMonths.includes(participationKey)) {
+                this.stats.users[username].participationMonths.push(participationKey);
+                this.stats.users[username].yearlyStats[currentYear].monthlyParticipations++;
+                
+                await this.addBonusPoints(
+                    username, 
+                    1, 
+                    `${currentChallenge.gameName} - participation`
+                );
+            }
 
                 if (user.hasCompletion) {
                     const completionKey = `completion-${currentYear}-${currentMonth}`;
