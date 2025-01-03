@@ -96,13 +96,17 @@ module.exports = {
                 .addTerminalField('RANKINGS',
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
-                .addTerminalField(`${currentYear} STATISTICS`,
+               .addTerminalField(`${currentYear} STATISTICS`,
                     `YEARLY POINTS: ${yearlyData.points}\n` + 
                     `GAMES COMPLETED: ${yearlyData.gamesCompleted}\n` +
                     `ACHIEVEMENTS UNLOCKED: ${yearlyData.achievementsUnlocked}\n` +
                     `MONTHLY PARTICIPATIONS: ${yearlyData.monthlyParticipations}`)
-                .addTerminalField('BONUS POINTS',
-                    recentBonusPoints);
+                .addTerminalField('BONUS POINTS BREAKDOWN',
+                    recentBonusPoints)
+                .addTerminalField('POINT TOTALS',
+                    `TOTAL BONUS POINTS: ${bonusPoints.reduce((sum, bonus) => sum + bonus.points, 0)}\n` +
+                    `COMPETITION POINTS: ${monthlyCompPoints}\n` +
+                    `TOTAL YEARLY POINTS: ${yearlyData.points}`);
 
             // Add the profile image if available
                if (raProfileImage) {
