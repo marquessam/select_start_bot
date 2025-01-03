@@ -37,6 +37,23 @@ class Database {
         }
     }
 
+    
+    async getHighScores() {
+        const collection = await this.getCollection('highscores');
+        return await fetchData(collection, { _id: 'scores' }, {
+            games: {}  // Default empty games object
+        });
+    }
+
+    async saveHighScores(highscores) {
+        const collection = await this.getCollection('highscores');
+        await collection.updateOne(
+            { _id: 'scores' },
+            { $set: highscores },
+            { upsert: true }
+        );
+    }
+    
     async createIndexes() {
         try {
             // Define indexes for collections
