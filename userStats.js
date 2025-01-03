@@ -105,84 +105,108 @@ class UserStats {
     }
 
     async initializeUserIfNeeded(username) {
-        if (!username) return;
+    if (!username) return;
 
-        const cleanUsername = username.trim().toLowerCase();
-        if (!cleanUsername) return;
+    const cleanUsername = username.trim().toLowerCase();
+    if (!cleanUsername) return;
 
-        const year = this.currentYear.toString();
+    const year = this.currentYear.toString();
+    const currentChallenge = await database.getCurrentChallenge();
 
-        if (!this.stats.users[cleanUsername]) {
-            this.stats.users[cleanUsername] = {
-                totalPoints: 0,
-                yearlyPoints: {},
-                monthlyAchievements: {},
-                bonusPoints: [],
-                completedGames: {},
-                monthlyStats: {},
-                yearlyStats: {},
-                achievements: {
-                    titles: [],
-                    badges: [],
-                    milestones: [],
-                    specialUnlocks: [],
-                    records: [],
-                    streaks: {
-                        current: 0,
-                        longest: 0,
-                        lastUpdate: null
-                    }
+    // Initialize user if they don't exist
+    if (!this.stats.users[cleanUsername]) {
+        this.stats.users[cleanUsername] = {
+            totalPoints: 0,
+            yearlyPoints: {},
+            monthlyAchievements: {},
+            bonusPoints: [],
+            completedGames: {},
+            monthlyStats: {},
+            yearlyStats: {},
+            achievements: {
+                titles: [],
+                badges: [],
+                milestones: [],
+                specialUnlocks: [],
+                records: [],
+                streaks: {
+                    current: 0,
+                    longest: 0,
+                    lastUpdate: null
                 }
-            };
-        }
-
-        const userStats = this.stats.users[cleanUsername];
-
-        if (!userStats.yearlyPoints[year]) {
-            userStats.yearlyPoints[year] = 0;
-        }
-
-        if (!userStats.completedGames[year]) {
-            userStats.completedGames[year] = [];
-        }
-
-        if (!userStats.monthlyStats[year]) {
-            userStats.monthlyStats[year] = {};
-        }
-
-        if (!userStats.yearlyStats[year]) {
-            userStats.yearlyStats[year] = {
-                totalGamesCompleted: 0,
-                totalAchievementsUnlocked: 0,
-                hardcoreCompletions: 0,
-                softcoreCompletions: 0,
-                monthlyParticipations: 0,
-                perfectMonths: 0,
-                totalPoints: 0,
-                averageCompletion: 0,
-                longestStreak: 0,
-                currentStreak: 0,
-                highestSingleDay: 0,
-                mastery100Count: 0,
-                participationRate: 0,
-                rareAchievements: 0,
-                personalBests: {
-                    fastestCompletion: null,
-                    highestPoints: 0,
-                    bestRank: 0
-                },
-                achievementsPerMonth: {},
-                dailyActivity: {},
-                hardestGame: ""
-            };
-        }
-
-        if (!userStats.monthlyAchievements[year]) {
-            userStats.monthlyAchievements[year] = {};
-        }
-
-        return this.saveStats();
+            }
+        };
     }
+
+    const userStats = this.stats.users[cleanUsername];
+
+    // Initialize year structures
+    if (!userStats.yearlyPoints[year]) {
+        userStats.yearlyPoints[year] = 0;
+    }
+
+    if (!userStats.completedGames[year]) {
+        userStats.completedGames[year] = [];
+    }
+
+    if (!userStats.monthlyStats[year]) {
+        userStats.monthlyStats[year] = {};
+    }
+
+    if (!userStats.yearlyStats[year]) {
+        userStats.yearlyStats[year] = {
+            totalGamesCompleted: 0,
+            totalAchievementsUnlocked: 0,
+            hardcoreCompletions: 0,
+            softcoreCompletions: 0,
+            monthlyParticipations: 0,
+            perfectMonths: 0,
+            totalPoints: 0,
+            averageCompletion: 0,
+            longestStreak: 0,
+            currentStreak: 0,
+            highestSingleDay: 0,
+            mastery100Count: 0,
+            participationRate: 0,
+            rareAchievements: 0,
+            personalBests: {
+                fastestCompletion: null,
+                highestPoints: 0,
+                bestRank: 0
+            },
+            achievementsPerMonth: {},
+            dailyActivity: {},
+            hardestGame: ""
+        };
+    }
+
+    if (!userStats.monthlyAchievements[year]) {
+        userStats.monthlyAchievements[year] = {};
+    }
+
+    // Check for retroactive participation points
+    if (userStats.participationMonths && userStats.participationMonths.length > 0) {
+        // Check each participation month to see if points were awarded
+        for (const participationKey of userStats.participationMonths) {
+            const bonusExists = userStats.bonusPoints?.some(bonus => 
+                bonus.reason === `${currentChallenge.gameName} - participation` && 
+                bonus.year === participationKey.split('-')[0]
+            );
+
+            if (!bonusExists) {
+                // Award missing participation point
+                await this.addBonusPoints(
+                    cleanUsername,
+                    1,
+                    `${currentChallenge.gameName} - participation`
+                );
+                console.log(`Awarded retroactive participation point to ${cleanUsername} for ${participationKey}`);
+            }
+        }
+    }
+
+    return this.saveStats();
+}
 
     async saveStats() {
         try {
