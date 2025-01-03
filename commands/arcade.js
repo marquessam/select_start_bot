@@ -18,9 +18,10 @@ module.exports = {
                     })
                     .join('\n');
 
-                const embed = new TerminalEmbed()
+             const embed = new TerminalEmbed()
                     .setTerminalTitle('ARCADE CHALLENGE')
                     .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT A GAME TO VIEW RANKINGS]\n[EXPIRES: ' + arcadeData.expiryDate + ']')
+                    .addTerminalField('SUBMISSION REQUIREMENTS', 'All high scores must be verified with screenshot evidence posted in the screenshot-submissions channel.')
                     .addTerminalField('AVAILABLE GAMES', gameList + '\n\n✓ = Scores recorded')
                     .addTerminalField('USAGE', '!arcade <game number>\nExample: !arcade 1')
                     .setTerminalFooter();
