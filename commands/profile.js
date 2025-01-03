@@ -1,7 +1,6 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
 
-// Helper function to calculate rank
 function calculateRank(username, leaderboard, rankMetric) {
     const sortedLeaderboard = [...leaderboard].sort((a, b) => rankMetric(b) - rankMetric(a));
     let rank = 1;
@@ -23,7 +22,7 @@ function calculateRank(username, leaderboard, rankMetric) {
 module.exports = {
     name: 'profile',
     description: 'Displays enhanced user profile and stats',
-     async execute(message, args, { shadowGame }) {
+    async execute(message, args, { shadowGame, userStats }) {
         try {
             const username = args[0]?.toLowerCase();
             if (!username) {
@@ -31,7 +30,10 @@ module.exports = {
                 return;
             }
 
-            // Check if user is in the valid users list
+            // Refresh user list first
+            await userStats.refreshUserList();
+
+            // Then check if user is valid
             const validUsers = await DataService.getLeaderboard('monthly');
             if (!validUsers.some(user => user.username.toLowerCase() === username)) {
                 await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" is not a registered participant\n[Ready for input]█\x1b[0m\`\`\``);
@@ -42,14 +44,12 @@ module.exports = {
 
             const currentYear = new Date().getFullYear().toString();
 
-            // Fetch data from DataService
             const userStats = await DataService.getUserStats(username);
             const userProgress = await DataService.getUserProgress(username);
             const currentChallenge = await DataService.getCurrentChallenge();
             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
             const raProfileImage = await DataService.getRAProfileImage(username);
 
-            // Ensure stats exist for the current year
             const yearlyData = yearlyLeaderboard.find(user => 
                 user.username.toLowerCase() === username.toLowerCase()
             ) || {
@@ -59,23 +59,19 @@ module.exports = {
                 monthlyParticipations: 0,
             };
 
-            // Filter and format bonus points
             const bonusPoints = userStats.bonusPoints?.filter(bonus => bonus.year === currentYear) || [];
             const recentBonusPoints = bonusPoints.length > 0 ?
                 bonusPoints.map(bonus => `${bonus.reason}: ${bonus.points} pts`).join('\n') :
                 'No bonus points';
 
-            // Calculate yearly rank
             const yearlyRankText = calculateRank(username, yearlyLeaderboard, 
                 user => user.points || 0
             );
 
-            // Calculate monthly rank
             const monthlyRankText = calculateRank(username, validUsers, 
                 user => user.completionPercentage || 0
             );
 
-            // Create embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
@@ -93,7 +89,6 @@ module.exports = {
                 .addTerminalField('POINT BREAKDOWN', recentBonusPoints)
                 .addTerminalField('POINT TOTAL', `${yearlyData.points}`);
 
-            // Add the profile image if available
             if (raProfileImage) {
                 embed.setThumbnail(raProfileImage);
             }
