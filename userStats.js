@@ -15,44 +15,39 @@ class UserStats {
         this.SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
     }
     
-async getAllUsers() {
-    try {
-        // Ensure stats and users are initialized
-        if (!this.stats || !this.stats.users) {
-            console.warn('User data not initialized. Returning empty list.');
-            return [];
+    async getAllUsers() {
+        try {
+            if (!this.stats || !this.stats.users) {
+                console.warn('User data not initialized. Returning empty list.');
+                return [];
+            }
+            return Object.keys(this.stats.users).map(user => user.toLowerCase());
+        } catch (error) {
+            console.error('Error fetching all users:', error);
+            throw error;
         }
-
-        // Convert all user keys to lowercase
-        return Object.keys(this.stats.users).map(user => user.toLowerCase());
-    } catch (error) {
-        console.error('Error fetching all users:', error);
-        throw error;
     }
-}
     
-async removeUser(username) {
-    try {
-        const cleanUsername = username.trim().toLowerCase();
-        if (this.stats.users[cleanUsername]) {
-            delete this.stats.users[cleanUsername];
-            await this.saveStats();
-            console.log(`User "${username}" removed successfully.`);
-        } else {
-            console.log(`User "${username}" not found.`);
+    async removeUser(username) {
+        try {
+            const cleanUsername = username.trim().toLowerCase();
+            if (this.stats.users[cleanUsername]) {
+                delete this.stats.users[cleanUsername];
+                await this.saveStats();
+                console.log(`User "${username}" removed successfully.`);
+            } else {
+                console.log(`User "${username}" not found.`);
+            }
+        } catch (error) {
+            console.error('Error removing user:', error);
+            throw error;
         }
-    } catch (error) {
-        console.error('Error removing user:', error);
-        throw error;
     }
-}
     
     async loadStats() {
         try {
-            // Load stats from MongoDB
             const dbStats = await database.getUserStats();
 
-            // Merge with default structure
             this.stats = {
                 users: dbStats.users || {},
                 yearlyStats: dbStats.yearlyStats || {},
@@ -62,7 +57,6 @@ async removeUser(username) {
                 communityRecords: dbStats.communityRecords || {}
             };
 
-            // Fetch and sync users from spreadsheet
             const response = await fetch(this.SPREADSHEET_URL);
             const csvText = await response.text();
 
@@ -118,7 +112,6 @@ async removeUser(username) {
 
         const year = this.currentYear.toString();
 
-        // Initialize user if they don't exist
         if (!this.stats.users[cleanUsername]) {
             this.stats.users[cleanUsername] = {
                 totalPoints: 0,
@@ -145,7 +138,6 @@ async removeUser(username) {
 
         const userStats = this.stats.users[cleanUsername];
 
-        // Initialize year structures
         if (!userStats.yearlyPoints[year]) {
             userStats.yearlyPoints[year] = 0;
         }
@@ -189,14 +181,7 @@ async removeUser(username) {
             userStats.monthlyAchievements[year] = {};
         }
 
-        // Return the promise instead of awaiting it here
         return this.saveStats();
-    }
-        if (!userStats.monthlyAchievements[year]) {
-            userStats.monthlyAchievements[year] = {};
-        }
-
-        await this.saveStats();
     }
 
     async saveStats() {
@@ -208,57 +193,53 @@ async removeUser(username) {
         }
     }
 
- async getYearlyLeaderboard(year = null, allParticipants = []) {
-    try {
-        console.log('[DEBUG] getYearlyLeaderboard called');
-        const targetYear = year || this.currentYear.toString();
+    async getYearlyLeaderboard(year = null, allParticipants = []) {
+        try {
+            console.log('[DEBUG] getYearlyLeaderboard called');
+            const targetYear = year || this.currentYear.toString();
 
-        if (!this.stats.users) {
-            // Return empty leaderboard instead of throwing error
-            console.log('[DEBUG] No user data available, returning empty leaderboard');
+            if (!this.stats.users) {
+                console.log('[DEBUG] No user data available, returning empty leaderboard');
+                return [];
+            }
+
+            const leaderboard = Object.entries(this.stats.users)
+                .map(([username, stats]) => ({
+                    username,
+                    points: stats.yearlyPoints[targetYear] || 0,
+                    gamesCompleted: stats.yearlyStats?.[targetYear]?.totalGamesCompleted || 0,
+                    achievementsUnlocked: stats.yearlyStats?.[targetYear]?.totalAchievementsUnlocked || 0,
+                    monthlyParticipations: stats.yearlyStats?.[targetYear]?.monthlyParticipations || 0,
+                }))
+                .filter(entry => allParticipants.includes(entry.username.toLowerCase()));
+
+            console.log('[DEBUG] Generated leaderboard:', leaderboard);
+            return leaderboard.sort((a, b) =>
+                b.points - a.points || b.gamesCompleted - a.gamesCompleted
+            );
+        } catch (error) {
+            console.error('Error in getYearlyLeaderboard:', error);
             return [];
         }
-
-        const leaderboard = Object.entries(this.stats.users)
-            .map(([username, stats]) => ({
-                username,
-                points: stats.yearlyPoints[targetYear] || 0,
-                gamesCompleted: stats.yearlyStats?.[targetYear]?.totalGamesCompleted || 0,
-                achievementsUnlocked: stats.yearlyStats?.[targetYear]?.totalAchievementsUnlocked || 0,
-                monthlyParticipations: stats.yearlyStats?.[targetYear]?.monthlyParticipations || 0,
-            }))
-            .filter(entry => allParticipants.includes(entry.username.toLowerCase()));
-
-        console.log('[DEBUG] Generated leaderboard:', leaderboard);
-        return leaderboard.sort((a, b) =>
-            b.points - a.points || b.gamesCompleted - a.gamesCompleted
-        );
-    } catch (error) {
-        console.error('Error in getYearlyLeaderboard:', error);
-        return []; // Return empty leaderboard instead of throwing error
     }
-}
- async updateMonthlyParticipation(data) {
+
+    async updateMonthlyParticipation(data) {
         try {
             const currentYear = new Date().getFullYear().toString();
             const currentChallenge = await database.getCurrentChallenge();
 
-            // Get all users who have at least one achievement
             const participants = data.leaderboard.filter(user => user.completedAchievements > 0);
 
-            // Update participation count for each user
             for (const user of participants) {
                 const username = user.username.toLowerCase();
                 if (!this.stats.users[username]) continue;
 
-                // Initialize yearly stats if needed
                 if (!this.stats.users[username].yearlyStats[currentYear]) {
                     this.stats.users[username].yearlyStats[currentYear] = {
                         monthlyParticipations: 0
                     };
                 }
 
-                // Check for participation tracking
                 const currentMonth = new Date().getMonth();
                 const participationKey = `${currentYear}-${currentMonth}`;
                 
@@ -266,12 +247,10 @@ async removeUser(username) {
                     this.stats.users[username].participationMonths = [];
                 }
 
-                // First participation in the month
                 if (!this.stats.users[username].participationMonths.includes(participationKey)) {
                     this.stats.users[username].participationMonths.push(participationKey);
                     this.stats.users[username].yearlyStats[currentYear].monthlyParticipations++;
                     
-                    // Award participation point
                     await this.addBonusPoints(
                         username, 
                         1, 
@@ -281,7 +260,6 @@ async removeUser(username) {
                     console.log(`Updated participation for ${username}: ${this.stats.users[username].yearlyStats[currentYear].monthlyParticipations}`);
                 }
 
-                // Check for game completion (beating the game)
                 if (user.hasCompletion) {
                     const completionKey = `completion-${currentYear}-${currentMonth}`;
                     if (!this.stats.users[username].completionMonths) {
@@ -289,7 +267,6 @@ async removeUser(username) {
                     }
 
                     if (!this.stats.users[username].completionMonths.includes(completionKey)) {
-                        // Add completion tracking and bonus point
                         this.stats.users[username].completionMonths.push(completionKey);
                         await this.addBonusPoints(
                             username,
@@ -299,7 +276,6 @@ async removeUser(username) {
                     }
                 }
 
-                // Check for mastery (100% achievements)
                 if (user.completedAchievements === user.totalAchievements && user.totalAchievements > 0) {
                     const masteryKey = `mastery-${currentYear}-${currentMonth}`;
                     if (!this.stats.users[username].masteryMonths) {
@@ -307,7 +283,6 @@ async removeUser(username) {
                     }
 
                     if (!this.stats.users[username].masteryMonths.includes(masteryKey)) {
-                        // Add mastery tracking and bonus points
                         this.stats.users[username].masteryMonths.push(masteryKey);
                         await this.addBonusPoints(
                             username,
@@ -328,7 +303,6 @@ async removeUser(username) {
         try {
             console.log('Adding bonus points to:', username);
 
-            // Refresh users to ensure the latest data
             await this.refreshUserList();
 
             const cleanUsername = username.trim().toLowerCase();
@@ -340,16 +314,13 @@ async removeUser(username) {
 
             const year = this.currentYear.toString();
 
-            // Update bonus points
             if (!user.bonusPoints) {
                 user.bonusPoints = [];
             }
             user.bonusPoints.push({ points, reason, year, date: new Date().toISOString() });
 
-            // Update yearly stats
             user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
 
-            // Save stats
             await this.saveStats();
             console.log(`Successfully added ${points} points to ${username} for ${reason}`);
         } catch (error) {
@@ -369,18 +340,14 @@ async removeUser(username) {
 
             const currentYear = new Date().getFullYear().toString();
 
-            // Reset yearly points
             user.yearlyPoints[currentYear] = 0;
 
-            // Clear monthly achievements for the current year
             if (user.monthlyAchievements && user.monthlyAchievements[currentYear]) {
                 user.monthlyAchievements[currentYear] = {};
             }
 
-            // Clear bonus points
             user.bonusPoints = user.bonusPoints.filter(bonus => bonus.year !== currentYear);
 
-            // Save updated stats to the database
             await this.saveStats();
             console.log(`Points reset for user: ${username}`);
         } catch (error) {
