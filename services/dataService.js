@@ -28,6 +28,9 @@ class DataService {
     static async getCurrentChallenge() {
         return await database.getCurrentChallenge();
     }
+     static async getHighScores() {
+        return await database.getHighScores();
+    }
 
     static async getUserProgress(username) {
         const leaderboard = await this.getLeaderboard('monthly');
