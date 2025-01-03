@@ -38,12 +38,79 @@ class Database {
     }
 
     
-    async getHighScores() {
-        const collection = await this.getCollection('highscores');
-        return await fetchData(collection, { _id: 'scores' }, {
-            games: {}  // Default empty games object
-        });
-    }
+    async getArcadeScores() {
+    const collection = await this.getCollection('arcadechallenge');
+    return await this.fetchData(collection, { _id: 'scores' }, {
+        games: {
+            "Tony Hawk's Pro Skater": {
+                platform: "PSX",
+                scores: [],
+                description: "High score in 2 minute runs"
+            },
+            "Mr. Driller": {
+                platform: "PSX",
+                scores: [],
+                description: "Deepest depth reached (in feet)"
+            },
+            "Tetris": {
+                platform: "Game Boy",
+                scores: [],
+                description: "Highest score in Type-A Mode"
+            },
+            "Ms. Pac-Man": {
+                platform: "NES",
+                scores: [],
+                description: "Highest score on first board"
+            },
+            "Raiden Trad": {
+                platform: "SNES",
+                scores: [],
+                description: "Highest score with 3 lives"
+            },
+            "Community Game 1": {
+                platform: "TBA",
+                scores: [],
+                description: "TBD"
+            },
+            "Community Game 2": {
+                platform: "TBA",
+                scores: [],
+                description: "TBD"
+            },
+            "Community Game 3": {
+                platform: "TBA",
+                scores: [],
+                description: "TBD"
+            }
+        },
+        expiryDate: "December 1st 2025"
+    });
+}
+
+async updateArcadeScore(game, username, score) {
+    const scores = await this.getArcadeScores();
+    if (!scores.games[game]) return false;
+
+    const gameScores = scores.games[game].scores;
+    const newScore = { username, score, date: new Date().toISOString() };
+
+    // Insert score in correct position
+    gameScores.push(newScore);
+    gameScores.sort((a, b) => b.score - a.score);
+    
+    // Keep only top 3
+    scores.games[game].scores = gameScores.slice(0, 3);
+
+    // Save updated scores
+    const collection = await this.getCollection('arcadechallenge');
+    await collection.updateOne(
+        { _id: 'scores' },
+        { $set: scores },
+        { upsert: true }
+    );
+
+    return true;
+}
 
     async saveHighScores(highscores) {
         const collection = await this.getCollection('highscores');
