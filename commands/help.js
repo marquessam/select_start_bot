@@ -1,4 +1,6 @@
 // commands/help.js
+const TerminalEmbed = require('../utils/embedBuilder');
+
 module.exports = {
     name: 'help',
     description: 'Shows all available commands',
