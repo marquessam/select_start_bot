@@ -1,24 +1,3 @@
-const TerminalEmbed = require('../utils/embedBuilder');
-const DataService = require('../services/dataService');
-
-function calculateRank(username, leaderboard, rankMetric) {
-    const sortedLeaderboard = [...leaderboard].sort((a, b) => rankMetric(b) - rankMetric(a));
-    let rank = 1;
-    let previousValue = null;
-
-    for (let i = 0; i < sortedLeaderboard.length; i++) {
-        const currentValue = rankMetric(sortedLeaderboard[i]);
-        if (currentValue !== previousValue) {
-            rank = i + 1;
-            previousValue = currentValue;
-        }
-        if (sortedLeaderboard[i].username.toLowerCase() === username.toLowerCase()) {
-            return `#${rank}`;
-        }
-    }
-    return 'Unranked';
-}
-
 module.exports = {
     name: 'profile',
     description: 'Displays enhanced user profile and stats',
@@ -44,7 +23,7 @@ module.exports = {
 
             const currentYear = new Date().getFullYear().toString();
 
-            const userStats = await DataService.getUserStats(username);
+            const fetchedUserStats = await DataService.getUserStats(username);
             const userProgress = await DataService.getUserProgress(username);
             const currentChallenge = await DataService.getCurrentChallenge();
             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
@@ -59,7 +38,7 @@ module.exports = {
                 monthlyParticipations: 0,
             };
 
-            const bonusPoints = userStats.bonusPoints?.filter(bonus => bonus.year === currentYear) || [];
+            const bonusPoints = fetchedUserStats.bonusPoints?.filter(bonus => bonus.year === currentYear) || [];
             const recentBonusPoints = bonusPoints.length > 0 ?
                 bonusPoints.map(bonus => `${bonus.reason}: ${bonus.points} pts`).join('\n') :
                 'No bonus points';
