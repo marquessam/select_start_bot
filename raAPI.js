@@ -135,8 +135,14 @@ async function fetchLeaderboardData() {
                 const data = await rateLimiter.makeRequest(url);
 
                 const profile = await fetchUserProfile(username);
-                const numAchievements = data.Achievements ? Object.keys(data.Achievements).length : 0;
-                const completed = data.Achievements ? Object.values(data.Achievements).filter(ach => parseInt(ach.DateEarned) > 0).length : 0;
+                const achievements = data.Achievements ? Object.values(data.Achievements) : [];
+                const numAchievements = achievements.length;
+                const completed = achievements.filter(ach => parseInt(ach.DateEarned) > 0).length;
+
+                // Check for completion achievement
+                const hasCompletion = achievements.some(ach => 
+                    (ach.Flags & 3) === 3 && parseInt(ach.DateEarned) > 0
+                );
 
                 usersProgress.push({
                     username,
@@ -144,7 +150,9 @@ async function fetchLeaderboardData() {
                     profileUrl: profile.profileUrl,
                     completedAchievements: completed,
                     totalAchievements: numAchievements,
-                    completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : "0.00"
+                    completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : "0.00",
+                    hasCompletion: hasCompletion,
+                    achievements: achievements
                 });
             } catch (error) {
                 console.error(`Error fetching data for ${username}:`, error);
@@ -154,7 +162,9 @@ async function fetchLeaderboardData() {
                     profileUrl: `https://retroachievements.org/user/${username}`,
                     completedAchievements: 0,
                     totalAchievements: 0,
-                    completionPercentage: 0
+                    completionPercentage: 0,
+                    hasCompletion: false,
+                    achievements: []
                 });
             }
         }
