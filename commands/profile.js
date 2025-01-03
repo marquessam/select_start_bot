@@ -56,7 +56,7 @@ module.exports = {
                 points: 0,
                 gamesCompleted: 0,
                 achievementsUnlocked: 0,
-                monthlyParticipations: 0
+                monthlyParticipations: 0,
             };
 
             // Filter and format bonus points
@@ -64,9 +64,6 @@ module.exports = {
             const recentBonusPoints = bonusPoints.length > 0 ?
                 bonusPoints.map(bonus => `${bonus.reason}: ${bonus.points} pts`).join('\n') :
                 'No bonus points';
-
-            // Calculate total bonus points
-            const totalBonusPoints = bonusPoints.reduce((sum, bonus) => sum + bonus.points, 0);
 
             // Calculate yearly rank
             const yearlyRankText = calculateRank(username, yearlyLeaderboard, 
@@ -78,7 +75,7 @@ module.exports = {
                 user => user.completionPercentage || 0
             );
 
-            // Create embed with updated points display
+            // Create embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
@@ -93,9 +90,8 @@ module.exports = {
                     `GAMES COMPLETED: ${yearlyData.gamesCompleted}\n` +
                     `ACHIEVEMENTS UNLOCKED: ${yearlyData.achievementsUnlocked || userProgress.completedAchievements || 0}\n` +
                     `MONTHLY PARTICIPATIONS: ${yearlyData.monthlyParticipations}`)
-                .addTerminalField('POINT BREAKDOWN',
-                    recentBonusPoints)
-                .addTerminalField('POINT TOTAL: ${yearlyData.points}',
+                .addTerminalField('POINT BREAKDOWN', recentBonusPoints)
+                .addTerminalField('POINT TOTAL', `${yearlyData.points}`);
 
             // Add the profile image if available
             if (raProfileImage) {
