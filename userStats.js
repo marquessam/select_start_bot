@@ -39,42 +39,38 @@ class UserStats {
         }
     }
 
-    async loadStats() {
-        try {
-            const dbStats = await database.getUserStats();
+   async loadStats(userTracker) {
+    try {
+        // Initialize stats with existing database data
+        const dbStats = await this.database.getUserStats();
 
-            this.stats = {
-                users: dbStats.users || {},
-                yearlyStats: dbStats.yearlyStats || {},
-                monthlyStats: dbStats.monthlyStats || {},
-                gameCompletions: dbStats.gameCompletions || {},
-                achievementStats: dbStats.achievementStats || {},
-                communityRecords: dbStats.communityRecords || {}
-            };
+        this.stats = {
+            users: dbStats.users || {},
+            yearlyStats: dbStats.yearlyStats || {},
+            monthlyStats: dbStats.monthlyStats || {},
+            gameCompletions: dbStats.gameCompletions || {},
+            achievementStats: dbStats.achievementStats || {},
+            communityRecords: dbStats.communityRecords || {},
+        };
 
-            const response = await fetch(this.SPREADSHEET_URL);
-            const csvText = await response.text();
+        // Use UserTracker to get valid users
+        const users = await userTracker.getValidUsers();
 
-            const users = csvText
-                .split('\n')
-                .map(line => line.trim())
-                .filter(line => line)
-                .slice(1);
+        console.log('Found users:', users);
 
-            console.log('Found users:', users);
-
-            for (const username of users) {
-                await this.initializeUserIfNeeded(username);
-            }
-
-            await this.saveStats();
-            console.log('Stats loaded and synchronized with spreadsheet');
-
-        } catch (error) {
-            console.error('Error loading or synchronizing stats:', error);
-            throw error;
+        for (const username of users) {
+            await this.initializeUserIfNeeded(username);
         }
+
+        // Save updated stats
+        await this.saveStats();
+        console.log('Stats loaded and synchronized with UserTracker');
+    } catch (error) {
+        console.error('Error loading or synchronizing stats:', error);
+        throw error;
     }
+}
+
 
     async initializeUserIfNeeded(username) {
         if (!username) return;
