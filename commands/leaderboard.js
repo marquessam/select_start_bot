@@ -93,54 +93,58 @@ module.exports = {
     },
 
     async displayYearlyLeaderboard(message, shadowGame) {
-        try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
+    try {
+        await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
-             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
+        const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
         const validUsers = await DataService.getValidUsers();
-        
+
         // Filter for valid and active users
         const activeUsers = yearlyLeaderboard.filter(user => 
             validUsers.includes(user.username.toLowerCase()) &&
             user.points > 0
         );
 
-            const rankedLeaderboard = activeUsers.map((user) => {
-                if (user.points !== currentPoints) {
-                    currentRank += sameRankCount;
-                    sameRankCount = 0;
-                    currentPoints = user.points;
-                } else {
-                    sameRankCount++;
-                }
-                return {
-                    ...user,
-                    rank: currentRank,
-                };
-            });
+        // Initialize ranking variables
+        let currentPoints = null;
+        let currentRank = 1;
+        let sameRankCount = 0;
 
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('YEARLY RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
-
-            if (rankedLeaderboard.length > 0) {
-                embed.addTerminalField('TOP OPERATORS',
-                    rankedLeaderboard
-                        .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
-                        .join('\n'));
+        const rankedLeaderboard = activeUsers.map((user) => {
+            if (user.points !== currentPoints) {
+                currentRank += sameRankCount;
+                sameRankCount = 0;
+                currentPoints = user.points;
             } else {
-                embed.addTerminalField('STATUS', 'No rankings available');
+                sameRankCount++;
             }
+            return {
+                ...user,
+                rank: currentRank,
+            };
+        });
 
-            embed.setTerminalFooter();
-            await message.channel.send({ embeds: [embed] });
-            if (shadowGame) await shadowGame.tryShowError(message);
-        } catch (error) {
-            console.error('Yearly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('YEARLY RANKINGS')
+            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
+
+        if (rankedLeaderboard.length > 0) {
+            embed.addTerminalField('TOP OPERATORS',
+                rankedLeaderboard
+                    .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
+                    .join('\n'));
+        } else {
+            embed.addTerminalField('STATUS', 'No rankings available');
         }
-    },
 
+        embed.setTerminalFooter();
+        await message.channel.send({ embeds: [embed] });
+        if (shadowGame) await shadowGame.tryShowError(message);
+    } catch (error) {
+        console.error('Yearly Leaderboard Error:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
+    }
+}
     async displayHighScores(message, args, shadowGame) {
         try {
             const highscores = await DataService.getHighScores();
