@@ -50,9 +50,11 @@ module.exports = {
             const currentChallenge = await DataService.getCurrentChallenge();
 
             // Filter out users with 0 progress
-            const activeUsers = leaderboardData.filter(user => 
-                user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0
-            );
+            const validUsers = await DataService.getValidUsers();
+        const activeUsers = leaderboardData.filter(user => 
+            validUsers.includes(user.username.toLowerCase()) &&
+            (user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0)
+        );
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('USER RANKINGS')
@@ -94,14 +96,14 @@ module.exports = {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
-            const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
-
-            // Filter out users with 0 points
-            const activeUsers = yearlyLeaderboard.filter(user => user.points > 0);
-
-            let currentRank = 1;
-            let currentPoints = -1;
-            let sameRankCount = 0;
+             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
+        const validUsers = await DataService.getValidUsers();
+        
+        // Filter for valid and active users
+        const activeUsers = yearlyLeaderboard.filter(user => 
+            validUsers.includes(user.username.toLowerCase()) &&
+            user.points > 0
+        );
 
             const rankedLeaderboard = activeUsers.map((user) => {
                 if (user.points !== currentPoints) {
