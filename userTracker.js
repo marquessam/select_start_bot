@@ -96,3 +96,4 @@ class UserTracker {
         return Array.from(this.validUsers);
     }
 }
+module.exports = UserTracker;
