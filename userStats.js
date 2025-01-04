@@ -1,8 +1,8 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-const database = require('./database');
 
 class UserStats {
-    constructor() {
+    constructor(database) {
+        this.database = database; // Store the database instance
         this.stats = {
             users: {},
             yearlyStats: {},
@@ -16,7 +16,7 @@ class UserStats {
 
     async getAllUsers() {
         try {
-            return await database.getValidUsers();
+            return await this.database.getValidUsers();
         } catch (error) {
             console.error('Error fetching valid users:', error);
             return [];
@@ -39,38 +39,37 @@ class UserStats {
         }
     }
 
-   async loadStats(userTracker) {
-    try {
-        // Initialize stats with existing database data
-        const dbStats = await this.database.getUserStats();
+    async loadStats(userTracker) {
+        try {
+            // Initialize stats with existing database data
+            const dbStats = await this.database.getUserStats();
 
-        this.stats = {
-            users: dbStats.users || {},
-            yearlyStats: dbStats.yearlyStats || {},
-            monthlyStats: dbStats.monthlyStats || {},
-            gameCompletions: dbStats.gameCompletions || {},
-            achievementStats: dbStats.achievementStats || {},
-            communityRecords: dbStats.communityRecords || {},
-        };
+            this.stats = {
+                users: dbStats.users || {},
+                yearlyStats: dbStats.yearlyStats || {},
+                monthlyStats: dbStats.monthlyStats || {},
+                gameCompletions: dbStats.gameCompletions || {},
+                achievementStats: dbStats.achievementStats || {},
+                communityRecords: dbStats.communityRecords || {},
+            };
 
-        // Use UserTracker to get valid users
-        const users = await userTracker.getValidUsers();
+            // Use UserTracker to get valid users
+            const users = await userTracker.getValidUsers();
 
-        console.log('Found users:', users);
+            console.log('Found users:', users);
 
-        for (const username of users) {
-            await this.initializeUserIfNeeded(username);
+            for (const username of users) {
+                await this.initializeUserIfNeeded(username);
+            }
+
+            // Save updated stats
+            await this.saveStats();
+            console.log('Stats loaded and synchronized with UserTracker');
+        } catch (error) {
+            console.error('Error loading or synchronizing stats:', error);
+            throw error;
         }
-
-        // Save updated stats
-        await this.saveStats();
-        console.log('Stats loaded and synchronized with UserTracker');
-    } catch (error) {
-        console.error('Error loading or synchronizing stats:', error);
-        throw error;
     }
-}
-
 
     async initializeUserIfNeeded(username) {
         if (!username) return;
@@ -78,7 +77,7 @@ class UserStats {
         const cleanUsername = username.trim().toLowerCase();
         if (!cleanUsername) return;
 
-        const validUsers = await database.getValidUsers();
+        const validUsers = await this.database.getValidUsers();
         if (!validUsers.includes(cleanUsername)) {
             return; // Don't initialize non-valid users
         }
@@ -99,7 +98,7 @@ class UserStats {
 
     async saveStats() {
         try {
-            await database.saveUserStats(this.stats);
+            await this.database.saveUserStats(this.stats);
         } catch (error) {
             console.error('Error saving stats to database:', error);
             throw error;
@@ -139,7 +138,7 @@ class UserStats {
     async updateMonthlyParticipation(data) {
         try {
             const currentYear = new Date().getFullYear().toString();
-            const currentChallenge = await database.getCurrentChallenge();
+            const currentChallenge = await this.database.getCurrentChallenge();
 
             const participants = data.leaderboard.filter(user => user.completedAchievements > 0);
 
@@ -229,8 +228,6 @@ class UserStats {
         try {
             console.log('Adding bonus points to:', username);
 
-            await this.refreshUserList();
-
             const cleanUsername = username.trim().toLowerCase();
             const user = this.stats.users[cleanUsername];
 
@@ -295,9 +292,7 @@ class UserStats {
     async getUserStats(username) {
         try {
             const cleanUsername = username.trim().toLowerCase();
-
             if (!this.stats.users[cleanUsername]) {
-
                 await this.initializeUserIfNeeded(cleanUsername);
             }
 
