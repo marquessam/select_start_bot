@@ -5,7 +5,7 @@ module.exports = {
     name: 'leaderboard',
     description: 'Displays monthly, yearly, or high score leaderboards',
 
-    async execute(message, args) {
+    async execute(message, args, { shadowGame }) {
         try {
             if (!args.length) {
                 await message.channel.send('```ansi\n\x1b[32m> Accessing leaderboard options...\x1b[0m\n```');
@@ -20,19 +20,21 @@ module.exports = {
                     .setTerminalFooter();
 
                 await message.channel.send({ embeds: [embed] });
+                if (shadowGame) await shadowGame.tryShowError(message);
                 return;
             }
 
             const subcommand = args[0].toLowerCase();
 
             if (subcommand === 'month') {
-                await this.displayMonthlyLeaderboard(message);
+                await this.displayMonthlyLeaderboard(message, shadowGame);
             } else if (subcommand === 'year') {
-                await this.displayYearlyLeaderboard(message);
+                await this.displayYearlyLeaderboard(message, shadowGame);
             } else if (subcommand === 'highscores') {
-                await this.displayHighScores(message, args.slice(1));
+                await this.displayHighScores(message, args.slice(1), shadowGame);
             } else {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid option\nUse !leaderboard to see available options\n[Ready for input]█\x1b[0m```');
+                if (shadowGame) await shadowGame.tryShowError(message);
             }
         } catch (error) {
             console.error('Leaderboard Command Error:', error);
@@ -40,7 +42,7 @@ module.exports = {
         }
     },
 
-    async displayMonthlyLeaderboard(message) {
+    async displayMonthlyLeaderboard(message, shadowGame) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
 
@@ -81,13 +83,14 @@ module.exports = {
 
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
+            if (shadowGame) await shadowGame.tryShowError(message);
         } catch (error) {
             console.error('Monthly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
 
-    async displayYearlyLeaderboard(message) {
+    async displayYearlyLeaderboard(message, shadowGame) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
@@ -129,13 +132,14 @@ module.exports = {
 
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
+            if (shadowGame) await shadowGame.tryShowError(message);
         } catch (error) {
             console.error('Yearly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
 
-    async displayHighScores(message, args) {
+    async displayHighScores(message, args, shadowGame) {
         try {
             const highscores = await DataService.getHighScores();
 
@@ -156,6 +160,7 @@ module.exports = {
                     .setTerminalFooter();
 
                 await message.channel.send({ embeds: [embed] });
+                if (shadowGame) await shadowGame.tryShowError(message);
                 return;
             }
 
@@ -164,6 +169,7 @@ module.exports = {
 
             if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > games.length) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\nUse !leaderboard highscores to see available games\n[Ready for input]█\x1b[0m```');
+                if (shadowGame) await shadowGame.tryShowError(message);
                 return;
             }
 
@@ -187,8 +193,7 @@ module.exports = {
 
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
-                    await shadowGame.tryShowError(message);
-            
+            if (shadowGame) await shadowGame.tryShowError(message);
         } catch (error) {
             console.error('High Scores Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve high scores\n[Ready for input]█\x1b[0m```');
