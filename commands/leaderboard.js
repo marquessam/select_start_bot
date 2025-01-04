@@ -47,12 +47,18 @@ module.exports = {
             const leaderboardData = await DataService.getLeaderboard('monthly');
             const currentChallenge = await DataService.getCurrentChallenge();
 
+            // Filter out users with 0 progress
+            const activeUsers = leaderboardData.filter(user => 
+                user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0
+            );
+
             const embed = new TerminalEmbed()
                 .setTerminalTitle('USER RANKINGS')
                 .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]');
 
-            leaderboardData.slice(0, 3).forEach((user, index) => {
+            // Display top 3
+            activeUsers.slice(0, 3).forEach((user, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 embed.addTerminalField(
                     `${medals[index]} ${user.username}`,
@@ -60,12 +66,17 @@ module.exports = {
                 );
             });
 
-            const additionalParticipants = leaderboardData.slice(3)
+            // Display remaining active participants
+            const additionalParticipants = activeUsers.slice(3)
                 .map(user => `${user.username} (${user.completionPercentage}%)`)
                 .join('\n');
 
             if (additionalParticipants) {
                 embed.addTerminalField('ADDITIONAL PARTICIPANTS', additionalParticipants);
+            }
+
+            if (activeUsers.length === 0) {
+                embed.addTerminalField('STATUS', 'No active participants yet');
             }
 
             embed.setTerminalFooter();
@@ -82,11 +93,14 @@ module.exports = {
 
             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
 
+            // Filter out users with 0 points
+            const activeUsers = yearlyLeaderboard.filter(user => user.points > 0);
+
             let currentRank = 1;
             let currentPoints = -1;
             let sameRankCount = 0;
 
-            const rankedLeaderboard = yearlyLeaderboard.map((user) => {
+            const rankedLeaderboard = activeUsers.map((user) => {
                 if (user.points !== currentPoints) {
                     currentRank += sameRankCount;
                     sameRankCount = 0;
