@@ -22,7 +22,7 @@ function calculateRank(username, leaderboard, rankMetric) {
 module.exports = {
     name: 'profile',
     description: 'Displays enhanced user profile and stats',
-    async execute(message, args) {
+    async execute(message, args, { shadowGame }) {  // Added shadowGame parameter here
         try {
             const username = args[0]?.toLowerCase();
             if (!username) {
@@ -106,7 +106,11 @@ module.exports = {
             
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
-                   await shadowGame.tryShowError(message);
+            
+            // Call shadowGame.tryShowError after sending the profile
+            if (shadowGame) {
+                await shadowGame.tryShowError(message);
+            }
 
         } catch (error) {
             console.error('Profile Command Error:', error);
