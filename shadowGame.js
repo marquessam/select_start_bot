@@ -4,7 +4,7 @@ const database = require('./database');
 class ShadowGame {
     constructor() {
         this.config = null;
-        this.errorChance = 0.35; // 35% chance to show error after commands
+        this.errorChance = 0.50; // 50% chance to show error after commands
     }
 
     async resetProgress() {
