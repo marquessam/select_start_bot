@@ -13,8 +13,8 @@ class UserStats {
         };
         this.currentYear = new Date().getFullYear();
     }
-    
-     async getAllUsers() {
+
+    async getAllUsers() {
         try {
             return await database.getValidUsers();
         } catch (error) {
@@ -23,7 +23,6 @@ class UserStats {
         }
     }
 
-    
     async removeUser(username) {
         try {
             const cleanUsername = username.trim().toLowerCase();
@@ -39,7 +38,7 @@ class UserStats {
             throw error;
         }
     }
-    
+
     async loadStats() {
         try {
             const dbStats = await database.getUserStats();
@@ -77,8 +76,6 @@ class UserStats {
         }
     }
 
-   
-
     async initializeUserIfNeeded(username) {
         if (!username) return;
 
@@ -90,58 +87,18 @@ class UserStats {
             return; // Don't initialize non-valid users
         }
 
-        // Rest of initialization code remains the same...
-    }
-}
+        if (!this.stats.users[cleanUsername]) {
+            this.stats.users[cleanUsername] = {
+                yearlyPoints: {},
+                completedGames: {},
+                monthlyAchievements: {},
+                yearlyStats: {},
+                participationMonths: [],
+                completionMonths: [],
+                masteryMonths: [],
+                bonusPoints: []
             };
         }
-
-        const userStats = this.stats.users[cleanUsername];
-
-        if (!userStats.yearlyPoints[year]) {
-            userStats.yearlyPoints[year] = 0;
-        }
-
-        if (!userStats.completedGames[year]) {
-            userStats.completedGames[year] = [];
-        }
-
-        if (!userStats.monthlyStats[year]) {
-            userStats.monthlyStats[year] = {};
-        }
-
-        if (!userStats.yearlyStats[year]) {
-            userStats.yearlyStats[year] = {
-                totalGamesCompleted: 0,
-                totalAchievementsUnlocked: 0,
-                hardcoreCompletions: 0,
-                softcoreCompletions: 0,
-                monthlyParticipations: 0,
-                perfectMonths: 0,
-                totalPoints: 0,
-                averageCompletion: 0,
-                longestStreak: 0,
-                currentStreak: 0,
-                highestSingleDay: 0,
-                mastery100Count: 0,
-                participationRate: 0,
-                rareAchievements: 0,
-                personalBests: {
-                    fastestCompletion: null,
-                    highestPoints: 0,
-                    bestRank: 0
-                },
-                achievementsPerMonth: {},
-                dailyActivity: {},
-                hardestGame: ""
-            };
-        }
-
-        if (!userStats.monthlyAchievements[year]) {
-            userStats.monthlyAchievements[year] = {};
-        }
-
-        return this.saveStats();
     }
 
     async saveStats() {
@@ -184,63 +141,54 @@ class UserStats {
     }
 
     async updateMonthlyParticipation(data) {
-    try {
-        const currentYear = new Date().getFullYear().toString();
-        const currentChallenge = await database.getCurrentChallenge();
+        try {
+            const currentYear = new Date().getFullYear().toString();
+            const currentChallenge = await database.getCurrentChallenge();
 
-        // Get all users who have at least one achievement
-        const participants = data.leaderboard.filter(user => user.completedAchievements > 0);
+            const participants = data.leaderboard.filter(user => user.completedAchievements > 0);
 
-        // Update participation count for each user
-        for (const user of participants) {
-            const username = user.username.toLowerCase();
-            if (!this.stats.users[username]) continue;
+            for (const user of participants) {
+                const username = user.username.toLowerCase();
+                if (!this.stats.users[username]) continue;
 
-            // Initialize yearly stats if needed
-            if (!this.stats.users[username].yearlyStats[currentYear]) {
-                this.stats.users[username].yearlyStats[currentYear] = {
-                    monthlyParticipations: 0,
-                    totalAchievementsUnlocked: 0 // Ensure this is initialized
-                };
-            }
+                if (!this.stats.users[username].yearlyStats[currentYear]) {
+                    this.stats.users[username].yearlyStats[currentYear] = {
+                        monthlyParticipations: 0,
+                        totalAchievementsUnlocked: 0
+                    };
+                }
 
-            // Keep track of monthly achievements
-            const currentMonth = new Date().getMonth();
-            const monthlyKey = `${currentYear}-${currentMonth}`;
+                const currentMonth = new Date().getMonth();
+                const monthlyKey = `${currentYear}-${currentMonth}`;
 
-            // Store monthly achievement count
-            if (!this.stats.users[username].monthlyAchievements[currentYear]) {
-                this.stats.users[username].monthlyAchievements[currentYear] = {};
-            }
-            
-            // Only update if achievement count has changed
-            if (this.stats.users[username].monthlyAchievements[currentYear][monthlyKey] !== user.completedAchievements) {
-                // Update achievement count
-                this.stats.users[username].monthlyAchievements[currentYear][monthlyKey] = user.completedAchievements;
-                
-                // Update total achievements for the year
-                this.stats.users[username].yearlyStats[currentYear].totalAchievementsUnlocked = 
-                    Object.values(this.stats.users[username].monthlyAchievements[currentYear])
-                        .reduce((total, count) => total + count, 0);
-            }
+                if (!this.stats.users[username].monthlyAchievements[currentYear]) {
+                    this.stats.users[username].monthlyAchievements[currentYear] = {};
+                }
 
-            // Rest of the existing participation, completion, and mastery logic...
-            const participationKey = `${currentYear}-${currentMonth}`;
-            
-            if (!this.stats.users[username].participationMonths) {
-                this.stats.users[username].participationMonths = [];
-            }
+                if (this.stats.users[username].monthlyAchievements[currentYear][monthlyKey] !== user.completedAchievements) {
+                    this.stats.users[username].monthlyAchievements[currentYear][monthlyKey] = user.completedAchievements;
 
-            if (!this.stats.users[username].participationMonths.includes(participationKey)) {
-                this.stats.users[username].participationMonths.push(participationKey);
-                this.stats.users[username].yearlyStats[currentYear].monthlyParticipations++;
-                
-                await this.addBonusPoints(
-                    username, 
-                    1, 
-                    `${currentChallenge.gameName} - participation`
-                );
-            }
+                    this.stats.users[username].yearlyStats[currentYear].totalAchievementsUnlocked =
+                        Object.values(this.stats.users[username].monthlyAchievements[currentYear])
+                            .reduce((total, count) => total + count, 0);
+                }
+
+                const participationKey = `${currentYear}-${currentMonth}`;
+
+                if (!this.stats.users[username].participationMonths) {
+                    this.stats.users[username].participationMonths = [];
+                }
+
+                if (!this.stats.users[username].participationMonths.includes(participationKey)) {
+                    this.stats.users[username].participationMonths.push(participationKey);
+                    this.stats.users[username].yearlyStats[currentYear].monthlyParticipations++;
+
+                    await this.addBonusPoints(
+                        username, 
+                        1, 
+                        `${currentChallenge.gameName} - participation`
+                    );
+                }
 
                 if (user.hasCompletion) {
                     const completionKey = `completion-${currentYear}-${currentMonth}`;
@@ -280,49 +228,46 @@ class UserStats {
             console.error('Error updating monthly participation:', error);
         }
     }
-    
-   async addBonusPoints(username, points, reason) {
-    try {
-        console.log('Adding bonus points to:', username);
 
-        await this.refreshUserList();
+    async addBonusPoints(username, points, reason) {
+        try {
+            console.log('Adding bonus points to:', username);
 
-        const cleanUsername = username.trim().toLowerCase();
-        const user = this.stats.users[cleanUsername];
+            await this.refreshUserList();
 
-        if (!user) {
-            throw new Error(`User ${username} not found`);
+            const cleanUsername = username.trim().toLowerCase();
+            const user = this.stats.users[cleanUsername];
+
+            if (!user) {
+                throw new Error(`User ${username} not found`);
+            }
+
+            const year = this.currentYear.toString();
+
+            if (!user.bonusPoints) {
+                user.bonusPoints = [];
+            }
+            user.bonusPoints.push({ points, reason, year, date: new Date().toISOString() });
+
+            user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
+
+            const totalPoints = user.bonusPoints
+                .filter(bonus => bonus.year === year)
+                .reduce((sum, bonus) => sum + bonus.points, 0);
+
+            user.totalPoints = totalPoints;
+
+            await this.saveStats();
+            console.log(`Successfully added ${points} points to ${username} for ${reason}`);
+
+            if (global.leaderboardCache) {
+                global.leaderboardCache.updateLeaderboards();
+            }
+        } catch (error) {
+            console.error('Error in addBonusPoints:', error);
+            throw error;
         }
-
-        const year = this.currentYear.toString();
-
-        if (!user.bonusPoints) {
-            user.bonusPoints = [];
-        }
-        user.bonusPoints.push({ points, reason, year, date: new Date().toISOString() });
-
-        // Update yearly points
-        user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
-
-        // Calculate total points from all sources
-        const totalPoints = user.bonusPoints
-            .filter(bonus => bonus.year === year)
-            .reduce((sum, bonus) => sum + bonus.points, 0);
-
-        user.totalPoints = totalPoints;
-
-        await this.saveStats();
-        console.log(`Successfully added ${points} points to ${username} for ${reason}`);
-
-        // Force leaderboard cache update
-        if (global.leaderboardCache) {
-            global.leaderboardCache.updateLeaderboards();
-        }
-    } catch (error) {
-        console.error('Error in addBonusPoints:', error);
-        throw error;
     }
-}
 
     async resetUserPoints(username) {
         try {
@@ -356,6 +301,7 @@ class UserStats {
             const cleanUsername = username.trim().toLowerCase();
 
             if (!this.stats.users[cleanUsername]) {
+
                 await this.initializeUserIfNeeded(cleanUsername);
             }
 
@@ -366,7 +312,5 @@ class UserStats {
         }
     }
 }
-
-module.exports = UserStats;
 
 module.exports = UserStats;
