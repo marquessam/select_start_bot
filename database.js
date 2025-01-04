@@ -250,7 +250,30 @@ async updateArcadeScore(game, username, score) {
         const collection = await this.getCollection('challenges');
         return await fetchData(collection, { _id: 'next' }, null);
     }
+    
+async getValidUsers() {
+    const collection = await this.getCollection('users');
+    const data = await collection.findOne({ _id: 'validUsers' });
+    return data?.users || [];
+}
 
+async addValidUser(username) {
+    const collection = await this.getCollection('users');
+    await collection.updateOne(
+        { _id: 'validUsers' },
+        { $addToSet: { users: username.toLowerCase() } },
+        { upsert: true }
+    );
+}
+
+async removeValidUser(username) {
+    const collection = await this.getCollection('users');
+    await collection.updateOne(
+        { _id: 'validUsers' },
+        { $pull: { users: username.toLowerCase() } }
+    );
+}
+    
     async getConfiguration() {
         const collection = await this.getCollection('config');
         return await fetchData(collection, { _id: 'settings' }, {
