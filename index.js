@@ -17,7 +17,7 @@ const client = new Client({
     ],
 });
 
-const userStats = new UserStats();
+const userStats = new UserStats(database); // Pass database to UserStats
 const commandHandler = new CommandHandler();
 const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
 const shadowGame = new ShadowGame();
@@ -40,7 +40,7 @@ client.once('ready', async () => {
         // Initialize components
         await shadowGame.loadConfig();
         console.log('ShadowGame initialized.');
-        await userStats.loadStats(userTracker);
+        await userStats.loadStats(userTracker); // Pass userTracker to loadStats
         console.log('UserStats loaded successfully.');
         await announcer.initialize();
         console.log('Announcer initialized.');
@@ -118,4 +118,5 @@ process.on('SIGINT', async () => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
 
