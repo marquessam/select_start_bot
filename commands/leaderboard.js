@@ -187,7 +187,8 @@ module.exports = {
 
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
-                   await shadowGame.tryShowError(message);
+                    await shadowGame.tryShowError(message);
+            
         } catch (error) {
             console.error('High Scores Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve high scores\n[Ready for input]█\x1b[0m```');
