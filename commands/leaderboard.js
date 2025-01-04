@@ -100,7 +100,7 @@ module.exports = {
         const validUsers = await DataService.getValidUsers();
 
         // Filter for valid and active users
-        const activeUsers = yearlyLeaderboard.filter(user => 
+        const activeUsers = yearlyLeaderboard.filter(user =>
             validUsers.includes(user.username.toLowerCase()) &&
             user.points > 0
         );
@@ -145,6 +145,7 @@ module.exports = {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
     }
 }
+
     async displayHighScores(message, args, shadowGame) {
         try {
             const highscores = await DataService.getHighScores();
