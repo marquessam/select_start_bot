@@ -152,6 +152,55 @@ async resetArcadeScores(gameName) {
     
     return [];
 }
+    async getHighScores() {
+    const collection = await this.getCollection('arcadechallenge');
+    return await fetchData(collection, { _id: 'scores' }, {
+        games: {
+            "Tony Hawk's Pro Skater": {
+                platform: "PSX",
+                description: "Highest possible score in 2 minute runs",
+                scores: []
+            },
+            "Mr. Driller": {
+                platform: "PSX",
+                description: "Deepest depth reached (in feet)",
+                scores: []
+            },
+            "Tetris": {
+                platform: "Game Boy",
+                description: "Highest possible score",
+                scores: []
+            },
+            "Ms. Pac-Man": {
+                platform: "NES",
+                description: "Highest possible score",
+                scores: []
+            },
+            "Raiden Trad": {
+                platform: "SNES",
+                description: "Highest possible score",
+                scores: []
+            },
+            "Community Game 1": {
+                platform: "TBA",
+                description: "TBD",
+                scores: []
+            },
+            "Community Game 2": {
+                platform: "TBA",
+                description: "TBD",
+                scores: []
+            },
+            "Community Game 3": {
+                platform: "TBA",
+                description: "TBD",
+                scores: []
+            }
+        },
+        expiryDate: "December 1st 2025"
+    });
+}
+    
     async saveHighScores(highscores) {
         const collection = await this.getCollection('highscores');
         await collection.updateOne(
