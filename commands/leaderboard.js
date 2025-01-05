@@ -106,18 +106,13 @@ module.exports = {
         activeUsers.sort((a, b) => b.points - a.points);
 
         // Generate ranks without skipping
-        let currentRank = 1;
+        let currentRank = 0;
         let lastPoints = null;
-        let rankIncrement = 0;
 
         const rankedLeaderboard = activeUsers.map((user, index) => {
             if (user.points !== lastPoints) {
-                currentRank += rankIncrement; // Increment rank
-                rankIncrement = 1; // Reset rank increment counter
-            } else {
-                rankIncrement++; // Tie, so just increment the counter
+                currentRank = index + 1; // Rank is based on position in the sorted array
             }
-
             lastPoints = user.points;
 
             return {
@@ -125,6 +120,30 @@ module.exports = {
                 rank: currentRank,
             };
         });
+
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('YEARLY RANKINGS')
+            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
+
+        if (rankedLeaderboard.length > 0) {
+            embed.addTerminalField('TOP OPERATORS',
+                rankedLeaderboard
+                    .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
+                    .join('\n')
+            );
+        } else {
+            embed.addTerminalField('STATUS', 'No rankings available');
+        }
+
+        embed.setTerminalFooter();
+        await message.channel.send({ embeds: [embed] });
+        if (shadowGame) await shadowGame.tryShowError(message);
+    } catch (error) {
+        console.error('Yearly Leaderboard Error:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
+    }
+}
+
 
         const embed = new TerminalEmbed()
             .setTerminalTitle('YEARLY RANKINGS')
