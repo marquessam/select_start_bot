@@ -460,6 +460,87 @@ async saveReview(gameName, username, review) {
         };
     }
 
+    async getValidGamesList() {
+    const currentChallenge = await this.getCurrentChallenge();
+    const arcadeGames = await this.getArcadeScores();
+    const reviews = await this.getReviews();
+    const previousGames = await this.getPreviousChallenges();
+    
+    // Combine all valid games into a Set to remove duplicates
+    const validGames = new Set([
+        // Current challenge
+        currentChallenge.gameName,
+        // Arcade games
+        ...Object.keys(arcadeGames.games),
+        // Games with existing reviews
+        ...Object.keys(reviews.games),
+        // Previous challenge games
+        ...previousGames.map(game => game.gameName)
+    ].filter(Boolean)); // Remove null/undefined values
+
+    return Array.from(validGames);
+}
+
+async getPreviousChallenges() {
+    const collection = await this.getCollection('challenges');
+    return await fetchData(collection, { _id: 'history' }, {
+        games: []
+    }).then(data => data.games || []);
+}
+
+async addGameToHistory(gameData) {
+    const collection = await this.getCollection('challenges');
+    await collection.updateOne(
+        { _id: 'history' },
+        { $addToSet: { games: gameData } },
+        { upsert: true }
+    );
+}
+
+async requestNewGame(gameName, requestedBy) {
+    const collection = await this.getCollection('gameRequests');
+    await collection.updateOne(
+        { _id: 'requests' },
+        {
+            $push: {
+                pending: {
+                    gameName,
+                    requestedBy,
+                    requestDate: new Date().toISOString(),
+                    status: 'pending'
+                }
+            }
+        },
+        { upsert: true }
+    );
+}
+
+async approveGame(gameName) {
+    const collection = await this.getCollection('gameRequests');
+    // Move from pending to approved
+    await collection.updateOne(
+        { _id: 'requests' },
+        {
+            $pull: { pending: { gameName } },
+            $push: {
+                approved: {
+                    gameName,
+                    approvedDate: new Date().toISOString()
+                }
+            }
+        }
+    );
+    return true;
+}
+
+async getGameRequests() {
+    const collection = await this.getCollection('gameRequests');
+    return await fetchData(collection, { _id: 'requests' }, {
+        pending: [],
+        approved: []
+    });
+}
+    
     // Add or update review
     const gameReviews = reviews.games[gameName];
     const existingReviewIndex = gameReviews.reviews.findIndex(r => 
