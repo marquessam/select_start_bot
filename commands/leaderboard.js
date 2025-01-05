@@ -93,14 +93,18 @@ module.exports = {
     try {
         await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
+        // Fetch data and log it for debugging
         const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
         const validUsers = await DataService.getValidUsers();
+        console.log('[DEBUG] Yearly Leaderboard:', yearlyLeaderboard);
+        console.log('[DEBUG] Valid Users:', validUsers);
 
         // Filter for valid and active users
         const activeUsers = yearlyLeaderboard.filter(user =>
             validUsers.includes(user.username.toLowerCase()) &&
             user.points > 0
         );
+        console.log('[DEBUG] Active Users:', activeUsers);
 
         // Sort by points in descending order
         activeUsers.sort((a, b) => b.points - a.points);
@@ -121,6 +125,7 @@ module.exports = {
                 rank: displayedRank, // Use displayed rank to handle ties
             };
         });
+        console.log('[DEBUG] Ranked Leaderboard:', rankedLeaderboard);
 
         const embed = new TerminalEmbed()
             .setTerminalTitle('YEARLY RANKINGS')
@@ -140,10 +145,11 @@ module.exports = {
         await message.channel.send({ embeds: [embed] });
         if (shadowGame) await shadowGame.tryShowError(message);
     } catch (error) {
-        console.error('Yearly Leaderboard Error:', error);
+        console.error('[ERROR] Yearly Leaderboard Error:', error);
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
     }
 }
+
 
     async displayHighScores(message, args, shadowGame) {
         try {
