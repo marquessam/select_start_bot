@@ -33,12 +33,12 @@ module.exports = {
             } else if (subcommand === 'highscores') {
                 await this.displayHighScores(message, args.slice(1), shadowGame);
             } else {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid option\nUse !leaderboard to see available options\n[Ready for input]\u2588\x1b[0m```');
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid option\nUse !leaderboard to see available options\n[Ready for input]█\x1b[0m```');
                 if (shadowGame) await shadowGame.tryShowError(message);
             }
         } catch (error) {
             console.error('Leaderboard Command Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to process leaderboard command\n[Ready for input]\u2588\x1b[0m```');
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to process leaderboard command\n[Ready for input]█\x1b[0m```');
         }
     },
 
@@ -61,7 +61,7 @@ module.exports = {
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]');
 
             activeUsers.slice(0, 3).forEach((user, index) => {
-                const medals = ['\ud83e\udd47', '\ud83e\udd48', '\ud83e\udd49'];
+                const medals = ['🥇', '🥈', '🥉'];
                 embed.addTerminalField(
                     `${medals[index]} ${user.username}`,
                     `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\nPROGRESS: ${user.completionPercentage}%`
@@ -85,152 +85,125 @@ module.exports = {
             if (shadowGame) await shadowGame.tryShowError(message);
         } catch (error) {
             console.error('Monthly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]\u2588\x1b[0m```');
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
 
-   async displayYearlyLeaderboard(message, shadowGame) {
-    try {
-        await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
+    async displayYearlyLeaderboard(message, shadowGame) {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
-        const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
-        const validUsers = await DataService.getValidUsers();
+            const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
+            const validUsers = await DataService.getValidUsers();
 
-        // Filter for valid and active users
-        const activeUsers = yearlyLeaderboard.filter(user =>
-            validUsers.includes(user.username.toLowerCase()) &&
-            user.points > 0
-        );
-
-        // Sort by points in descending order
-        activeUsers.sort((a, b) => b.points - a.points);
-
-        // Generate ranks without skipping
-        let currentRank = 0;
-        let lastPoints = null;
-
-        const rankedLeaderboard = activeUsers.map((user, index) => {
-            if (user.points !== lastPoints) {
-                currentRank = index + 1; // Rank is based on position in the sorted array
-            }
-            lastPoints = user.points;
-
-            return {
-                ...user,
-                rank: currentRank,
-            };
-        });
-
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('YEARLY RANKINGS')
-            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
-
-        if (rankedLeaderboard.length > 0) {
-            embed.addTerminalField('TOP OPERATORS',
-                rankedLeaderboard
-                    .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
-                    .join('\n')
+            const activeUsers = yearlyLeaderboard.filter(user =>
+                validUsers.includes(user.username.toLowerCase()) &&
+                user.points > 0
             );
-        } else {
-            embed.addTerminalField('STATUS', 'No rankings available');
-        }
 
-        embed.setTerminalFooter();
-        await message.channel.send({ embeds: [embed] });
-        if (shadowGame) await shadowGame.tryShowError(message);
-    } catch (error) {
-        console.error('Yearly Leaderboard Error:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
-    }
-}
+            activeUsers.sort((a, b) => b.points - a.points);
 
+            let currentRank = 0;
+            let lastPoints = null;
 
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('YEARLY RANKINGS')
-            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
+            const rankedLeaderboard = activeUsers.map((user, index) => {
+                if (user.points !== lastPoints) {
+                    currentRank = index + 1;
+                }
+                lastPoints = user.points;
 
-        if (rankedLeaderboard.length > 0) {
-            embed.addTerminalField('TOP OPERATORS',
-                rankedLeaderboard
-                    .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
-                    .join('\n')
-            );
-        } else {
-            embed.addTerminalField('STATUS', 'No rankings available');
-        }
-
-        embed.setTerminalFooter();
-        await message.channel.send({ embeds: [embed] });
-        if (shadowGame) await shadowGame.tryShowError(message);
-    } catch (error) {
-        console.error('Yearly Leaderboard Error:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
-    }
-}
-
-   async displayHighScores(message, args, shadowGame) {
-    try {
-        const highscores = await DataService.getHighScores();
-
-        if (!args.length) {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing high score database...\x1b[0m\n```');
+                return {
+                    ...user,
+                    rank: currentRank,
+                };
+            });
 
             const embed = new TerminalEmbed()
-                .setTerminalTitle('HIGH SCORE BOARDS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT A GAME TO VIEW RANKINGS]\n')
-                .addTerminalField(
-                    'AVAILABLE GAMES',
-                    Object.entries(highscores.games)
-                        .map(([gameName, gameData], index) => {
-                            const hasScores = gameData.scores.length > 0 ? '✓' : ' ';
-                            return `${index + 1}. ${gameName} (${gameData.platform}) ${hasScores}`;
-                        })
-                        .join('\n') + '\n\n✓ = Scores recorded'
-                )
-                .addTerminalField('USAGE', '!leaderboard highscores <game number>\nExample: !leaderboard highscores 1')
-                .setTerminalFooter();
+                .setTerminalTitle('YEARLY RANKINGS')
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
 
+            if (rankedLeaderboard.length > 0) {
+                embed.addTerminalField('TOP OPERATORS',
+                    rankedLeaderboard
+                        .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
+                        .join('\n')
+                );
+            } else {
+                embed.addTerminalField('STATUS', 'No rankings available');
+            }
+
+            embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
             if (shadowGame) await shadowGame.tryShowError(message);
-            return;
+        } catch (error) {
+            console.error('Yearly Leaderboard Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
         }
+    },
 
-        const gameNumber = parseInt(args[0]);
-        const games = Object.entries(highscores.games);
+    async displayHighScores(message, args, shadowGame) {
+        try {
+            const highscores = await DataService.getHighScores();
 
-        if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > games.length) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\nUse !leaderboard highscores to see available games\n[Ready for input]█\x1b[0m```');
+            if (!args.length) {
+                await message.channel.send('```ansi\n\x1b[32m> Accessing high score database...\x1b[0m\n```');
+
+                const embed = new TerminalEmbed()
+                    .setTerminalTitle('HIGH SCORE BOARDS')
+                    .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT A GAME TO VIEW RANKINGS]\n')
+                    .addTerminalField(
+                        'AVAILABLE GAMES',
+                        Object.entries(highscores.games)
+                            .map(([gameName, gameData], index) => {
+                                const hasScores = gameData.scores.length > 0 ? '✓' : ' ';
+                                return `${index + 1}. ${gameName} (${gameData.platform}) ${hasScores}`;
+                            })
+                            .join('\n') + '\n\n✓ = Scores recorded'
+                    )
+                    .addTerminalField('USAGE', '!leaderboard highscores <game number>\nExample: !leaderboard highscores 1')
+                    .setTerminalFooter();
+
+                await message.channel.send({ embeds: [embed] });
+                if (shadowGame) await shadowGame.tryShowError(message);
+                return;
+            }
+
+            const gameNumber = parseInt(args[0]);
+            const games = Object.entries(highscores.games);
+
+            if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > games.length) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\nUse !leaderboard highscores to see available games\n[Ready for input]█\x1b[0m```');
+                if (shadowGame) await shadowGame.tryShowError(message);
+                return;
+            }
+
+            const [gameName, gameData] = games[gameNumber - 1];
+
+            const embed = new TerminalEmbed()
+                .setTerminalTitle(`${gameName} HIGH SCORES`)
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING RANKINGS]')
+                .addTerminalField('GAME INFO', `PLATFORM: ${gameData.platform}\nRULES: ${gameData.description}`);
+
+            if (gameData.scores.length > 0) {
+                embed.addTerminalField(
+                    'RANKINGS',
+                    gameData.scores
+                        .map((score, index) => {
+                            const medals = ['🥇', '🥈', '🥉'];
+                            return `${medals[index] || ''} ${score.username}: ${score.score}`;
+                        })
+                        .join('\n')
+                );
+            } else {
+                embed.addTerminalField('STATUS', 'No scores recorded yet');
+            }
+
+            embed.setTerminalFooter();
+            await message.channel.send({ embeds: [embed] });
             if (shadowGame) await shadowGame.tryShowError(message);
-            return;
+        } catch (error) {
+            console.error('High Scores Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve high scores\n[Ready for input]█\x1b[0m```');
         }
-
-        const [gameName, gameData] = games[gameNumber - 1];
-
-        const embed = new TerminalEmbed()
-            .setTerminalTitle(`${gameName} HIGH SCORES`)
-            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING RANKINGS]')
-            .addTerminalField('GAME INFO', `PLATFORM: ${gameData.platform}\nRULES: ${gameData.description}`);
-
-        if (gameData.scores.length > 0) {
-            embed.addTerminalField(
-                'RANKINGS',
-                gameData.scores
-                    .map((score, index) => {
-                        const medals = ['🥇', '🥈', '🥉'];
-                        return `${medals[index] || ''} ${score.username}: ${score.score}`;
-                    })
-                    .join('\n')
-            );
-        } else {
-            embed.addTerminalField('STATUS', 'No scores recorded yet');
-        }
-
-        embed.setTerminalFooter();
-        await message.channel.send({ embeds: [embed] });
-        if (shadowGame) await shadowGame.tryShowError(message);
-    } catch (error) {
-        console.error('High Scores Error:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve high scores\n[Ready for input]█\x1b[0m```');
-    }
-},
+    },
 };
