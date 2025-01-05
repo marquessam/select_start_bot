@@ -1,23 +1,31 @@
-const database = require('../../database');
+const database = require('../../database'); // Adjust the path as needed
+
 module.exports = {
     name: 'updategamerules',
     description: 'Update game rules in the arcade challenge.',
-    async execute(message, args) {
-        // Parse arguments
-        const [gameName, ...newRules] = args;
-        if (!gameName || !newRules.length) {
-            return message.channel.send('Usage: !updategamerules <game name> <new rules>');
-        }
-
-        const updatedRules = newRules.join(' ');
-
+    async execute(message) {
         try {
-            // Fetch existing arcade scores
-            const arcadeScores = await database.getHighScores();
+            const filter = m => m.author.id === message.author.id;
+            const timeout = 30000; // 30 seconds timeout for each prompt
 
-            // Validate game name
+            // Step 1: Ask for the game name
+            await message.channel.send('```ansi\n\x1b[32mEnter the name of the game you want to update rules for:\x1b[0m```');
+            let gameResponse;
+            try {
+                gameResponse = await message.channel.awaitMessages({
+                    filter,
+                    max: 1,
+                    time: timeout,
+                    errors: ['time']
+                });
+            } catch (error) {
+                return message.channel.send('```ansi\n\x1b[32m[ERROR] Time expired. Please start over.\n[Ready for input]█\x1b[0m```');
+            }
+            const gameName = gameResponse.first().content.trim();
+
+            // Step 2: Fetch existing arcade scores and validate game name
+            const arcadeScores = await database.getHighScores();
             if (!arcadeScores.games[gameName]) {
-                // List available games if the game name is invalid
                 const availableGames = Object.keys(arcadeScores.games)
                     .map((name, index) => `${index + 1}. ${name}`)
                     .join('\n');
@@ -26,17 +34,30 @@ module.exports = {
                 );
             }
 
-            // Update the description for the game
-            arcadeScores.games[gameName].description = updatedRules;
+            // Step 3: Ask for the new rules
+            await message.channel.send('```ansi\n\x1b[32mEnter the new rules for the game:\x1b[0m```');
+            let rulesResponse;
+            try {
+                rulesResponse = await message.channel.awaitMessages({
+                    filter,
+                    max: 1,
+                    time: timeout,
+                    errors: ['time']
+                });
+            } catch (error) {
+                return message.channel.send('```ansi\n\x1b[32m[ERROR] Time expired. Please start over.\n[Ready for input]█\x1b[0m```');
+            }
+            const updatedRules = rulesResponse.first().content.trim();
 
-            // Save changes to the database
+            // Step 4: Update the rules in the database
+            arcadeScores.games[gameName].description = updatedRules;
             await database.saveHighScores(arcadeScores);
 
-            // Send confirmation message
-            message.channel.send(`Rules for "${gameName}" updated successfully.`);
+            // Step 5: Send confirmation
+            message.channel.send(`Rules for "${gameName}" updated successfully to:\n\`\`\`\n${updatedRules}\n\`\`\``);
         } catch (error) {
             console.error('Error updating game rules:', error);
-            message.channel.send('An error occurred while updating the game rules.');
+            message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to update game rules. Please try again.\n[Ready for input]█\x1b[0m```');
         }
     }
 };
