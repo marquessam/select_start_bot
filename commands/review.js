@@ -66,14 +66,18 @@ module.exports = {
 
             // Wait for game selection
             const filter = m => m.author.id === message.author.id && !isNaN(m.content);
-            const response = await message.channel.awaitMessages({
+            const collected = await message.channel.awaitMessages({
                 filter,
                 max: 1,
-                time: 30000,
-                errors: ['time']
+                time: 30000
             });
 
-            const choice = parseInt(response.first().content);
+            if (collected.size === 0) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            const choice = parseInt(collected.first().content);
             if (choice < 1 || choice > gamesWithReviews.length) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
                 return;
@@ -82,7 +86,6 @@ module.exports = {
             const selectedGame = gamesWithReviews[choice - 1];
             const gameReviews = reviews.games[selectedGame];
 
-            // Create review display embed
             const reviewEmbed = new TerminalEmbed()
                 .setTerminalTitle(`${selectedGame} REVIEWS`)
                 .setTerminalDescription('[DISPLAYING REVIEW DATA]')
@@ -93,7 +96,6 @@ module.exports = {
                     `MUSIC: ${gameReviews.averageScores.music}/5\n` +
                     `OVERALL: ${gameReviews.averageScores.overall}/5`);
 
-            // Add individual reviews
             gameReviews.reviews.forEach((review, index) => {
                 reviewEmbed.addTerminalField(`REVIEW BY ${review.username}`,
                     `ART: ${review.scores.art}/5 | ` +
@@ -107,11 +109,8 @@ module.exports = {
             await message.channel.send({ embeds: [reviewEmbed] });
 
         } catch (error) {
-            if (error.name === 'CollectionError') {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Time expired\n[Ready for input]█\x1b[0m```');
-            } else {
-                throw error;
-            }
+            console.error('Display Reviews Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to display reviews\n[Ready for input]█\x1b[0m```');
         }
     },
 
@@ -128,47 +127,30 @@ module.exports = {
                 .setTerminalTitle('WRITE REVIEW')
                 .setTerminalDescription('[SELECT A GAME TO REVIEW]')
                 .addTerminalField('AVAILABLE GAMES', gameList)
-                .addTerminalField('USAGE', 
-                    'Enter a game number\n' +
-                    'Or type the exact name of an unlisted game')
+                .addTerminalField('USAGE', 'Enter the number of the game you want to review')
                 .setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
 
-            // Get game selection
             const filter = m => m.author.id === message.author.id;
-            const gameResponse = await message.channel.awaitMessages({
+            const collected = await message.channel.awaitMessages({
                 filter,
                 max: 1,
-                time: 30000,
-                errors: ['time']
+                time: 30000
             });
 
-            let selectedGame;
-            const input = gameResponse.first().content;
-
-            // Handle game selection
-            if (!isNaN(input)) {
-                const index = parseInt(input) - 1;
-                if (index >= 0 && index < validGames.length) {
-                    selectedGame = validGames[index];
-                }
-            } else {
-                // Check for exact match or request new game
-                selectedGame = validGames.find(game => 
-                    game.toLowerCase() === input.toLowerCase()
-                );
-
-                if (!selectedGame) {
-                    await message.channel.send('```ansi\n\x1b[32mGame not found. Contact an admin to add new games.\n[Ready for input]█\x1b[0m```');
-                    return;
-                }
-            }
-
-            if (!selectedGame) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game selection\n[Ready for input]█\x1b[0m```');
+            if (collected.size === 0) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```');
                 return;
             }
+
+            const gameNumber = parseInt(collected.first().content);
+            if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > validGames.length) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            const selectedGame = validGames[gameNumber - 1];
 
             // Collect scores
             const scores = {};
@@ -183,37 +165,42 @@ module.exports = {
             for (const [category, prompt] of categories) {
                 await message.channel.send(`\`\`\`ansi\n\x1b[32m${prompt}\x1b[0m\`\`\``);
                 
-                const scoreResponse = await message.channel.awaitMessages({
+                const scoreCollected = await message.channel.awaitMessages({
                     filter: m => {
                         const num = parseInt(m.content);
                         return filter(m) && !isNaN(num) && num >= 1 && num <= 5;
                     },
                     max: 1,
-                    time: 30000,
-                    errors: ['time']
+                    time: 30000
                 });
-                
-                scores[category] = parseInt(scoreResponse.first().content);
+
+                if (scoreCollected.size === 0) {
+                    await message.channel.send('```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```');
+                    return;
+                }
+
+                scores[category] = parseInt(scoreCollected.first().content);
             }
 
-            // Get comments
             await message.channel.send('```ansi\n\x1b[32mAdd any comments about your experience:\x1b[0m```');
-            const commentsResponse = await message.channel.awaitMessages({
+            const commentsCollected = await message.channel.awaitMessages({
                 filter,
                 max: 1,
-                time: 60000,
-                errors: ['time']
+                time: 60000
             });
 
-            // Save review
+            if (commentsCollected.size === 0) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
             const review = {
                 scores,
-                comments: commentsResponse.first().content
+                comments: commentsCollected.first().content
             };
 
             await database.saveReview(selectedGame, message.author.username, review);
 
-            // Show confirmation
             const confirmEmbed = new TerminalEmbed()
                 .setTerminalTitle('REVIEW SUBMITTED')
                 .setTerminalDescription('[REVIEW SAVED SUCCESSFULLY]')
@@ -230,11 +217,8 @@ module.exports = {
             await message.channel.send({ embeds: [confirmEmbed] });
 
         } catch (error) {
-            if (error.name === 'CollectionError') {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Time expired\n[Ready for input]█\x1b[0m```');
-            } else {
-                throw error;
-            }
+            console.error('Write Review Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to submit review\n[Ready for input]█\x1b[0m```');
         }
     }
 };
