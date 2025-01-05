@@ -240,7 +240,17 @@ class Database {
         
         return [];
     }
-
+    
+async saveHighScores(highScores) {
+    const collection = await this.getCollection('arcadechallenge');
+    await collection.updateOne(
+        { _id: 'scores' },  // Assumes a fixed `_id` for high scores
+        { $set: highScores },
+        { upsert: true }    // Create the document if it doesn't exist
+    );
+    console.log('High scores saved successfully.');
+}
+    
     // Community Records Methods
     async getCommunityRecords() {
         const collection = await this.getCollection('records');
