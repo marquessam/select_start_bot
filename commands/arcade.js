@@ -7,7 +7,7 @@ module.exports = {
     description: 'Display arcade challenge games and scores',
     async execute(message, args) {
         try {
-            const arcadeData = await database.getArcadeScores();
+            const arcadeData = await database.getHighScores();
 
             if (args.length === 0) {
                 // Show game list
