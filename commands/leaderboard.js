@@ -42,6 +42,56 @@ module.exports = {
         }
     },
 
+    async displayMonthlyLeaderboard(message, shadowGame) {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
+
+            const leaderboardData = await DataService.getLeaderboard('monthly');
+            const currentChallenge = await DataService.getCurrentChallenge();
+
+            // Filter out users with 0 progress
+            const validUsers = await DataService.getValidUsers();
+            const activeUsers = leaderboardData.filter(user =>
+                validUsers.includes(user.username.toLowerCase()) &&
+                (user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0)
+            );
+
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('USER RANKINGS')
+                .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]');
+
+            // Display top 3
+            activeUsers.slice(0, 3).forEach((user, index) => {
+                const medals = ['🥇', '🥈', '🥉'];
+                embed.addTerminalField(
+                    `${medals[index]} ${user.username}`,
+                    `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\nPROGRESS: ${user.completionPercentage}%`
+                );
+            });
+
+            // Display remaining active participants
+            const additionalParticipants = activeUsers.slice(3)
+                .map(user => `${user.username} (${user.completionPercentage}%)`)
+                .join('\n');
+
+            if (additionalParticipants) {
+                embed.addTerminalField('ADDITIONAL PARTICIPANTS', additionalParticipants);
+            }
+
+            if (activeUsers.length === 0) {
+                embed.addTerminalField('STATUS', 'No active participants yet');
+            }
+
+            embed.setTerminalFooter();
+            await message.channel.send({ embeds: [embed] });
+            if (shadowGame) await shadowGame.tryShowError(message);
+        } catch (error) {
+            console.error('Monthly Leaderboard Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
+        }
+    },
+
     async displayYearlyLeaderboard(message, shadowGame) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
@@ -55,25 +105,22 @@ module.exports = {
                 user.points > 0
             );
 
-            // Sort by points in descending order
-            activeUsers.sort((a, b) => b.points - a.points);
-
+            // Initialize ranking variables
             let currentPoints = null;
-            let displayedRank = 0;
-            let tiedUsers = 0;
+            let currentRank = 1;
+            let sameRankCount = 0;
 
-            const rankedLeaderboard = activeUsers.map((user, index) => {
+            const rankedLeaderboard = activeUsers.map((user) => {
                 if (user.points !== currentPoints) {
-                    displayedRank += tiedUsers + 1; // Update rank, account for ties
-                    tiedUsers = 0; // Reset ties
+                    currentRank += sameRankCount;
+                    sameRankCount = 0;
+                    currentPoints = user.points;
                 } else {
-                    tiedUsers++;
+                    sameRankCount++;
                 }
-                currentPoints = user.points;
-
                 return {
                     ...user,
-                    rank: displayedRank,
+                    rank: currentRank,
                 };
             });
 
@@ -85,8 +132,7 @@ module.exports = {
                 embed.addTerminalField('TOP OPERATORS',
                     rankedLeaderboard
                         .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
-                        .join('\n')
-                );
+                        .join('\n'));
             } else {
                 embed.addTerminalField('STATUS', 'No rankings available');
             }
@@ -110,15 +156,13 @@ module.exports = {
                 const embed = new TerminalEmbed()
                     .setTerminalTitle('HIGH SCORE BOARDS')
                     .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT A GAME TO VIEW RANKINGS]\n')
-                    .addTerminalField(
-                        'AVAILABLE GAMES',
+                    .addTerminalField('AVAILABLE GAMES',
                         Object.entries(highscores.games)
                             .map(([gameName, gameData], index) => {
                                 const hasScores = gameData.scores.length > 0 ? '✓' : ' ';
                                 return `${index + 1}. ${gameName} (${gameData.platform}) ${hasScores}`;
                             })
-                            .join('\n') + '\n\n✓ = Scores recorded'
-                    )
+                            .join('\n') + '\n\n✓ = Scores recorded')
                     .addTerminalField('USAGE', '!leaderboard highscores <game number>\nExample: !leaderboard highscores 1')
                     .setTerminalFooter();
 
@@ -140,19 +184,16 @@ module.exports = {
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`${gameName} HIGH SCORES`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING RANKINGS]')
-                .addTerminalField('GAME INFO', `PLATFORM: ${gameData.platform}\nRULES: ${gameData.description}`);
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING RANKINGS]');
 
             if (gameData.scores.length > 0) {
-                embed.addTerminalField(
-                    'RANKINGS',
+                embed.addTerminalField('RANKINGS',
                     gameData.scores
                         .map((score, index) => {
                             const medals = ['🥇', '🥈', '🥉'];
                             return `${medals[index] || ''} ${score.username}: ${score.score}`;
                         })
-                        .join('\n')
-                );
+                        .join('\n'));
             } else {
                 embed.addTerminalField('STATUS', 'No scores recorded yet');
             }
