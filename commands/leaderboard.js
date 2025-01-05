@@ -89,7 +89,7 @@ module.exports = {
         }
     },
 
-   aasync displayYearlyLeaderboard(message, shadowGame) {
+   async displayYearlyLeaderboard(message, shadowGame) {
     try {
         await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
@@ -105,22 +105,21 @@ module.exports = {
         // Sort by points in descending order
         activeUsers.sort((a, b) => b.points - a.points);
 
-        let currentRank = 0; // Current rank counter
-        let displayedRank = 0; // Rank to display
-        let lastPoints = null; // Last points to check for ties
+        let currentPoints = null;
+        let currentRank = 1;
+        let sameRankCount = 0;
 
         const rankedLeaderboard = activeUsers.map(user => {
-            // Increment rank only if points differ
-            if (user.points !== lastPoints) {
-                displayedRank = ++currentRank;
+            if (user.points !== currentPoints) {
+                currentRank += sameRankCount; // Advance rank by the number of ties
+                sameRankCount = 0;
+                currentPoints = user.points;
             } else {
-                currentRank++;
+                sameRankCount++;
             }
-            lastPoints = user.points;
-
             return {
                 ...user,
-                rank: displayedRank, // Use displayed rank to handle ties
+                rank: currentRank,
             };
         });
 
