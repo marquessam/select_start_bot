@@ -1,3 +1,4 @@
+const database = require('../../database');
 module.exports = {
     name: 'updategamerules',
     description: 'Update game rules in the arcade challenge.',
