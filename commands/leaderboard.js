@@ -146,7 +146,6 @@ module.exports = {
     }
 }
 
-
     async displayHighScores(message, args, shadowGame) {
         try {
             const highscores = await DataService.getHighScores();
