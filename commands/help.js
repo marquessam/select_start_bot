@@ -19,7 +19,10 @@ module.exports = {
                 '\x1b[32m!viewarchive <month> - View historical rankings\x1b[0m\n\n' +
                 '\x1b[37m=== ARCADE CHALLENGE ===\x1b[0m\n' +
                 '\x1b[32m!arcade - View all arcade games and scores\x1b[0m\n' +
-                '\x1b[32m!arcade <number> - View specific game rankings\x1b[0m\n\n' +
+                '\x1b[32m!arcade <number> - View specific game rankings\x1b[0m\n' +
+                '\x1b[37m=== REVIEWS ===\x1b[0m\n' +
+                '\x1b[32m!review read - View reviews for games\x1b[0m\n' +
+                '\x1b[32m!review write - Write reviews for games\x1b[0m\n\n' +
                 '\x1b[37m=== GENERAL ===\x1b[0m\n' +
                 '\x1b[32m!help - Display available commands\x1b[0m\n\n' +
                 '\x1b[32m[Ready for input]█\x1b[0m'
