@@ -1,4 +1,3 @@
-// addhighscores.js
 const TerminalEmbed = require('../../utils/embedBuilder');
 const database = require('../../database');
 
@@ -7,7 +6,10 @@ module.exports = {
     description: 'Add or update high scores',
     async execute(message, args) {
         try {
-            const highscores = await database.getHighScores();
+            // Step 0: Refresh arcade scores to ensure database consistency
+            console.log('Refreshing arcade scores...');
+            const highscores = await database.refreshArcadeScores(); // Refresh the database with default values if needed
+
             const filter = m => m.author.id === message.author.id;
             const timeout = 30000; // 30 seconds timeout for each prompt
 
