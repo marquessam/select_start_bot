@@ -435,7 +435,70 @@ async saveHighScores(highScores) {
             }
         });
     }
+async getReviews() {
+    const collection = await this.getCollection('reviews');
+    return await fetchData(collection, { _id: 'reviews' }, {
+        games: {}  // Will store game reviews by game name
+    });
+}
 
+async saveReview(gameName, username, review) {
+    const collection = await this.getCollection('reviews');
+    const reviews = await this.getReviews();
+
+    // Initialize game entry if it doesn't exist
+    if (!reviews.games[gameName]) {
+        reviews.games[gameName] = {
+            reviews: [],
+            averageScores: {
+                art: 0,
+                story: 0,
+                combat: 0,
+                music: 0,
+                overall: 0
+            }
+        };
+    }
+
+    // Add or update review
+    const gameReviews = reviews.games[gameName];
+    const existingReviewIndex = gameReviews.reviews.findIndex(r => 
+        r.username.toLowerCase() === username.toLowerCase()
+    );
+
+    if (existingReviewIndex !== -1) {
+        gameReviews.reviews[existingReviewIndex] = {
+            username,
+            ...review,
+            date: new Date().toISOString()
+        };
+    } else {
+        gameReviews.reviews.push({
+            username,
+            ...review,
+            date: new Date().toISOString()
+        });
+    }
+
+    // Update average scores
+    const avgScores = gameReviews.averageScores;
+    const reviewCount = gameReviews.reviews.length;
+    
+    ['art', 'story', 'combat', 'music', 'overall'].forEach(category => {
+        const sum = gameReviews.reviews.reduce((acc, r) => acc + r.scores[category], 0);
+        avgScores[category] = Number((sum / reviewCount).toFixed(1));
+    });
+
+    // Save to database
+    await collection.updateOne(
+        { _id: 'reviews' },
+        { $set: reviews },
+        { upsert: true }
+    );
+
+    return gameReviews;
+}
+    
     // Shadow Game Methods
     async getShadowGame() {
         const collection = await this.getCollection('shadowgame');
