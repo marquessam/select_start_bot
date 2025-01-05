@@ -21,7 +21,13 @@ module.exports = {
 
             // Validate game name
             if (!arcadeScores.games[gameName]) {
-                return message.channel.send(`Game "${gameName}" not found in the arcade challenge.`);
+                // List available games if the game name is invalid
+                const availableGames = Object.keys(arcadeScores.games)
+                    .map((name, index) => `${index + 1}. ${name}`)
+                    .join('\n');
+                return message.channel.send(
+                    `Game "${gameName}" not found. Available games are:\n\`\`\`\n${availableGames}\n\`\`\``
+                );
             }
 
             // Update the description for the game
