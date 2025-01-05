@@ -1,17 +1,7 @@
-const { PermissionFlagsBits } = require('discord.js');
-
 module.exports = {
     name: 'updategamerules',
     description: 'Update game rules in the arcade challenge.',
     async execute(message, args) {
-        // Check for admin permissions
-        const isAdmin = message.member.permissions.has(
-            PermissionFlagsBits?.ADMINISTRATOR || 'ADMINISTRATOR'
-        );
-        if (!isAdmin) {
-            return message.channel.send('You do not have permission to use this command.');
-        }
-
         // Parse arguments
         const [gameName, ...newRules] = args;
         if (!gameName || !newRules.length) {
