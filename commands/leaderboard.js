@@ -42,109 +42,63 @@ module.exports = {
         }
     },
 
-    async displayMonthlyLeaderboard(message, shadowGame) {
+    async displayYearlyLeaderboard(message, shadowGame) {
         try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
+            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
-            const leaderboardData = await DataService.getLeaderboard('monthly');
-            const currentChallenge = await DataService.getCurrentChallenge();
-
+            const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
             const validUsers = await DataService.getValidUsers();
-            const activeUsers = leaderboardData.filter(user =>
+
+            // Filter for valid and active users
+            const activeUsers = yearlyLeaderboard.filter(user =>
                 validUsers.includes(user.username.toLowerCase()) &&
-                (user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0)
+                user.points > 0
             );
 
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('USER RANKINGS')
-                .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]');
+            // Sort by points in descending order
+            activeUsers.sort((a, b) => b.points - a.points);
 
-            activeUsers.slice(0, 3).forEach((user, index) => {
-                const medals = ['🥇', '🥈', '🥉'];
-                embed.addTerminalField(
-                    `${medals[index]} ${user.username}`,
-                    `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\nPROGRESS: ${user.completionPercentage}%`
-                );
+            let currentPoints = null;
+            let displayedRank = 0;
+            let tiedUsers = 0;
+
+            const rankedLeaderboard = activeUsers.map((user, index) => {
+                if (user.points !== currentPoints) {
+                    displayedRank += tiedUsers + 1; // Update rank, account for ties
+                    tiedUsers = 0; // Reset ties
+                } else {
+                    tiedUsers++;
+                }
+                currentPoints = user.points;
+
+                return {
+                    ...user,
+                    rank: displayedRank,
+                };
             });
 
-            const additionalParticipants = activeUsers.slice(3)
-                .map(user => `${user.username} (${user.completionPercentage}%)`)
-                .join('\n');
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('YEARLY RANKINGS')
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
 
-            if (additionalParticipants) {
-                embed.addTerminalField('ADDITIONAL PARTICIPANTS', additionalParticipants);
-            }
-
-            if (activeUsers.length === 0) {
-                embed.addTerminalField('STATUS', 'No active participants yet');
+            if (rankedLeaderboard.length > 0) {
+                embed.addTerminalField('TOP OPERATORS',
+                    rankedLeaderboard
+                        .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
+                        .join('\n')
+                );
+            } else {
+                embed.addTerminalField('STATUS', 'No rankings available');
             }
 
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
             if (shadowGame) await shadowGame.tryShowError(message);
         } catch (error) {
-            console.error('Monthly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
+            console.error('Yearly Leaderboard Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
-
-   async displayYearlyLeaderboard(message, shadowGame) {
-    try {
-        await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
-
-        const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
-        const validUsers = await DataService.getValidUsers();
-
-        // Filter for valid and active users
-        const activeUsers = yearlyLeaderboard.filter(user =>
-            validUsers.includes(user.username.toLowerCase()) &&
-            user.points > 0
-        );
-
-        // Sort by points in descending order
-        activeUsers.sort((a, b) => b.points - a.points);
-
-        let currentPoints = null;
-        let currentRank = 1;
-        let sameRankCount = 0;
-
-        const rankedLeaderboard = activeUsers.map(user => {
-            if (user.points !== currentPoints) {
-                currentRank += sameRankCount; // Advance rank by the number of ties
-                sameRankCount = 0;
-                currentPoints = user.points;
-            } else {
-                sameRankCount++;
-            }
-            return {
-                ...user,
-                rank: currentRank,
-            };
-        });
-
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('YEARLY RANKINGS')
-            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
-
-        if (rankedLeaderboard.length > 0) {
-            embed.addTerminalField('TOP OPERATORS',
-                rankedLeaderboard
-                    .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
-                    .join('\n')
-            );
-        } else {
-            embed.addTerminalField('STATUS', 'No rankings available');
-        }
-
-        embed.setTerminalFooter();
-        await message.channel.send({ embeds: [embed] });
-        if (shadowGame) await shadowGame.tryShowError(message);
-    } catch (error) {
-        console.error('Yearly Leaderboard Error:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
-    }
-}
 
     async displayHighScores(message, args, shadowGame) {
         try {
