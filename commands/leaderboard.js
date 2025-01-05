@@ -89,50 +89,65 @@ module.exports = {
         }
     },
 
-    async displayYearlyLeaderboard(message, shadowGame) {
-        try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
+   async displayYearlyLeaderboard(message, shadowGame) {
+    try {
+        await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
-            const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
-            const validUsers = await DataService.getValidUsers();
+        const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
+        const validUsers = await DataService.getValidUsers();
 
-            const activeUsers = yearlyLeaderboard.filter(user =>
-                validUsers.includes(user.username.toLowerCase()) &&
-                user.points > 0
-            );
+        // Filter for valid and active users
+        const activeUsers = yearlyLeaderboard.filter(user =>
+            validUsers.includes(user.username.toLowerCase()) &&
+            user.points > 0
+        );
 
-            let currentRank = 1;
-            const rankedLeaderboard = activeUsers.map((user, index, arr) => {
-                if (index > 0 && arr[index - 1].points !== user.points) {
-                    currentRank = index + 1;
-                }
-                return {
-                    ...user,
-                    rank: currentRank,
-                };
-            });
+        // Sort by points in descending order
+        activeUsers.sort((a, b) => b.points - a.points);
 
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('YEARLY RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
+        // Generate ranks without skipping
+        let currentRank = 1;
+        let lastPoints = null;
+        let rankIncrement = 0;
 
-            if (rankedLeaderboard.length > 0) {
-                embed.addTerminalField('TOP OPERATORS',
-                    rankedLeaderboard
-                        .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
-                        .join('\n'));
+        const rankedLeaderboard = activeUsers.map((user, index) => {
+            if (user.points !== lastPoints) {
+                currentRank += rankIncrement; // Increment rank
+                rankIncrement = 1; // Reset rank increment counter
             } else {
-                embed.addTerminalField('STATUS', 'No rankings available');
+                rankIncrement++; // Tie, so just increment the counter
             }
 
-            embed.setTerminalFooter();
-            await message.channel.send({ embeds: [embed] });
-            if (shadowGame) await shadowGame.tryShowError(message);
-        } catch (error) {
-            console.error('Yearly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]\u2588\x1b[0m```');
+            lastPoints = user.points;
+
+            return {
+                ...user,
+                rank: currentRank,
+            };
+        });
+
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('YEARLY RANKINGS')
+            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
+
+        if (rankedLeaderboard.length > 0) {
+            embed.addTerminalField('TOP OPERATORS',
+                rankedLeaderboard
+                    .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
+                    .join('\n')
+            );
+        } else {
+            embed.addTerminalField('STATUS', 'No rankings available');
         }
-    },
+
+        embed.setTerminalFooter();
+        await message.channel.send({ embeds: [embed] });
+        if (shadowGame) await shadowGame.tryShowError(message);
+    } catch (error) {
+        console.error('Yearly Leaderboard Error:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
+    }
+}
 
    async displayHighScores(message, args, shadowGame) {
     try {
