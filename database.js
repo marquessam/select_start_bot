@@ -8,7 +8,9 @@ class Database {
         this.db = null;
     }
 
+    // =====================
     // Connection Management
+    // =====================
     async connect() {
         try {
             if (!process.env.MONGODB_URI) {
@@ -76,7 +78,8 @@ class Database {
             await this.db.collection('challenges').createIndex({ _id: 1 });
             await this.db.collection('records').createIndex({ _id: 1 });
             await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
-            await this.db.collection('userstats').createIndex({ username: 1 });
+            await this.db.collection('reviews').createIndex({ _id: 1 });
+            await this.db.collection('users').createIndex({ username: 1 });
             console.log('Indexes created successfully');
         } catch (error) {
             ErrorHandler.logError(error, 'Create Indexes');
@@ -84,39 +87,116 @@ class Database {
         }
     }
 
-    // User Stats Methods
-    async getUserStats() {
-        const collection = await this.getCollection('userstats');
-        return await fetchData(collection, { _id: 'stats' }, {
-            users: {},
-            yearlyStats: {},
-            monthlyStats: {},
-            gameCompletions: {},
-            achievementStats: {},
-            communityRecords: {
-                fastestCompletions: {},
-                highestScores: {},
-                monthlyRecords: {},
-                milestones: [],
-                hallOfFame: {
-                    perfectMonths: [],
-                    speedrunners: [],
-                    completionists: [],
-                }
-            }
-        });
+    // ==================
+    // Game List Methods
+    // ==================
+    async getValidGamesList() {
+        try {
+            const currentChallenge = await this.getCurrentChallenge();
+            const arcadeGames = await this.getArcadeScores();
+            const reviews = await this.getReviews();
+            const previousGames = await this.getPreviousChallenges();
+            
+            const validGames = new Set([
+                currentChallenge.gameName,
+                ...Object.keys(arcadeGames.games),
+                ...Object.keys(reviews.games),
+                ...previousGames.map(game => game.gameName)
+            ].filter(Boolean));
+
+            return Array.from(validGames);
+        } catch (error) {
+            ErrorHandler.logError(error, 'Get Valid Games List');
+            throw error;
+        }
     }
 
-    async saveUserStats(stats) {
-        const collection = await this.getCollection('userstats');
+    async getPreviousChallenges() {
+        const collection = await this.getCollection('challenges');
+        return await fetchData(collection, { _id: 'history' }, {
+            games: []
+        }).then(data => data.games || []);
+    }
+
+    async addGameToHistory(gameData) {
+        const collection = await this.getCollection('challenges');
         await collection.updateOne(
-            { _id: 'stats' },
-            { $set: stats },
+            { _id: 'history' },
+            { $addToSet: { games: gameData } },
             { upsert: true }
         );
     }
 
-    // Arcade Challenge Methods
+    // ================
+    // Review Methods
+    // ================
+    async getReviews() {
+        const collection = await this.getCollection('reviews');
+        return await fetchData(collection, { _id: 'reviews' }, {
+            games: {}
+        });
+    }
+
+    async saveReview(gameName, username, review) {
+        try {
+            const collection = await this.getCollection('reviews');
+            const reviews = await this.getReviews();
+
+            if (!reviews.games[gameName]) {
+                reviews.games[gameName] = {
+                    reviews: [],
+                    averageScores: {
+                        art: 0,
+                        story: 0,
+                        combat: 0,
+                        music: 0,
+                        overall: 0
+                    }
+                };
+            }
+
+            const gameReviews = reviews.games[gameName];
+            const existingReviewIndex = gameReviews.reviews.findIndex(r => 
+                r.username.toLowerCase() === username.toLowerCase()
+            );
+
+            const reviewData = {
+                username,
+                ...review,
+                date: new Date().toISOString()
+            };
+
+            if (existingReviewIndex !== -1) {
+                gameReviews.reviews[existingReviewIndex] = reviewData;
+            } else {
+                gameReviews.reviews.push(reviewData);
+            }
+
+            // Update average scores
+            const avgScores = gameReviews.averageScores;
+            const reviewCount = gameReviews.reviews.length;
+            
+            ['art', 'story', 'combat', 'music', 'overall'].forEach(category => {
+                const sum = gameReviews.reviews.reduce((acc, r) => acc + r.scores[category], 0);
+                avgScores[category] = Number((sum / reviewCount).toFixed(1));
+            });
+
+            await collection.updateOne(
+                { _id: 'reviews' },
+                { $set: reviews },
+                { upsert: true }
+            );
+
+            return gameReviews;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Save Review');
+            throw error;
+        }
+    }
+
+    // =================
+    // Arcade Methods
+    // =================
     async getArcadeScores() {
         const collection = await this.getCollection('arcadechallenge');
         return await fetchData(collection, { _id: 'scores' }, {
@@ -138,7 +218,7 @@ class Database {
                 },
                 "Ms. Pac-Man": {
                     platform: "NES",
-                    description: "Highest possible score",
+                    description: "Highest score on first board",
                     scores: []
                 },
                 "Raiden Trad": {
@@ -165,187 +245,98 @@ class Database {
             expiryDate: "December 1st 2025"
         });
     }
-async refreshArcadeScores() {
-    const defaultArcadeScores = {
-        games: {
-            "Tony Hawk's Pro Skater": {
-                platform: "PSX",
-                description: "Highest possible score in 2 minute runs",
-                scores: []
-            },
-            "Mr. Driller": {
-                platform: "PSX",
-                description: "Deepest depth reached (in feet)",
-                scores: []
-            },
-            "Tetris": {
-                platform: "Game Boy",
-                description: "Highest possible score",
-                scores: []
-            },
-            "Ms. Pac-Man": {
-                platform: "NES",
-                description: "Highest score on first board",
-                scores: []
-            },
-            "Raiden Trad": {
-                platform: "SNES",
-                description: "Highest possible score",
-                scores: []
-            },
-            "Community Game 1": {
-                platform: "TBA",
-                description: "TBD",
-                scores: []
-            },
-            "Community Game 2": {
-                platform: "TBA",
-                description: "TBD",
-                scores: []
-            },
-            "Community Game 3": {
-                platform: "TBA",
-                description: "TBD",
-                scores: []
-            }
-        },
-        expiryDate: "December 1st 2025"
-    };
 
-    const collection = await this.getCollection('arcadechallenge');
-    const existingData = await collection.findOne({ _id: "scores" });
-
-    if (!existingData) {
-        console.log('No existing data found. Inserting default arcade scores.');
-        await collection.insertOne({ _id: "scores", ...defaultArcadeScores });
-        return defaultArcadeScores;
-    }
-
-    // Check and update missing fields
-    const updatedData = { ...defaultArcadeScores, ...existingData };
-
-    for (const game in defaultArcadeScores.games) {
-        if (!updatedData.games[game]) {
-            updatedData.games[game] = defaultArcadeScores.games[game];
-        } else {
-            updatedData.games[game] = {
-                ...defaultArcadeScores.games[game],
-                ...updatedData.games[game]
-            };
-        }
-    }
-
-    if (JSON.stringify(updatedData) !== JSON.stringify(existingData)) {
-        console.log('Updating arcade scores with missing fields.');
-        await collection.updateOne({ _id: "scores" }, { $set: updatedData });
-    }
-
-    return updatedData;
-}
-    
-    // Alias for backwards compatibility
     async getHighScores() {
         return this.getArcadeScores();
     }
 
     async saveArcadeScore(game, username, score) {
-        const collection = await this.getCollection('arcadechallenge');
-        const scores = await this.getArcadeScores();
-        
-        if (!scores.games[game]) {
-            throw new Error('Invalid game name');
+        try {
+            const collection = await this.getCollection('arcadechallenge');
+            const scores = await this.getArcadeScores();
+            
+            if (!scores.games[game]) {
+                throw new Error('Invalid game name');
+            }
+
+            const newScore = { 
+                username: username.toLowerCase(), 
+                score: score, 
+                date: new Date().toISOString() 
+            };
+
+            let gameScores = scores.games[game].scores || [];
+            gameScores = gameScores.filter(s => s.username !== username.toLowerCase());
+            gameScores.push(newScore);
+            gameScores.sort((a, b) => b.score - a.score);
+            scores.games[game].scores = gameScores.slice(0, 3);
+
+            await collection.updateOne(
+                { _id: 'scores' },
+                { $set: scores },
+                { upsert: true }
+            );
+
+            return scores.games[game].scores;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Save Arcade Score');
+            throw error;
         }
-
-        const newScore = { 
-            username: username.toLowerCase(), 
-            score: score, 
-            date: new Date().toISOString() 
-        };
-
-        let gameScores = scores.games[game].scores || [];
-        gameScores = gameScores.filter(s => s.username !== username.toLowerCase());
-        gameScores.push(newScore);
-
-        gameScores.sort((a, b) => b.score - a.score);
-        scores.games[game].scores = gameScores.slice(0, 3);
-
-        await collection.updateOne(
-            { _id: 'scores' },
-            { $set: scores },
-            { upsert: true }
-        );
-
-        return scores.games[game].scores;
     }
 
     async removeArcadeScore(gameName, username) {
-        const collection = await this.getCollection('arcadechallenge');
-        const data = await this.getArcadeScores();
-        
-        if (!data.games[gameName]) {
-            throw new Error('Invalid game name');
-        }
+        try {
+            const collection = await this.getCollection('arcadechallenge');
+            const data = await this.getArcadeScores();
+            
+            if (!data.games[gameName]) {
+                throw new Error('Invalid game name');
+            }
 
-        data.games[gameName].scores = data.games[gameName].scores.filter(
-            score => score.username !== username.toLowerCase()
-        );
-        
-        await collection.updateOne(
-            { _id: 'scores' },
-            { $set: data },
-            { upsert: true }
-        );
-        
-        return data.games[gameName].scores;
+            data.games[gameName].scores = data.games[gameName].scores.filter(
+                score => score.username !== username.toLowerCase()
+            );
+            
+            await collection.updateOne(
+                { _id: 'scores' },
+                { $set: data },
+                { upsert: true }
+            );
+            
+            return data.games[gameName].scores;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Remove Arcade Score');
+            throw error;
+        }
     }
 
     async resetArcadeScores(gameName) {
-        const collection = await this.getCollection('arcadechallenge');
-        const data = await this.getArcadeScores();
-        
-        if (!data.games[gameName]) {
-            throw new Error('Invalid game name');
-        }
-
-        data.games[gameName].scores = [];
-        
-        await collection.updateOne(
-            { _id: 'scores' },
-            { $set: data },
-            { upsert: true }
-        );
-        
-        return [];
-    }
-    
-async saveHighScores(highScores) {
-    const collection = await this.getCollection('arcadechallenge');
-    await collection.updateOne(
-        { _id: 'scores' },  // Assumes a fixed `_id` for high scores
-        { $set: highScores },
-        { upsert: true }    // Create the document if it doesn't exist
-    );
-    console.log('High scores saved successfully.');
-}
-    
-    // Community Records Methods
-    async getCommunityRecords() {
-        const collection = await this.getCollection('records');
-        return await fetchData(collection, { _id: 'records' }, {
-            fastestCompletions: {},
-            highestScores: {},
-            monthlyRecords: {},
-            yearlyRecords: {},
-            milestones: [],
-            hallOfFame: {
-                perfectMonths: [],
-                speedrunners: [],
-                completionists: [],
+        try {
+            const collection = await this.getCollection('arcadechallenge');
+            const data = await this.getArcadeScores();
+            
+            if (!data.games[gameName]) {
+                throw new Error('Invalid game name');
             }
-        });
+
+            data.games[gameName].scores = [];
+            
+            await collection.updateOne(
+                { _id: 'scores' },
+                { $set: data },
+                { upsert: true }
+            );
+            
+            return [];
+        } catch (error) {
+            ErrorHandler.logError(error, 'Reset Arcade Scores');
+            throw error;
+        }
     }
 
+    // ===================
     // Challenge Methods
+    // ===================
     async getCurrentChallenge() {
         const collection = await this.getCollection('challenges');
         return await fetchData(collection, { _id: 'current' }, {
@@ -382,7 +373,40 @@ async saveHighScores(highScores) {
         return await fetchData(collection, { _id: 'next' }, null);
     }
 
-    // Valid Users Methods
+    // ==================
+    // User Methods
+    // ==================
+    async getUserStats() {
+        const collection = await this.getCollection('userstats');
+        return await fetchData(collection, { _id: 'stats' }, {
+            users: {},
+            yearlyStats: {},
+            monthlyStats: {},
+            gameCompletions: {},
+            achievementStats: {},
+            communityRecords: {
+                fastestCompletions: {},
+                highestScores: {},
+                monthlyRecords: {},
+                milestones: [],
+                hallOfFame: {
+                    perfectMonths: [],
+                    speedrunners: [],
+                    completionists: [],
+                }
+            }
+        });
+    }
+
+    async saveUserStats(stats) {
+        const collection = await this.getCollection('userstats');
+        await collection.updateOne(
+            { _id: 'stats' },
+            { $set: stats },
+            { upsert: true }
+        );
+    }
+
     async getValidUsers() {
         const collection = await this.getCollection('users');
         const data = await collection.findOne({ _id: 'validUsers' });
@@ -406,7 +430,55 @@ async saveHighScores(highScores) {
         );
     }
 
+    // ===================
+    // Game Request Methods
+    // ===================
+    async requestNewGame(gameName, requestedBy) {
+        const collection = await this.getCollection('gameRequests');
+        await collection.updateOne(
+            { _id: 'requests' },
+            {
+                $push: {
+                    pending: {
+                        gameName,
+                        requestedBy,
+                        requestDate: new Date().toISOString(),
+                        status: 'pending'
+                    }
+                }
+            },
+            { upsert: true }
+        );
+    }
+
+    async approveGame(gameName) {
+        const collection = await this.getCollection('gameRequests');
+        await collection.updateOne(
+            { _id: 'requests' },
+            {
+                $pull: { pending: { gameName } },
+                $push: {
+                    approved: {
+                        gameName,
+                        approvedDate: new Date().toISOString()
+                    }
+                }
+            }
+        );
+        return true;
+    }
+
+    async getGameRequests() {
+        const collection = await this.getCollection('gameRequests');
+        return await fetchData(collection, { _id: 'requests' }, {
+            pending: [],
+            approved: []
+        });
+    }
+
+    // ====================
     // Configuration Methods
+    // ====================
     async getConfiguration() {
         const collection = await this.getCollection('config');
         return await fetchData(collection, { _id: 'settings' }, {
@@ -435,152 +507,10 @@ async saveHighScores(highScores) {
             }
         });
     }
-async getReviews() {
-    const collection = await this.getCollection('reviews');
-    return await fetchData(collection, { _id: 'reviews' }, {
-        games: {}  // Will store game reviews by game name
-    });
-}
 
-async saveReview(gameName, username, review) {
-    const collection = await this.getCollection('reviews');
-    const reviews = await this.getReviews();
-
-    // Initialize game entry if it doesn't exist
-    if (!reviews.games[gameName]) {
-        reviews.games[gameName] = {
-            reviews: [],
-            averageScores: {
-                art: 0,
-                story: 0,
-                combat: 0,
-                music: 0,
-                overall: 0
-            }
-        };
-    }
-
-    async getValidGamesList() {
-    const currentChallenge = await this.getCurrentChallenge();
-    const arcadeGames = await this.getArcadeScores();
-    const reviews = await this.getReviews();
-    const previousGames = await this.getPreviousChallenges();
-    
-    // Combine all valid games into a Set to remove duplicates
-    const validGames = new Set([
-        // Current challenge
-        currentChallenge.gameName,
-        // Arcade games
-        ...Object.keys(arcadeGames.games),
-        // Games with existing reviews
-        ...Object.keys(reviews.games),
-        // Previous challenge games
-        ...previousGames.map(game => game.gameName)
-    ].filter(Boolean)); // Remove null/undefined values
-
-    return Array.from(validGames);
-}
-
-async getPreviousChallenges() {
-    const collection = await this.getCollection('challenges');
-    return await fetchData(collection, { _id: 'history' }, {
-        games: []
-    }).then(data => data.games || []);
-}
-
-async addGameToHistory(gameData) {
-    const collection = await this.getCollection('challenges');
-    await collection.updateOne(
-        { _id: 'history' },
-        { $addToSet: { games: gameData } },
-        { upsert: true }
-    );
-}
-
-async requestNewGame(gameName, requestedBy) {
-    const collection = await this.getCollection('gameRequests');
-    await collection.updateOne(
-        { _id: 'requests' },
-        {
-            $push: {
-                pending: {
-                    gameName,
-                    requestedBy,
-                    requestDate: new Date().toISOString(),
-                    status: 'pending'
-                }
-            }
-        },
-        { upsert: true }
-    );
-}
-
-async approveGame(gameName) {
-    const collection = await this.getCollection('gameRequests');
-    // Move from pending to approved
-    await collection.updateOne(
-        { _id: 'requests' },
-        {
-            $pull: { pending: { gameName } },
-            $push: {
-                approved: {
-                    gameName,
-                    approvedDate: new Date().toISOString()
-                }
-            }
-        }
-    );
-    return true;
-}
-
-async getGameRequests() {
-    const collection = await this.getCollection('gameRequests');
-    return await fetchData(collection, { _id: 'requests' }, {
-        pending: [],
-        approved: []
-    });
-}
-    
-    // Add or update review
-    const gameReviews = reviews.games[gameName];
-    const existingReviewIndex = gameReviews.reviews.findIndex(r => 
-        r.username.toLowerCase() === username.toLowerCase()
-    );
-
-    if (existingReviewIndex !== -1) {
-        gameReviews.reviews[existingReviewIndex] = {
-            username,
-            ...review,
-            date: new Date().toISOString()
-        };
-    } else {
-        gameReviews.reviews.push({
-            username,
-            ...review,
-            date: new Date().toISOString()
-        });
-    }
-
-    // Update average scores
-    const avgScores = gameReviews.averageScores;
-    const reviewCount = gameReviews.reviews.length;
-    
-    ['art', 'story', 'combat', 'music', 'overall'].forEach(category => {
-        const sum = gameReviews.reviews.reduce((acc, r) => acc + r.scores[category], 0);
-        avgScores[category] = Number((sum / reviewCount).toFixed(1));
-    });
-
-    // Save to database
-    await collection.updateOne(
-        { _id: 'reviews' },
-        { $set: reviews },
-        { upsert: true }
-    );
-
-    return gameReviews;
-}
-    
+    // ===================
     // Shadow Game Methods
+    // ===================
     async getShadowGame() {
         const collection = await this.getCollection('shadowgame');
         return await fetchData(collection, { _id: 'current' }, {
@@ -593,6 +523,55 @@ async getGameRequests() {
                 points: 0,
             }
         });
+    }
+
+    async saveShadowGame(shadowGame) {
+        try {
+            const collection = await this.getCollection('shadowgame');
+            await collection.updateOne(
+                { _id: 'current' },
+                { $set: shadowGame },
+                { upsert: true }
+            );
+            return true;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Save Shadow Game');
+            throw error;
+        }
+    }
+
+    // ===================
+    // Community Records Methods
+    // ===================
+    async getCommunityRecords() {
+        const collection = await this.getCollection('records');
+        return await fetchData(collection, { _id: 'records' }, {
+            fastestCompletions: {},
+            highestScores: {},
+            monthlyRecords: {},
+            yearlyRecords: {},
+            milestones: [],
+            hallOfFame: {
+                perfectMonths: [],
+                speedrunners: [],
+                completionists: [],
+            }
+        });
+    }
+
+    async saveCommunityRecords(records) {
+        try {
+            const collection = await this.getCollection('records');
+            await collection.updateOne(
+                { _id: 'records' },
+                { $set: records },
+                { upsert: true }
+            );
+            return true;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Save Community Records');
+            throw error;
+        }
     }
 }
 
