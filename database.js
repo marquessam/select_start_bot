@@ -111,7 +111,47 @@ async updateArcadeScore(game, username, score) {
 
     return true;
 }
+async removeArcadeScore(gameName, username) {
+    const collection = await this.getCollection('arcadechallenge');
+    const data = await this.getArcadeScores();
+    
+    if (!data.games[gameName]) {
+        throw new Error('Invalid game name');
+    }
 
+    // Filter out the user's score
+    data.games[gameName].scores = data.games[gameName].scores.filter(
+        score => score.username !== username.toLowerCase()
+    );
+    
+    await collection.updateOne(
+        { _id: 'scores' },
+        { $set: data },
+        { upsert: true }
+    );
+    
+    return data.games[gameName].scores;
+}
+
+async resetArcadeScores(gameName) {
+    const collection = await this.getCollection('arcadechallenge');
+    const data = await this.getArcadeScores();
+    
+    if (!data.games[gameName]) {
+        throw new Error('Invalid game name');
+    }
+
+    // Reset scores to empty array
+    data.games[gameName].scores = [];
+    
+    await collection.updateOne(
+        { _id: 'scores' },
+        { $set: data },
+        { upsert: true }
+    );
+    
+    return [];
+}
     async saveHighScores(highscores) {
         const collection = await this.getCollection('highscores');
         await collection.updateOne(
