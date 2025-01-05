@@ -165,7 +165,84 @@ class Database {
             expiryDate: "December 1st 2025"
         });
     }
+async refreshArcadeScores() {
+    const defaultArcadeScores = {
+        games: {
+            "Tony Hawk's Pro Skater": {
+                platform: "PSX",
+                description: "Highest possible score in 2 minute runs",
+                scores: []
+            },
+            "Mr. Driller": {
+                platform: "PSX",
+                description: "Deepest depth reached (in feet)",
+                scores: []
+            },
+            "Tetris": {
+                platform: "Game Boy",
+                description: "Highest possible score",
+                scores: []
+            },
+            "Ms. Pac-Man": {
+                platform: "NES",
+                description: "Highest score on first board",
+                scores: []
+            },
+            "Raiden Trad": {
+                platform: "SNES",
+                description: "Highest possible score",
+                scores: []
+            },
+            "Community Game 1": {
+                platform: "TBA",
+                description: "TBD",
+                scores: []
+            },
+            "Community Game 2": {
+                platform: "TBA",
+                description: "TBD",
+                scores: []
+            },
+            "Community Game 3": {
+                platform: "TBA",
+                description: "TBD",
+                scores: []
+            }
+        },
+        expiryDate: "December 1st 2025"
+    };
 
+    const collection = await this.getCollection('arcadechallenge');
+    const existingData = await collection.findOne({ _id: "scores" });
+
+    if (!existingData) {
+        console.log('No existing data found. Inserting default arcade scores.');
+        await collection.insertOne({ _id: "scores", ...defaultArcadeScores });
+        return defaultArcadeScores;
+    }
+
+    // Check and update missing fields
+    const updatedData = { ...defaultArcadeScores, ...existingData };
+
+    for (const game in defaultArcadeScores.games) {
+        if (!updatedData.games[game]) {
+            updatedData.games[game] = defaultArcadeScores.games[game];
+        } else {
+            updatedData.games[game] = {
+                ...defaultArcadeScores.games[game],
+                ...updatedData.games[game]
+            };
+        }
+    }
+
+    if (JSON.stringify(updatedData) !== JSON.stringify(existingData)) {
+        console.log('Updating arcade scores with missing fields.');
+        await collection.updateOne({ _id: "scores" }, { $set: updatedData });
+    }
+
+    return updatedData;
+}
+    
     // Alias for backwards compatibility
     async getHighScores() {
         return this.getArcadeScores();
