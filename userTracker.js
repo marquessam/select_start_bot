@@ -101,6 +101,39 @@ class UserTracker {
         }
     }
 
+    async scanHistoricalMessages(channel, limit = 100) {
+        try {
+            console.log(`[USER TRACKER] Scanning historical messages in ${channel.name}...`);
+            const messages = await channel.messages.fetch({ limit });
+            
+            let processedCount = 0;
+            let addedUsers = 0;
+
+            for (const message of messages.values()) {
+                const words = message.content.split(/\s+/);
+                for (const word of words) {
+                    if (word.includes('retroachievements.org/user/') || 
+                        word.includes('ra.org/user/')) {
+                        const username = this.extractUsername(word);
+                        if (username) {
+                            const added = await this.addUser(username);
+                            if (added) {
+                                await message.react('✅');
+                                addedUsers++;
+                            }
+                        }
+                    }
+                }
+                processedCount++;
+            }
+            
+            console.log(`[USER TRACKER] Processed ${processedCount} messages, found ${addedUsers} new users`);
+        } catch (error) {
+            console.error('[USER TRACKER] Error scanning historical messages:', error);
+            throw error;
+        }
+    }
+
     async initialize() {
         try {
             console.log('[USER TRACKER] Initializing...');
