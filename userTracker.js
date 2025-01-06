@@ -1,18 +1,16 @@
 // userTracker.js
 class UserTracker {
-    constructor(database, userStats) {  // Add userStats parameter
+    constructor(database, userStats) {
         this.database = database;
-        this.userStats = userStats;     // Store userStats reference
+        this.userStats = userStats;
         this.validUsers = new Set();
     }
 
-    // Extract username from RA URL
     extractUsername(url) {
         try {
-            // Handle different URL formats
             const patterns = [
-                /retroachievements\.org\/user\/([^\/\s]+)/i,  // Standard profile URL
-                /ra\.org\/user\/([^\/\s]+)/i                  // Short URL format
+                /retroachievements\.org\/user\/([^\/\s]+)/i,
+                /ra\.org\/user\/([^\/\s]+)/i
             ];
 
             for (const pattern of patterns) {
@@ -21,92 +19,150 @@ class UserTracker {
             }
             return null;
         } catch (error) {
-            console.error('Error extracting username:', error);
+            console.error('[USER TRACKER] Error extracting username:', error);
             return null;
         }
     }
 
-    // Process a message to find RA URLs
     async processMessage(message) {
         try {
-            // Ignore messages from bots
             if (message.author.bot) return;
 
-            // Check if message contains URLs
             const words = message.content.split(/\s+/);
             for (const word of words) {
                 if (word.includes('retroachievements.org/user/') || 
                     word.includes('ra.org/user/')) {
                     const username = this.extractUsername(word);
                     if (username) {
-                        await this.addUser(username);
-                        await message.react('✅');  // React to confirm processing
+                        const added = await this.addUser(username);
+                        if (added) {
+                            await message.react('✅');
+                        }
                     }
                 }
             }
         } catch (error) {
-            console.error('Error processing message:', error);
+            console.error('[USER TRACKER] Error processing message:', error);
         }
     }
 
-    // Add a new user to the tracking system
     async addUser(username) {
         try {
+            if (!username) {
+                console.warn('[USER TRACKER] Attempted to add null/undefined username');
+                return false;
+            }
+
+            const cleanUsername = username.trim().toLowerCase();
+            if (!cleanUsername) {
+                console.warn('[USER TRACKER] Attempted to add empty username');
+                return false;
+            }
+
             const validUsers = await this.database.getValidUsers();
-            if (!validUsers.includes(username.toLowerCase())) {
-                await this.database.addValidUser(username);
-                this.validUsers.add(username.toLowerCase());
+            if (!validUsers.includes(cleanUsername)) {
+                console.log(`[USER TRACKER] Adding new user: ${cleanUsername}`);
                 
-                // Initialize stats for new user
+                // Add to database
+                await this.database.addValidUser(cleanUsername);
+                this.validUsers.add(cleanUsername);
+                
+                // Initialize user stats
                 if (this.userStats) {
-                    await this.userStats.initializeUserIfNeeded(username);
+                    console.log(`[USER TRACKER] Initializing stats for: ${cleanUsername}`);
+                    await this.userStats.initializeUserIfNeeded(cleanUsername);
+                } else {
+                    console.warn('[USER TRACKER] UserStats not available for initialization');
                 }
                 
-                // Update leaderboard cache if it exists
+                // Update leaderboard cache
                 if (global.leaderboardCache) {
+                    console.log(`[USER TRACKER] Updating leaderboard cache for: ${cleanUsername}`);
                     await global.leaderboardCache.updateValidUsers();
-                    await global.leaderboardCache.updateLeaderboards();
+                } else {
+                    console.warn('[USER TRACKER] LeaderboardCache not available for update');
                 }
-                
-                console.log(`Added new user: ${username}`);
+
+                console.log(`[USER TRACKER] Successfully added user: ${cleanUsername}`);
+                return true;
+            } else {
+                console.log(`[USER TRACKER] User already exists: ${cleanUsername}`);
+                return false;
             }
         } catch (error) {
-            console.error('Error adding user:', error);
+            console.error('[USER TRACKER] Error adding user:', error);
+            return false;
         }
     }
 
-    // Initialize tracker with existing users
     async initialize() {
         try {
+            console.log('[USER TRACKER] Initializing...');
             const users = await this.database.getValidUsers();
             this.validUsers = new Set(users.map(u => u.toLowerCase()));
-            console.log('UserTracker initialized with', this.validUsers.size, 'users');
+            
+            // Initialize stats for all users
+            if (this.userStats) {
+                for (const username of this.validUsers) {
+                    await this.userStats.initializeUserIfNeeded(username);
+                }
+            }
+
+            console.log('[USER TRACKER] Initialized with', this.validUsers.size, 'users');
         } catch (error) {
-            console.error('Error initializing UserTracker:', error);
+            console.error('[USER TRACKER] Error initializing:', error);
+            this.validUsers = new Set();
         }
     }
 
-    // Scan historical messages in a channel
     async scanHistoricalMessages(channel, limit = 100) {
         try {
-            console.log(`Scanning historical messages in ${channel.name}...`);
+            console.log(`[USER TRACKER] Scanning historical messages in ${channel.name}...`);
             const messages = await channel.messages.fetch({ limit });
             
             let processedCount = 0;
+            let newUsersCount = 0;
+
             for (const message of messages.values()) {
                 await this.processMessage(message);
                 processedCount++;
             }
             
-            console.log(`Processed ${processedCount} historical messages`);
+            console.log(`[USER TRACKER] Processed ${processedCount} messages, found ${newUsersCount} new users`);
+            return { processedCount, newUsersCount };
         } catch (error) {
-            console.error('Error scanning historical messages:', error);
+            console.error('[USER TRACKER] Error scanning historical messages:', error);
+            return { processedCount: 0, newUsersCount: 0 };
         }
     }
 
-    // Get current list of valid users
     getValidUsers() {
         return Array.from(this.validUsers);
+    }
+
+    async removeUser(username) {
+        try {
+            const cleanUsername = username.toLowerCase();
+            if (this.validUsers.has(cleanUsername)) {
+                await this.database.removeValidUser(cleanUsername);
+                this.validUsers.delete(cleanUsername);
+                
+                if (this.userStats) {
+                    await this.userStats.removeUser(cleanUsername);
+                }
+                
+                if (global.leaderboardCache) {
+                    await global.leaderboardCache.updateValidUsers();
+                }
+                
+                console.log(`[USER TRACKER] Removed user: ${cleanUsername}`);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error('[USER TRACKER] Error removing user:', error);
+            return false;
+        }
     }
 }
 
