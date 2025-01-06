@@ -19,84 +19,109 @@ function calculateRank(username, leaderboard, rankMetric) {
     return 'Unranked';
 }
 
+async function getInitialUserData(username, userStats) {
+    const cleanUsername = username.toLowerCase();
+    const validUsers = await DataService.getValidUsers();
+    
+    if (!validUsers.includes(cleanUsername)) {
+        return null;
+    }
+
+    // Ensure user stats are initialized
+    if (userStats) {
+        await userStats.initializeUserIfNeeded(cleanUsername);
+    }
+
+    return cleanUsername;
+}
+
 module.exports = {
     name: 'profile',
     description: 'Displays enhanced user profile and stats',
-    async execute(message, args, { shadowGame }) {  // Added shadowGame parameter here
+    
+    async execute(message, args, { shadowGame, userStats }) {
         try {
-            const username = args[0]?.toLowerCase();
-            if (!username) {
+            if (!args.length) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid query\nSyntax: !profile <username>\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
+            const username = args[0];
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
-            // Fetch user list and check validity
-            let validUsers = await DataService.getLeaderboard('monthly');
-            let isUserValid = validUsers.some(user => user.username.toLowerCase() === username);
-
-            if (!isUserValid) {
-                console.log(`User "${username}" not recognized. Refreshing user list...`);
-                await DataService.refreshUserList();
-
-                // Re-fetch the updated user list
-                validUsers = await DataService.getLeaderboard('monthly');
-                isUserValid = validUsers.some(user => user.username.toLowerCase() === username);
-
-                if (!isUserValid) {
-                    await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" is not a registered participant\n[Ready for input]█\x1b[0m\`\`\``);
-                    return;
-                }
+            // Initialize and validate user
+            const validatedUser = await getInitialUserData(username, userStats);
+            if (!validatedUser) {
+                await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" is not a registered participant\n[Ready for input]█\x1b[0m\`\`\``);
+                return;
             }
+
+            // Fetch all necessary data
+            const [
+                userStatsData,
+                userProgress,
+                currentChallenge,
+                yearlyLeaderboard,
+                raProfileImage,
+                validUsers,
+                monthlyLeaderboard
+            ] = await Promise.all([
+                DataService.getUserStats(validatedUser),
+                DataService.getUserProgress(validatedUser),
+                DataService.getCurrentChallenge(),
+                DataService.getLeaderboard('yearly'),
+                DataService.getRAProfileImage(validatedUser),
+                DataService.getValidUsers(),
+                DataService.getLeaderboard('monthly')
+            ]);
 
             const currentYear = new Date().getFullYear().toString();
 
-            // Fetch user data
-            const userStats = await DataService.getUserStats(username);
-            const userProgress = await DataService.getUserProgress(username);
-            const currentChallenge = await DataService.getCurrentChallenge();
-            const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
-            const raProfileImage = await DataService.getRAProfileImage(username);
-
+            // Get yearly data with defaults
             const yearlyData = yearlyLeaderboard.find(user => 
-                user.username.toLowerCase() === username.toLowerCase()
+                user.username.toLowerCase() === validatedUser
             ) || {
                 points: 0,
                 gamesCompleted: 0,
                 achievementsUnlocked: 0,
-                monthlyParticipations: 0,
+                monthlyParticipations: 0
             };
 
-            const bonusPoints = userStats.bonusPoints?.filter(bonus => bonus.year === currentYear) || [];
-            const recentBonusPoints = bonusPoints.length > 0 ?
-                bonusPoints.map(bonus => `${bonus.reason}: ${bonus.points} pts`).join('\n') :
-                'No bonus points';
+            // Process bonus points
+            const bonusPoints = userStatsData?.bonusPoints?.filter(bonus => 
+                bonus.year === currentYear
+            ) || [];
 
-            const yearlyRankText = calculateRank(username, yearlyLeaderboard, 
+            const recentBonusPoints = bonusPoints.length > 0 
+                ? bonusPoints.map(bonus => `${bonus.reason}: ${bonus.points} pts`).join('\n')
+                : 'No bonus points';
+
+            // Calculate ranks
+            const yearlyRankText = calculateRank(validatedUser, yearlyLeaderboard, 
                 user => user.points || 0
             );
 
-            const monthlyRankText = calculateRank(username, validUsers, 
+            const monthlyRankText = calculateRank(validatedUser, monthlyLeaderboard,
                 user => user.completionPercentage || 0
             );
 
+            // Create embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
                 .addTerminalField('CURRENT CHALLENGE PROGRESS',
                     `GAME: ${currentChallenge?.gameName || 'N/A'}\n` +
-                    `PROGRESS: ${userProgress.completionPercentage}%\n` +
-                    `ACHIEVEMENTS: ${userProgress.completedAchievements}/${userProgress.totalAchievements}`)
+                    `PROGRESS: ${userProgress.completionPercentage || 0}%\n` +
+                    `ACHIEVEMENTS: ${userProgress.completedAchievements || 0}/${userProgress.totalAchievements || 0}`)
                 .addTerminalField('RANKINGS',
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
                 .addTerminalField(`${currentYear} STATISTICS`,
-                    `GAMES COMPLETED: ${yearlyData.gamesCompleted}\n` +
+                    `GAMES COMPLETED: ${yearlyData.gamesCompleted || 0}\n` +
                     `ACHIEVEMENTS UNLOCKED: ${yearlyData.achievementsUnlocked || userProgress.completedAchievements || 0}\n` +
-                    `MONTHLY PARTICIPATIONS: ${yearlyData.monthlyParticipations}`)
+                    `MONTHLY PARTICIPATIONS: ${yearlyData.monthlyParticipations || 0}`)
                 .addTerminalField('POINT BREAKDOWN', recentBonusPoints)
-                .addTerminalField('POINT TOTAL', `${yearlyData.points}`);
+                .addTerminalField('POINT TOTAL', `${yearlyData.points || 0}`);
 
             if (raProfileImage) {
                 embed.setThumbnail(raProfileImage);
@@ -107,13 +132,12 @@ module.exports = {
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
             
-            // Call shadowGame.tryShowError after sending the profile
             if (shadowGame) {
                 await shadowGame.tryShowError(message);
             }
 
         } catch (error) {
-            console.error('Profile Command Error:', error);
+            console.error('[PROFILE] Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
         }
     },
