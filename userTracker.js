@@ -157,3 +157,68 @@ class UserTracker {
 }
 
 module.exports = UserTracker;
+
+// database.js
+async addValidUser(username) {
+    try {
+        const collection = await this.getCollection('users');
+        const data = await collection.findOne({ _id: 'validUsers' });
+        const existingUsers = data?.users || [];
+
+        const filteredUsers = existingUsers.filter(
+            u => u.toLowerCase() !== username.toLowerCase()
+        );
+
+        filteredUsers.push(username.trim());
+
+        await collection.updateOne(
+            { _id: 'validUsers' },
+            { $set: { users: filteredUsers } },
+            { upsert: true }
+        );
+
+        console.log(`[DATABASE] Added user with case preservation: ${username}`);
+    } catch (error) {
+        ErrorHandler.logError(error, 'Add Valid User');
+        throw error;
+    }
+}
+
+async getValidUsers() {
+    try {
+        const collection = await this.getCollection('users');
+        const data = await collection.findOne({ _id: 'validUsers' });
+        return (data?.users || []).map(u => u.trim().toLowerCase());
+    } catch (error) {
+        ErrorHandler.logError(error, 'Get Valid Users');
+        return [];
+    }
+}
+
+// userStats.js
+class UserStats {
+    async initializeUserIfNeeded(username) {
+        const cleanUsername = username.trim().toLowerCase();
+        if (!this.stats.users[cleanUsername]) {
+            console.log(`Initializing stats for new user: ${cleanUsername}`);
+            this.stats.users[cleanUsername] = {
+                yearlyPoints: {},
+                completedGames: {},
+                monthlyAchievements: {},
+                yearlyStats: {},
+                participationMonths: [],
+                completionMonths: [],
+                masteryMonths: [],
+                bonusPoints: []
+            };
+            await this.saveStats();
+        }
+    }
+
+    async loadStats(userTracker) {
+        const users = await userTracker.getValidUsers();
+        for (const username of users) {
+            await this.initializeUserIfNeeded(username);
+        }
+    }
+}
