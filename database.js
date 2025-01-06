@@ -483,7 +483,7 @@ class Database {
         }
     }
 
-    async removeValidUser(username) {
+        async removeValidUser(username) {
         try {
             const collection = await this.getCollection('users');
             const data = await collection.findOne({ _id: 'validUsers' });
@@ -503,7 +503,6 @@ class Database {
             throw error;
         }
     }
-}
 
     // ===================
     // Game Request Methods
