@@ -744,23 +744,6 @@ async getValidUsers() {
             throw error;
         }
     }
-    async fetchNominations() {
-    try {
-        const collection = await this.getCollection('nominations');
-        const data = await collection.find({}).toArray();
-        const nominations = data.reduce((acc, item) => {
-            const platform = item.platform || 'Unknown';
-            acc[platform] = acc[platform] || [];
-            acc[platform].push(item.title);
-            return acc;
-        }, {});
-
-        return nominations;
-    } catch (error) {
-        console.error('[DATABASE] Error fetching nominations:', error);
-        throw error;
-    }
-}
 }
 
 module.exports = new Database();
