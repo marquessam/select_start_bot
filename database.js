@@ -678,7 +678,94 @@ async getValidUsers() {
             }
         });
     }
+    
+// ===================
+    // Nomination Methods
+    // ===================
+    async getNominationStatus() {
+        const collection = await this.getCollection('nominations');
+        return await fetchData(collection, { _id: 'status' }, {
+            isOpen: false,
+            lastOpenDate: null,
+            lastCloseDate: null
+        });
+    }
 
+    async setNominationStatus(isOpen) {
+        const collection = await this.getCollection('nominations');
+        const timestamp = new Date().toISOString();
+        await collection.updateOne(
+            { _id: 'status' },
+            {
+                $set: {
+                    isOpen,
+                    [isOpen ? 'lastOpenDate' : 'lastCloseDate']: timestamp
+                }
+            },
+            { upsert: true }
+        );
+    }
+
+    async hasUserNominated(userId) {
+        const collection = await this.getCollection('nominations');
+        const status = await this.getNominationStatus();
+        
+        // If nominations aren't open, return false
+        if (!status?.isOpen) return false;
+
+        const currentPeriod = await collection.findOne({ _id: 'currentPeriod' });
+        if (!currentPeriod) return false;
+
+        const userNomination = await collection.findOne({
+            _id: 'nominations',
+            [`nominations.${currentPeriod.period}.userId`]: userId
+        });
+
+        return !!userNomination;
+    }
+
+    async addNomination(nomination) {
+        const collection = await this.getCollection('nominations');
+        const status = await this.getNominationStatus();
+        
+        if (!status?.isOpen) {
+            throw new Error('Nominations are currently closed');
+        }
+
+        const currentPeriod = await collection.findOne({ _id: 'currentPeriod' });
+        const period = currentPeriod?.period || new Date().toISOString().slice(0, 7); // YYYY-MM format
+
+        await collection.updateOne(
+            { _id: 'nominations' },
+            {
+                $push: {
+                    [`nominations.${period}`]: nomination
+                }
+            },
+            { upsert: true }
+        );
+
+        // Update current period if it doesn't exist
+        if (!currentPeriod) {
+            await collection.updateOne(
+                { _id: 'currentPeriod' },
+                { $set: { period } },
+                { upsert: true }
+            );
+        }
+    }
+
+    async getNominations(period = null) {
+        const collection = await this.getCollection('nominations');
+        
+        if (!period) {
+            const currentPeriod = await collection.findOne({ _id: 'currentPeriod' });
+            period = currentPeriod?.period || new Date().toISOString().slice(0, 7);
+        }
+
+        const nominations = await collection.findOne({ _id: 'nominations' });
+        return nominations?.nominations?.[period] || [];
+        
     // ===================
     // Shadow Game Methods
     // ===================
