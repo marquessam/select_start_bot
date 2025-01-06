@@ -92,7 +92,7 @@ async function fetchUserProfile(username) {
 
         return profile;
     } catch (error) {
-        console.error(`Error fetching user profile for ${username}:`, error);
+        console.error(`[RA API] Error fetching user profile for ${username}:`, error);
         // Return default profile on error
         return {
             username,
@@ -107,22 +107,23 @@ async function fetchLeaderboardData() {
         // Check if cached data is still valid
         if (cache.leaderboardData && 
             (Date.now() - cache.lastLeaderboardUpdate < cache.leaderboardTTL)) {
+            console.log('[RA API] Returning cached leaderboard data');
             return cache.leaderboardData;
         }
+
+        console.log('[RA API] Fetching fresh leaderboard data');
 
         const challenge = await database.getCurrentChallenge();
         if (!challenge || !challenge.gameId) {
             throw new Error('No active challenge found in database');
         }
 
-        const SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRt6MiNALBT6jj0hG5qtalI_GkSkXFaQvWdRj-Ye-l3YNU4DB5mLUQGHbLF9-XnhkpJjLEN9gvTHXmp/pub?gid=0&single=true&output=csv';
-
-        const csvResponse = await fetch(SPREADSHEET_URL);
-        const csvText = await csvResponse.text();
-        const users = csvText.split('\n').slice(1).map(line => line.trim()).filter(line => line);
+        // Get users from database
+        const validUsers = await database.getValidUsers();
+        console.log(`[RA API] Fetching data for ${validUsers.length} users`);
 
         const usersProgress = [];
-        for (const username of users) {
+        for (const username of validUsers) {
             try {
                 const params = new URLSearchParams({
                     z: process.env.RA_USERNAME,
@@ -154,8 +155,10 @@ async function fetchLeaderboardData() {
                     hasCompletion: hasCompletion,
                     achievements: achievements
                 });
+
+                console.log(`[RA API] Fetched progress for ${username}: ${completed}/${numAchievements} achievements`);
             } catch (error) {
-                console.error(`Error fetching data for ${username}:`, error);
+                console.error(`[RA API] Error fetching data for ${username}:`, error);
                 usersProgress.push({
                     username,
                     profileImage: `https://retroachievements.org/UserPic/${username}.png`,
@@ -179,9 +182,10 @@ async function fetchLeaderboardData() {
         cache.leaderboardData = leaderboardData;
         cache.lastLeaderboardUpdate = Date.now();
 
+        console.log(`[RA API] Leaderboard data updated with ${usersProgress.length} users`);
         return leaderboardData;
     } catch (error) {
-        console.error('Error fetching leaderboard data:', error);
+        console.error('[RA API] Error fetching leaderboard data:', error);
         throw error;
     }
 }
