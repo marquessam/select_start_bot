@@ -6,12 +6,6 @@ module.exports = {
     
     async execute(message, args, { userStats }) {
         try {
-            // Check if user has admin permissions
-            if (!message.member.permissions.has('Administrator')) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
-                return;
-            }
-
             await message.channel.send('```ansi\n\x1b[32m> Restoring beta member points...\x1b[0m\n```');
 
             const betaRoleId = '1301710526535041105';
