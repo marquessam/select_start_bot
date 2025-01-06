@@ -158,67 +158,39 @@ class UserTracker {
 
 module.exports = UserTracker;
 
-// database.js
-async addValidUser(username) {
+// leaderboardCache.js
+_constructMonthlyLeaderboard(monthlyData, allUsers) {
     try {
-        const collection = await this.getCollection('users');
-        const data = await collection.findOne({ _id: 'validUsers' });
-        const existingUsers = data?.users || [];
+        if (!monthlyData?.leaderboard) {
+            console.warn('[LEADERBOARD CACHE] No monthly data available');
+            return [];
+        }
 
-        const filteredUsers = existingUsers.filter(
-            u => u.toLowerCase() !== username.toLowerCase()
-        );
+        const validParticipants = allUsers.filter(user => this.isValidUser(user));
 
-        filteredUsers.push(username.trim());
+        const monthlyParticipants = validParticipants.map(participant => {
+            const user = monthlyData.leaderboard.find(
+                u => u.username.toLowerCase() === participant.toLowerCase()
+            );
 
-        await collection.updateOne(
-            { _id: 'validUsers' },
-            { $set: { users: filteredUsers } },
-            { upsert: true }
-        );
+            return user || {
+                username: participant,
+                completionPercentage: 0,
+                completedAchievements: 0,
+                totalAchievements: 0,
+                hasCompletion: false
+            };
+        });
 
-        console.log(`[DATABASE] Added user with case preservation: ${username}`);
+        return monthlyParticipants.sort((a, b) => {
+            const percentageDiff = b.completionPercentage - a.completionPercentage;
+            if (percentageDiff !== 0) return percentageDiff;
+
+            return b.completedAchievements - a.completedAchievements;
+        });
     } catch (error) {
-        ErrorHandler.logError(error, 'Add Valid User');
-        throw error;
-    }
-}
-
-async getValidUsers() {
-    try {
-        const collection = await this.getCollection('users');
-        const data = await collection.findOne({ _id: 'validUsers' });
-        return (data?.users || []).map(u => u.trim().toLowerCase());
-    } catch (error) {
-        ErrorHandler.logError(error, 'Get Valid Users');
+        console.error('[LEADERBOARD CACHE] Error constructing monthly leaderboard:', error);
         return [];
     }
 }
 
-// userStats.js
-class UserStats {
-    async initializeUserIfNeeded(username) {
-        const cleanUsername = username.trim().toLowerCase();
-        if (!this.stats.users[cleanUsername]) {
-            console.log(`Initializing stats for new user: ${cleanUsername}`);
-            this.stats.users[cleanUsername] = {
-                yearlyPoints: {},
-                completedGames: {},
-                monthlyAchievements: {},
-                yearlyStats: {},
-                participationMonths: [],
-                completionMonths: [],
-                masteryMonths: [],
-                bonusPoints: []
-            };
-            await this.saveStats();
-        }
-    }
-
-    async loadStats(userTracker) {
-        const users = await userTracker.getValidUsers();
-        for (const username of users) {
-            await this.initializeUserIfNeeded(username);
-        }
-    }
-}
