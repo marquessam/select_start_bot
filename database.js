@@ -424,8 +424,9 @@ module.exports = {
         );
     }
 
-    async addValidUser(username) {
+   async addValidUser(username) {
     try {
+        // First add to valid users list
         const collection = await this.getCollection('users');
         const data = await collection.findOne({ _id: 'validUsers' });
         const existingUsers = data?.users || [];
@@ -442,7 +443,70 @@ module.exports = {
             { upsert: true }
         );
 
-        console.log(`[DATABASE] Added user with case preservation: ${username}`);
+        // Initialize user stats
+        const stats = await this.getUserStats();
+        const cleanUsername = username.trim().toLowerCase();
+        const year = new Date().getFullYear().toString();
+
+        if (!stats.users[cleanUsername]) {
+            stats.users[cleanUsername] = {
+                totalPoints: 0,
+                yearlyPoints: {},
+                monthlyAchievements: {},
+                bonusPoints: [],
+                completedGames: {},
+                monthlyStats: {},
+                yearlyStats: {},
+                participationMonths: [],
+                completionMonths: [],
+                masteryMonths: [],
+                achievements: {
+                    titles: [],
+                    badges: [],
+                    milestones: [],
+                    specialUnlocks: [],
+                    records: [],
+                    streaks: {
+                        current: 0,
+                        longest: 0,
+                        lastUpdate: null
+                    }
+                }
+            };
+        }
+
+        if (!stats.users[cleanUsername].yearlyStats[year]) {
+            stats.users[cleanUsername].yearlyStats[year] = {
+                totalGamesCompleted: 0,
+                totalAchievementsUnlocked: 0,
+                hardcoreCompletions: 0,
+                softcoreCompletions: 0,
+                monthlyParticipations: 0,
+                perfectMonths: 0,
+                totalPoints: 0,
+                averageCompletion: 0,
+                longestStreak: 0,
+                currentStreak: 0,
+                highestSingleDay: 0,
+                mastery100Count: 0,
+                participationRate: 0,
+                rareAchievements: 0,
+                personalBests: {
+                    fastestCompletion: null,
+                    highestPoints: 0,
+                    bestRank: 0
+                },
+                achievementsPerMonth: {},
+                dailyActivity: {},
+                hardestGame: ""
+            };
+        }
+
+        // Save the updated stats
+        await this.saveUserStats(stats);
+        console.log(`[DATABASE] Added and initialized user: ${username}`);
+        
+        return true;
     } catch (error) {
         ErrorHandler.logError(error, 'Add Valid User');
         throw error;
