@@ -407,20 +407,31 @@ class Database {
         );
     }
 
-    async getValidUsers() {
-        const collection = await this.getCollection('users');
-        const data = await collection.findOne({ _id: 'validUsers' });
-        return data?.users || [];
-    }
-
     async addValidUser(username) {
-        const collection = await this.getCollection('users');
-        await collection.updateOne(
-            { _id: 'validUsers' },
-            { $addToSet: { users: username.toLowerCase() } },
-            { upsert: true }
-        );
-    }
+    const collection = await this.getCollection('users');
+    await collection.updateOne(
+        { _id: 'validUsers' },
+        { 
+            $addToSet: { 
+                users: username  // Store original case
+            }
+        },
+        { upsert: true }
+    );
+}
+
+async getValidUsers() {
+    const collection = await this.getCollection('users');
+    const data = await collection.findOne({ _id: 'validUsers' });
+    return data?.users || [];
+}
+
+// For lookups, use case-insensitive comparison but return original case
+async findUser(username) {
+    const collection = await this.getCollection('users');
+    const data = await collection.findOne({ _id: 'validUsers' });
+    return data?.users?.find(u => u.toLowerCase() === username.toLowerCase()) || null;
+}
 
     async removeValidUser(username) {
         const collection = await this.getCollection('users');
