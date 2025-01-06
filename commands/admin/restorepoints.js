@@ -1,4 +1,4 @@
-const TerminalEmbed = require('../utils/embedBuilder');
+const TerminalEmbed = require('../../utils/embedBuilder');
 
 module.exports = {
     name: 'restorepoints',
