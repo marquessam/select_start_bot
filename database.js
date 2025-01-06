@@ -373,7 +373,7 @@ class Database {
         return await fetchData(collection, { _id: 'next' }, null);
     }
 
-    // ==================
+   // ==================
     // User Methods
     // ==================
     async getUserStats() {
@@ -408,38 +408,101 @@ class Database {
     }
 
     async addValidUser(username) {
-    const collection = await this.getCollection('users');
-    await collection.updateOne(
-        { _id: 'validUsers' },
-        { 
-            $addToSet: { 
-                users: username  // Store original case
+        try {
+            const collection = await this.getCollection('users');
+            const data = await collection.findOne({ _id: 'validUsers' });
+            const existingUsers = data?.users || [];
+            
+            // Remove any existing version of this username (case-insensitive)
+            const filteredUsers = existingUsers.filter(
+                u => u.toLowerCase() !== username.toLowerCase()
+            );
+            
+            // Add the new username with correct case
+            filteredUsers.push(username);
+            
+            await collection.updateOne(
+                { _id: 'validUsers' },
+                { $set: { users: filteredUsers } },
+                { upsert: true }
+            );
+
+            console.log(`[DATABASE] Added user with case preservation: ${username}`);
+        } catch (error) {
+            ErrorHandler.logError(error, 'Add Valid User');
+            throw error;
+        }
+    }
+
+    async getValidUsers() {
+        try {
+            const collection = await this.getCollection('users');
+            const data = await collection.findOne({ _id: 'validUsers' });
+            return data?.users || [];
+        } catch (error) {
+            ErrorHandler.logError(error, 'Get Valid Users');
+            return [];
+        }
+    }
+
+    async findUser(username) {
+        try {
+            const collection = await this.getCollection('users');
+            const data = await collection.findOne({ _id: 'validUsers' });
+            return data?.users?.find(u => u.toLowerCase() === username.toLowerCase()) || null;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Find User');
+            return null;
+        }
+    }
+
+    async updateUserCase(oldUsername, newUsername) {
+        try {
+            if (oldUsername.toLowerCase() !== newUsername.toLowerCase()) {
+                throw new Error('Cannot update case for different usernames');
             }
-        },
-        { upsert: true }
-    );
-}
 
-async getValidUsers() {
-    const collection = await this.getCollection('users');
-    const data = await collection.findOne({ _id: 'validUsers' });
-    return data?.users || [];
-}
-
-// For lookups, use case-insensitive comparison but return original case
-async findUser(username) {
-    const collection = await this.getCollection('users');
-    const data = await collection.findOne({ _id: 'validUsers' });
-    return data?.users?.find(u => u.toLowerCase() === username.toLowerCase()) || null;
-}
+            const collection = await this.getCollection('users');
+            const data = await collection.findOne({ _id: 'validUsers' });
+            const users = data?.users || [];
+            
+            const index = users.findIndex(u => u.toLowerCase() === oldUsername.toLowerCase());
+            if (index !== -1) {
+                users[index] = newUsername;
+                await collection.updateOne(
+                    { _id: 'validUsers' },
+                    { $set: { users: users } }
+                );
+                console.log(`[DATABASE] Updated username case from ${oldUsername} to ${newUsername}`);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Update User Case');
+            throw error;
+        }
+    }
 
     async removeValidUser(username) {
-        const collection = await this.getCollection('users');
-        await collection.updateOne(
-            { _id: 'validUsers' },
-            { $pull: { users: username.toLowerCase() } }
-        );
-    }
+        try {
+            const collection = await this.getCollection('users');
+            const data = await collection.findOne({ _id: 'validUsers' });
+            const users = data?.users || [];
+            
+            // Filter case-insensitively
+            const filteredUsers = users.filter(u => u.toLowerCase() !== username.toLowerCase());
+            
+            await collection.updateOne(
+                { _id: 'validUsers' },
+                { $set: { users: filteredUsers } }
+            );
+
+            console.log(`[DATABASE] Removed user: ${username}`);
+        } catch (error) {
+            ErrorHandler.logError(error, 'Remove Valid User');
+            throw error;
+        }
+    }}
 
     // ===================
     // Game Request Methods
