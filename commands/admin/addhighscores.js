@@ -94,7 +94,7 @@ module.exports = {
 
             // Update in database
             highscores.games[gameName].scores = scores;
-            await database.saveHighScores(highscores);
+            await saveArcadeScore(game, username, score);
 
             // Create confirmation embed
             const embed = new TerminalEmbed()
