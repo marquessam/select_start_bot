@@ -310,17 +310,31 @@ class Database {
         }
     }
 
-   async refreshArcadeScores() {
+  async refreshArcadeScores() {
     try {
-        const arcadeCollection = await this.getCollection('arcadeScores');
-        const scores = await arcadeCollection.find({}).toArray();
-        console.log(`[DATABASE] Refreshed arcade scores, found ${scores.length} scores.`);
-        return scores;
+        const collection = await this.getCollection('arcadechallenge');
+        const currentScores = await this.getArcadeScores();
+        
+        // Update/upsert the scores document
+        await collection.updateOne(
+            { _id: 'scores' },
+            { 
+                $set: {
+                    ...currentScores,
+                    lastUpdated: new Date().toISOString()
+                }
+            },
+            { upsert: true }
+        );
+        
+        console.log('[DATABASE] Refreshed arcade scores');
+        return currentScores;
     } catch (error) {
         console.error('[DATABASE] Error refreshing arcade scores:', error);
         throw error;
     }
 }
+    
     async resetArcadeScores(gameName) {
         try {
             const collection = await this.getCollection('arcadechallenge');
