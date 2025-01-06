@@ -1,5 +1,4 @@
 const database = require('../database');
-const leaderboardCache = require('../leaderboardCache');
 const raAPI = require('../raAPI');
 
 class DataService {
@@ -25,13 +24,23 @@ class DataService {
     }
 
     static async getLeaderboard(type = 'monthly') {
-        if (type === 'monthly') {
-            return leaderboardCache.getMonthlyLeaderboard();
-        } else if (type === 'yearly') {
-            const validUsers = await this.getValidUsers();
-            return leaderboardCache.getYearlyLeaderboard(null, validUsers);
+        if (!global.leaderboardCache) {
+            console.warn('[DATA SERVICE] LeaderboardCache not initialized');
+            return [];
         }
-        throw new Error('Invalid leaderboard type');
+
+        try {
+            if (type === 'monthly') {
+                return global.leaderboardCache.getMonthlyLeaderboard() || [];
+            } else if (type === 'yearly') {
+                const validUsers = await this.getValidUsers();
+                return global.leaderboardCache.getYearlyLeaderboard(null, validUsers) || [];
+            }
+            throw new Error('Invalid leaderboard type');
+        } catch (error) {
+            console.error('[DATA SERVICE] Error getting leaderboard:', error);
+            return [];
+        }
     }
 
     static async getCurrentChallenge() {
@@ -43,35 +52,51 @@ class DataService {
     }
 
     static async getUserProgress(username) {
-        // First check if user is valid
-        if (!await this.isValidUser(username)) {
+        try {
+            // First check if user is valid
+            if (!await this.isValidUser(username)) {
+                return {
+                    completionPercentage: 0,
+                    completedAchievements: 0,
+                    totalAchievements: 0,
+                };
+            }
+
+            const leaderboard = await this.getLeaderboard('monthly');
+            const user = leaderboard.find(
+                user => user.username.toLowerCase() === username.toLowerCase()
+            );
+            
+            return user || {
+                completionPercentage: 0,
+                completedAchievements: 0,
+                totalAchievements: 0,
+            };
+        } catch (error) {
+            console.error('[DATA SERVICE] Error getting user progress:', error);
             return {
                 completionPercentage: 0,
                 completedAchievements: 0,
                 totalAchievements: 0,
             };
         }
-
-        const leaderboard = await this.getLeaderboard('monthly');
-        const user = leaderboard.find(
-            user => user.username.toLowerCase() === username.toLowerCase()
-        );
-        
-        return user || {
-            completionPercentage: 0,
-            completedAchievements: 0,
-            totalAchievements: 0,
-        };
     }
 
     static async refreshUserList() {
         try {
-            await leaderboardCache.updateLeaderboards();
+            if (!global.leaderboardCache) {
+                console.warn('[DATA SERVICE] LeaderboardCache not initialized');
+                return;
+            }
+
+            await global.leaderboardCache.updateValidUsers();
+            await global.leaderboardCache.updateLeaderboards();
+            
             // Get fresh list of valid users from database
             const validUsers = await this.getValidUsers();
             console.log(`User list refreshed successfully. ${validUsers.length} valid users found.`);
         } catch (error) {
-            console.error('Error refreshing user list:', error);
+            console.error('[DATA SERVICE] Error refreshing user list:', error);
         }
     }
 
@@ -81,30 +106,35 @@ class DataService {
             if (!await this.isValidUser(username)) {
                 return null;
             }
-
             const profile = await raAPI.fetchUserProfile(username);
             return profile?.profileImage || null;
         } catch (error) {
-            console.error('Error fetching RA profile image:', error);
+            console.error('[DATA SERVICE] Error fetching RA profile image:', error);
             return null;
         }
     }
 
-    // Helper method for commands that need to validate users
     static async validateAndGetUser(username) {
-        const isValid = await this.isValidUser(username);
-        if (!isValid) {
+        try {
+            const isValid = await this.isValidUser(username);
+            if (!isValid) {
+                return {
+                    isValid: false,
+                    error: `User "${username}" is not a registered participant. Users must post their RetroAchievements profile URL in #retroachievements`
+                };
+            }
+            return {
+                isValid: true,
+                userStats: await this.getUserStats(username),
+                userProgress: await this.getUserProgress(username)
+            };
+        } catch (error) {
+            console.error('[DATA SERVICE] Error validating user:', error);
             return {
                 isValid: false,
-                error: `User "${username}" is not a registered participant. Users must post their RetroAchievements profile URL in #retroachievements`
+                error: 'An error occurred while validating the user'
             };
         }
-
-        return {
-            isValid: true,
-            userStats: await this.getUserStats(username),
-            userProgress: await this.getUserProgress(username)
-        };
     }
 }
 
