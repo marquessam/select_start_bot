@@ -164,4 +164,6 @@ class LeaderboardCache {
 }
 
 // Export a new instance with database parameter
-module.exports = (database) => new LeaderboardCache(database);
+module.exports = function createLeaderboardCache(database) {
+    return new LeaderboardCache(database);
+};
