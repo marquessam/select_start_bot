@@ -17,6 +17,8 @@ const client = new Client({
     ],
 });
 
+let services = null;  // Global services variable
+
 async function initializeServices() {
     try {
         // Check for required environment variables
@@ -40,18 +42,34 @@ async function initializeServices() {
         leaderboardCache.setUserStats(userStats);
         global.leaderboardCache = leaderboardCache;
 
-        // Initialize components
-        await shadowGame.loadConfig();
-        console.log('ShadowGame initialized.');
-        
-        await userTracker.initialize();
-        console.log('UserTracker initialized.');
-        
-        await userStats.loadStats(userTracker);
-        console.log('UserStats loaded successfully.');
-        
-        await announcer.initialize();
-        console.log('Announcer initialized.');
+        // Initialize components one at a time with error handling
+        try {
+            await shadowGame.loadConfig();
+            console.log('ShadowGame initialized.');
+        } catch (error) {
+            console.error('Error initializing ShadowGame:', error);
+        }
+
+        try {
+            await userTracker.initialize();
+            console.log('UserTracker initialized.');
+        } catch (error) {
+            console.error('Error initializing UserTracker:', error);
+        }
+
+        try {
+            await userStats.loadStats(userTracker);
+            console.log('UserStats loaded successfully.');
+        } catch (error) {
+            console.error('Error loading UserStats:', error);
+        }
+
+        try {
+            await announcer.initialize();
+            console.log('Announcer initialized.');
+        } catch (error) {
+            console.error('Error initializing Announcer:', error);
+        }
 
         // Initialize UserTracker with RetroAchievements channel
         const raChannel = await client.channels.fetch(process.env.RA_CHANNEL_ID);
@@ -60,24 +78,36 @@ async function initializeServices() {
         }
 
         console.log('Found RA channel, scanning historical messages...');
-        await userTracker.scanHistoricalMessages(raChannel);
+        try {
+            await userTracker.scanHistoricalMessages(raChannel);
+        } catch (error) {
+            console.error('Error scanning historical messages:', error);
+        }
 
         // Update leaderboards after all initializations
-        await leaderboardCache.updateValidUsers();
-        await leaderboardCache.updateLeaderboards();
-        console.log('Leaderboard cache updated.');
+        try {
+            await leaderboardCache.updateValidUsers();
+            await leaderboardCache.updateLeaderboards();
+            console.log('Leaderboard cache updated.');
+        } catch (error) {
+            console.error('Error updating leaderboard cache:', error);
+        }
 
         // Load commands
-        await commandHandler.loadCommands({ 
-            shadowGame, 
-            userStats, 
-            announcer, 
-            leaderboardCache,
-            userTracker
-        });
-        console.log('Commands loaded:', Array.from(commandHandler.commands.keys()));
+        try {
+            await commandHandler.loadCommands({ 
+                shadowGame, 
+                userStats, 
+                announcer, 
+                leaderboardCache,
+                userTracker
+            });
+            console.log('Commands loaded:', Array.from(commandHandler.commands.keys()));
+        } catch (error) {
+            console.error('Error loading commands:', error);
+        }
 
-        return {
+        const initializedServices = {
             userStats,
             userTracker,
             leaderboardCache,
@@ -85,6 +115,8 @@ async function initializeServices() {
             announcer,
             shadowGame
         };
+
+        return initializedServices;
     } catch (error) {
         console.error('Initialization error:', error);
         throw error;
@@ -95,10 +127,7 @@ client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
 
     try {
-        const services = await initializeServices();
-        
-        // Store services for message handling
-        client.services = services;
+        services = await initializeServices();
         console.log('Bot initialized successfully');
     } catch (error) {
         console.error('Fatal initialization error:', error);
@@ -110,21 +139,38 @@ client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
     try {
-        console.log('Received message:', message.content);
+        if (!services) {
+            console.warn('Services not yet initialized, ignoring message');
+            return;
+        }
 
-        const { userTracker, shadowGame, commandHandler } = client.services;
+        const { userTracker, shadowGame, commandHandler } = services;
 
         // Check for RA profile URLs if in the RA channel
-        if (message.channel.id === process.env.RA_CHANNEL_ID) {
-            await userTracker.processMessage(message);
+        if (message.channel.id === process.env.RA_CHANNEL_ID && userTracker) {
+            try {
+                await userTracker.processMessage(message);
+            } catch (error) {
+                console.error('Error processing RA message:', error);
+            }
         }
 
         // Process other bot functions
         if (shadowGame) {
-            await shadowGame.checkMessage(message);
+            try {
+                await shadowGame.checkMessage(message);
+            } catch (error) {
+                console.error('Error in shadow game processing:', error);
+            }
         }
 
-        await commandHandler.handleCommand(message, client.services);
+        if (commandHandler) {
+            try {
+                await commandHandler.handleCommand(message, services);
+            } catch (error) {
+                console.error('Error handling command:', error);
+            }
+        }
     } catch (error) {
         console.error('Message handling error:', error);
     }
@@ -132,8 +178,9 @@ client.on('messageCreate', async (message) => {
 
 // Set up periodic tasks
 setInterval(() => {
-    if (client.services?.leaderboardCache) {
-        client.services.leaderboardCache.updateLeaderboards();
+    if (services?.leaderboardCache) {
+        services.leaderboardCache.updateLeaderboards()
+            .catch(error => console.error('Error updating leaderboards:', error));
     }
 }, 60 * 60 * 1000); // Every hour
 
