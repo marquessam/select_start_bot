@@ -502,7 +502,8 @@ class Database {
             ErrorHandler.logError(error, 'Remove Valid User');
             throw error;
         }
-    }}
+    }
+}
 
     // ===================
     // Game Request Methods
