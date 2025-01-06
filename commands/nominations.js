@@ -1,12 +1,10 @@
 const TerminalEmbed = require('../utils/embedBuilder');
-const { fetchNominations } = require('../raAPI.js');
 
 module.exports = {
     name: 'nominations',
     description: 'View or submit game nominations',
     async execute(message, args, { database, shadowGame }) {
         try {
-            // Check if there are any arguments
             if (!args.length) {
                 await this.showHelp(message);
                 return;
@@ -16,9 +14,13 @@ module.exports = {
 
             switch (subcommand) {
                 case 'view':
-                    await this.viewNominations(message, shadowGame);
+                    await this.viewNominations(message, database, shadowGame);
                     break;
                 case 'nominate':
+                    if (args.length < 3) {
+                        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !nominations nominate <platform> <game name>\n[Ready for input]█\x1b[0m```');
+                        return;
+                    }
                     await this.submitNomination(message, args.slice(1), database);
                     break;
                 case 'open':
@@ -50,25 +52,43 @@ module.exports = {
             .setTerminalDescription('[HELP MENU]\n[AVAILABLE COMMANDS]')
             .addTerminalField('USAGE',
                 '!nominations view - View current nominations\n' +
-                '!nominations nominate <game> - Submit a nomination\n' +
-                '!nominations open - Open nominations (Admin)\n' +
-                '!nominations close - Close nominations (Admin)')
+                '!nominations nominate <platform> <game> - Submit a nomination\n' +
+                'Example: !nominations nominate SNES Super Mario World\n\n' +
+                'Valid platforms: NES, SNES, GB, GBC, GBA, PSX, N64')
             .setTerminalFooter();
 
         await message.channel.send({ embeds: [embed] });
     },
 
-    async viewNominations(message, shadowGame) {
+    async viewNominations(message, database, shadowGame) {
         await message.channel.send('```ansi\n\x1b[32m> Accessing nominations database...\x1b[0m\n```');
         
         try {
-            const nominations = await fetchNominations();
+            const nominations = await database.getNominations();
+            
+            if (!nominations.length) {
+                const embed = new TerminalEmbed()
+                    .setTerminalTitle('NOMINATED TITLES')
+                    .setTerminalDescription('[DATABASE ACCESS GRANTED]')
+                    .addTerminalField('STATUS', 'No nominations found for the current period')
+                    .setTerminalFooter();
+                
+                await message.channel.send({ embeds: [embed] });
+                return;
+            }
+
+            // Group nominations by platform
+            const groupedNominations = nominations.reduce((acc, nom) => {
+                if (!acc[nom.platform]) acc[nom.platform] = [];
+                acc[nom.platform].push(`${nom.game} (by ${nom.discordUsername})`);
+                return acc;
+            }, {});
             
             const embed = new TerminalEmbed()
                 .setTerminalTitle('NOMINATED TITLES')
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING NOMINATIONS BY PLATFORM]');
 
-            for (const [platform, games] of Object.entries(nominations).sort()) {
+            for (const [platform, games] of Object.entries(groupedNominations).sort()) {
                 if (games.length > 0) {
                     embed.addTerminalField(
                         `PLATFORM: ${platform.toUpperCase()}`,
@@ -80,7 +100,6 @@ module.exports = {
             embed.setTerminalFooter();
             
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !challenge to view current challenge\n[Ready for input]█\x1b[0m```');
             
             if (shadowGame) {
                 await shadowGame.tryShowError(message);
@@ -107,19 +126,26 @@ module.exports = {
                 return;
             }
 
-            // Get the game name from arguments
-            const gameName = args.join(' ');
+            const platform = args[0].toUpperCase();
+            const validPlatforms = ['NES', 'SNES', 'GB', 'GBC', 'GBA', 'PSX', 'N64'];
+            
+            if (!validPlatforms.includes(platform)) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid platform. Valid platforms: NES, SNES, GB, GBC, GBA, PSX, N64\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            const gameName = args.slice(1).join(' ');
             if (!gameName) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Please provide a game name\nUsage: !nominations nominate <game name>\n[Ready for input]█\x1b[0m```');
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Please provide a game name\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
             // Submit the nomination
             await database.addNomination({
                 game: gameName,
-                userId: message.author.id,
-                username: message.author.username,
-                timestamp: new Date().toISOString()
+                discordId: message.author.id,
+                discordUsername: message.author.username,
+                platform
             });
 
             const embed = new TerminalEmbed()
@@ -127,6 +153,7 @@ module.exports = {
                 .setTerminalDescription('[SUBMISSION SUCCESSFUL]')
                 .addTerminalField('DETAILS',
                     `GAME: ${gameName}\n` +
+                    `PLATFORM: ${platform}\n` +
                     `SUBMITTED BY: ${message.author.username}\n` +
                     `DATE: ${new Date().toLocaleDateString()}`)
                 .setTerminalFooter();
