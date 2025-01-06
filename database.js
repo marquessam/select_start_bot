@@ -408,42 +408,41 @@ class Database {
     }
 
     async addValidUser(username) {
-        try {
-            const collection = await this.getCollection('users');
-            const data = await collection.findOne({ _id: 'validUsers' });
-            const existingUsers = data?.users || [];
-            
-            // Remove any existing version of this username (case-insensitive)
-            const filteredUsers = existingUsers.filter(
-                u => u.toLowerCase() !== username.toLowerCase()
-            );
-            
-            // Add the new username with correct case
-            filteredUsers.push(username);
-            
-            await collection.updateOne(
-                { _id: 'validUsers' },
-                { $set: { users: filteredUsers } },
-                { upsert: true }
-            );
+    try {
+        const collection = await this.getCollection('users');
+        const data = await collection.findOne({ _id: 'validUsers' });
+        const existingUsers = data?.users || [];
 
-            console.log(`[DATABASE] Added user with case preservation: ${username}`);
-        } catch (error) {
-            ErrorHandler.logError(error, 'Add Valid User');
-            throw error;
-        }
-    }
+        const filteredUsers = existingUsers.filter(
+            u => u.toLowerCase() !== username.toLowerCase()
+        );
 
-    async getValidUsers() {
-        try {
-            const collection = await this.getCollection('users');
-            const data = await collection.findOne({ _id: 'validUsers' });
-            return data?.users || [];
-        } catch (error) {
-            ErrorHandler.logError(error, 'Get Valid Users');
-            return [];
-        }
+        filteredUsers.push(username.trim());
+
+        await collection.updateOne(
+            { _id: 'validUsers' },
+            { $set: { users: filteredUsers } },
+            { upsert: true }
+        );
+
+        console.log(`[DATABASE] Added user with case preservation: ${username}`);
+    } catch (error) {
+        ErrorHandler.logError(error, 'Add Valid User');
+        throw error;
     }
+}
+
+async getValidUsers() {
+    try {
+        const collection = await this.getCollection('users');
+        const data = await collection.findOne({ _id: 'validUsers' });
+        return (data?.users || []).map(u => u.trim().toLowerCase());
+    } catch (error) {
+        ErrorHandler.logError(error, 'Get Valid Users');
+        return [];
+    }
+}
+
 
     async findUser(username) {
         try {
