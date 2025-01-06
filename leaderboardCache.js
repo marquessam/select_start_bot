@@ -1,7 +1,8 @@
 const { fetchLeaderboardData } = require('./raAPI.js');
 
 class LeaderboardCache {
-    constructor() {
+    constructor(database) {
+        this.database = database;
         this.validUsers = null;
         this.lastUpdated = null;
         this.userStats = null;
@@ -21,9 +22,19 @@ class LeaderboardCache {
                 this.validUsers = [];
                 return;
             }
-            this.validUsers = await this.userStats.getAllUsers();
+
+            // Force a fresh fetch from database
+            this.validUsers = await this.database.getValidUsers();
             this.lastUpdated = new Date();
             console.log('[LEADERBOARD CACHE] Valid users updated:', this.validUsers);
+            
+            // Ensure all valid users have initialized stats
+            for (const username of this.validUsers) {
+                await this.userStats.initializeUserIfNeeded(username);
+            }
+
+            // Update leaderboards after updating valid users
+            await this.updateLeaderboards();
         } catch (error) {
             console.error('[LEADERBOARD CACHE] Error updating valid users:', error);
             this.validUsers = [];
@@ -38,51 +49,51 @@ class LeaderboardCache {
         return this.validUsers.includes(username.toLowerCase());
     }
 
-   async updateLeaderboards() {
-    if (!this.userStats) {
-        console.error('[LEADERBOARD CACHE] userStats instance not set.');
-        return;
-    }
-
-    try {
-        const currentYear = new Date().getFullYear().toString();
-        console.log('[LEADERBOARD CACHE] Updating yearly leaderboard...');
-
-        // Ensure we have valid users
-        if (!this.validUsers || this.validUsers.length === 0) {
-            await this.updateValidUsers();
+    async updateLeaderboards() {
+        if (!this.userStats) {
+            console.error('[LEADERBOARD CACHE] userStats instance not set.');
+            return;
         }
 
-        // Get yearly leaderboard
-        this.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(
-            currentYear,
-            this.validUsers || []
-        );
-
-        // Get monthly leaderboard and update participation
-        console.log('[LEADERBOARD CACHE] Updating monthly leaderboard...');
         try {
-            const monthlyData = await fetchLeaderboardData();
-            this.monthlyLeaderboard = this._constructMonthlyLeaderboard(
-                monthlyData,
+            const currentYear = new Date().getFullYear().toString();
+            console.log('[LEADERBOARD CACHE] Updating yearly leaderboard...');
+
+            // Ensure we have valid users
+            if (!this.validUsers || this.validUsers.length === 0) {
+                await this.updateValidUsers();
+            }
+
+            // Get yearly leaderboard
+            this.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(
+                currentYear,
                 this.validUsers || []
             );
 
-            // Update participation tracking
-            await this.userStats.updateMonthlyParticipation(monthlyData);
+            // Get monthly leaderboard and update participation
+            console.log('[LEADERBOARD CACHE] Updating monthly leaderboard...');
+            try {
+                const monthlyData = await fetchLeaderboardData();
+                this.monthlyLeaderboard = this._constructMonthlyLeaderboard(
+                    monthlyData,
+                    this.validUsers || []
+                );
+
+                // Update participation tracking
+                await this.userStats.updateMonthlyParticipation(monthlyData);
+            } catch (error) {
+                console.error('[LEADERBOARD CACHE] Error fetching monthly data:', error);
+                this.monthlyLeaderboard = [];
+            }
+
+            this.lastUpdated = new Date();
+            console.log('[LEADERBOARD CACHE] Leaderboards updated successfully.');
         } catch (error) {
-            console.error('[LEADERBOARD CACHE] Error fetching monthly data:', error);
+            console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
+            this.yearlyLeaderboard = [];
             this.monthlyLeaderboard = [];
         }
-
-        this.lastUpdated = new Date();
-        console.log('[LEADERBOARD CACHE] Leaderboards updated successfully.');
-    } catch (error) {
-        console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
-        this.yearlyLeaderboard = [];
-        this.monthlyLeaderboard = [];
     }
-}
 
     _constructMonthlyLeaderboard(monthlyData, allUsers) {
         try {
@@ -98,17 +109,25 @@ class LeaderboardCache {
                 const user = monthlyData.leaderboard.find(
                     u => u.username.toLowerCase() === participant.toLowerCase()
                 );
-                return (
-                    user || {
-                        username: participant,
-                        completionPercentage: 0,
-                        completedAchievements: 0,
-                        totalAchievements: 0,
-                    }
-                );
+                
+                return user || {
+                    username: participant,
+                    completionPercentage: 0,
+                    completedAchievements: 0,
+                    totalAchievements: 0,
+                    hasCompletion: false
+                };
             });
 
-            return monthlyParticipants.sort((a, b) => b.completionPercentage - a.completionPercentage);
+            // Sort by completion percentage
+            return monthlyParticipants.sort((a, b) => {
+                // First sort by completion percentage
+                const percentageDiff = b.completionPercentage - a.completionPercentage;
+                if (percentageDiff !== 0) return percentageDiff;
+                
+                // If percentages are equal, sort by number of achievements
+                return b.completedAchievements - a.completedAchievements;
+            });
         } catch (error) {
             console.error('[LEADERBOARD CACHE] Error constructing monthly leaderboard:', error);
             return [];
@@ -144,4 +163,5 @@ class LeaderboardCache {
     }
 }
 
-module.exports = new LeaderboardCache();
+// Export a new instance with database parameter
+module.exports = (database) => new LeaderboardCache(database);
