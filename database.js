@@ -310,6 +310,23 @@ class Database {
         }
     }
 
+    async function refreshArcadeScores() {
+    try {
+        const arcadeCollection = await this.getCollection('arcadeScores');
+        const scores = await arcadeCollection.find({}).toArray();
+        console.log(`[DATABASE] Refreshed arcade scores, found ${scores.length} scores.`);
+        return scores;
+    } catch (error) {
+        console.error('[DATABASE] Error refreshing arcade scores:', error);
+        throw error;
+    }
+}
+
+module.exports = {
+    ...otherFunctions,
+    refreshArcadeScores,
+};
+    
     async resetArcadeScores(gameName) {
         try {
             const collection = await this.getCollection('arcadechallenge');
