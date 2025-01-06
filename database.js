@@ -765,7 +765,7 @@ async getValidUsers() {
 
         const nominations = await collection.findOne({ _id: 'nominations' });
         return nominations?.nominations?.[period] || [];
-     },
+     }
     
     // ===================
     // Shadow Game Methods
