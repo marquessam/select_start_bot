@@ -129,7 +129,7 @@ module.exports = {
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
 
             if (rankedLeaderboard.length > 0) {
-                embed.addTerminalField('TOP OPERATORS',
+                embed.addTerminalField('TOP USERS',
                     rankedLeaderboard
                         .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
                         .join('\n'));
