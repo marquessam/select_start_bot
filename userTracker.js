@@ -118,7 +118,7 @@ class UserTracker {
                         if (username) {
                             const added = await this.addUser(username);
                             if (added) {
-                                await message.react('✅');
+                                //await message.react('✅');
                                 addedUsers++;
                             }
                         }
