@@ -1,7 +1,8 @@
 // userTracker.js
 class UserTracker {
-    constructor(database) {
+    constructor(database, userStats) {  // Add userStats parameter
         this.database = database;
+        this.userStats = userStats;     // Store userStats reference
         this.validUsers = new Set();
     }
 
@@ -55,6 +56,18 @@ class UserTracker {
             if (!validUsers.includes(username.toLowerCase())) {
                 await this.database.addValidUser(username);
                 this.validUsers.add(username.toLowerCase());
+                
+                // Initialize stats for new user
+                if (this.userStats) {
+                    await this.userStats.initializeUserIfNeeded(username);
+                }
+                
+                // Update leaderboard cache if it exists
+                if (global.leaderboardCache) {
+                    await global.leaderboardCache.updateValidUsers();
+                    await global.leaderboardCache.updateLeaderboards();
+                }
+                
                 console.log(`Added new user: ${username}`);
             }
         } catch (error) {
@@ -96,4 +109,5 @@ class UserTracker {
         return Array.from(this.validUsers);
     }
 }
+
 module.exports = UserTracker;
