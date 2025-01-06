@@ -11,6 +11,7 @@ class Database {
     // =====================
     // Connection Management
     // =====================
+    
     async connect() {
         try {
             if (!process.env.MONGODB_URI) {
