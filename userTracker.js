@@ -158,39 +158,42 @@ class UserTracker {
 
 module.exports = UserTracker;
 
-// leaderboardCache.js
-_constructMonthlyLeaderboard(monthlyData, allUsers) {
-    try {
-        if (!monthlyData?.leaderboard) {
-            console.warn('[LEADERBOARD CACHE] No monthly data available');
-            return [];
-        }
+// raAPI.js
+const fetch = require('node-fetch');
 
-        const validParticipants = allUsers.filter(user => this.isValidUser(user));
+async function fetchUserProfiles(usernames) {
+    const results = await Promise.allSettled(
+        usernames.map(async (username) => {
+            try {
+                const response = await fetch(`https://retroachievements.org/api/profile/${username}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch profile for ${username}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error(`[RA API] Error fetching profile for ${username}:`, error);
+                return null;
+            }
+        })
+    );
 
-        const monthlyParticipants = validParticipants.map(participant => {
-            const user = monthlyData.leaderboard.find(
-                u => u.username.toLowerCase() === participant.toLowerCase()
-            );
-
-            return user || {
-                username: participant,
-                completionPercentage: 0,
-                completedAchievements: 0,
-                totalAchievements: 0,
-                hasCompletion: false
-            };
-        });
-
-        return monthlyParticipants.sort((a, b) => {
-            const percentageDiff = b.completionPercentage - a.completionPercentage;
-            if (percentageDiff !== 0) return percentageDiff;
-
-            return b.completedAchievements - a.completedAchievements;
-        });
-    } catch (error) {
-        console.error('[LEADERBOARD CACHE] Error constructing monthly leaderboard:', error);
-        return [];
-    }
+    return results
+        .filter(result => result.status === 'fulfilled' && result.value !== null)
+        .map(result => result.value);
 }
 
+async function fetchLeaderboardData(usernames) {
+    const batchSize = 10; // Adjust based on API rate limits
+    const batches = [];
+
+    for (let i = 0; i < usernames.length; i += batchSize) {
+        const batch = usernames.slice(i, i + batchSize);
+        batches.push(fetchUserProfiles(batch));
+    }
+
+    const results = (await Promise.all(batches)).flat();
+    console.log(`[RA API] Fetched leaderboard data for ${results.length} users`);
+    return results;
+}
+
+module.exports = { fetchUserProfiles, fetchLeaderboardData };
