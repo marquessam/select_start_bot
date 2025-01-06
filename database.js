@@ -250,39 +250,47 @@ class Database {
         return this.getArcadeScores();
     }
 
-    async saveArcadeScore(game, username, score) {
-        try {
-            const collection = await this.getCollection('arcadechallenge');
-            const scores = await this.getArcadeScores();
-            
-            if (!scores.games[game]) {
-                throw new Error('Invalid game name');
-            }
+   async saveArcadeScore(game, username, score) {
+    try {
+        const collection = await this.getCollection('arcadechallenge');
+        const scores = await this.getArcadeScores();
 
-            const newScore = { 
-                username: username.toLowerCase(), 
-                score: score, 
-                date: new Date().toISOString() 
-            };
-
-            let gameScores = scores.games[game].scores || [];
-            gameScores = gameScores.filter(s => s.username !== username.toLowerCase());
-            gameScores.push(newScore);
-            gameScores.sort((a, b) => b.score - a.score);
-            scores.games[game].scores = gameScores.slice(0, 3);
-
-            await collection.updateOne(
-                { _id: 'scores' },
-                { $set: scores },
-                { upsert: true }
-            );
-
-            return scores.games[game].scores;
-        } catch (error) {
-            ErrorHandler.logError(error, 'Save Arcade Score');
-            throw error;
+        // Ensure scores structure is valid
+        if (!scores || !scores.games || !scores.games[game]) {
+            throw new Error(`Invalid game name: ${game}`);
         }
+
+        const newScore = {
+            username: username.toLowerCase(),
+            score: score,
+            date: new Date().toISOString(),
+        };
+
+        // Update game scores
+        let gameScores = scores.games[game].scores || [];
+        gameScores = gameScores.filter(s => s.username !== username.toLowerCase());
+        gameScores.push(newScore);
+
+        // Sort and limit top 3 scores
+        gameScores.sort((a, b) => b.score - a.score);
+        scores.games[game].scores = gameScores.slice(0, 3);
+
+        // Save updated scores to the database
+        await collection.updateOne(
+            { _id: 'scores' },
+            { $set: scores },
+            { upsert: true }
+        );
+
+        console.log(`[DATABASE] Updated scores for game: ${game}`);
+        return scores.games[game].scores;
+    } catch (error) {
+        console.error(`[DATABASE] Error saving arcade score: ${error.message}`);
+        ErrorHandler.logError(error, 'Save Arcade Score');
+        throw error;
     }
+}
+
 
     async removeArcadeScore(gameName, username) {
         try {
