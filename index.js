@@ -5,7 +5,7 @@ const UserStats = require('./userStats');
 const CommandHandler = require('./handlers/commandHandler');
 const UserTracker = require('./userTracker');
 const Announcer = require('./utils/announcer');
-const leaderboardCache = require('./leaderboardCache');
+const createLeaderboardCache = require('./leaderboardCache');
 const ShadowGame = require('./shadowGame');
 
 const client = new Client({
@@ -17,49 +17,54 @@ const client = new Client({
     ],
 });
 
-const userStats = new UserStats(database); // Pass database to UserStats
-const commandHandler = new CommandHandler();
-const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
-const shadowGame = new ShadowGame();
-const userTracker = new UserTracker(database);
-
-client.once('ready', async () => {
-    console.log(`Logged in as ${client.user.tag}!`);
-
+async function initializeServices() {
     try {
         // Check for required environment variables
         if (!process.env.RA_CHANNEL_ID || !process.env.DISCORD_TOKEN || !process.env.ANNOUNCEMENT_CHANNEL_ID) {
-            console.error('Missing environment variables. Please check .env file.');
-            process.exit(1);
+            throw new Error('Missing environment variables. Please check .env file.');
         }
 
         // Initialize MongoDB
         await database.connect();
         console.log('MongoDB connected successfully');
 
-        // Initialize components
-        await shadowGame.loadConfig();
-        console.log('ShadowGame initialized.');
-        await userStats.loadStats(userTracker); // Pass userTracker to loadStats
-        console.log('UserStats loaded successfully.');
-        await announcer.initialize();
-        console.log('Announcer initialized.');
-        await userTracker.initialize();
-        console.log('UserTracker initialized.');
-
-        // Initialize UserTracker with RetroAchievements channel
-        const raChannel = await client.channels.fetch(process.env.RA_CHANNEL_ID);
-        if (raChannel) {
-            console.log('Found RA channel, scanning historical messages...');
-            await userTracker.scanHistoricalMessages(raChannel);
-        } else {
-            console.error('RA channel not found! Bot cannot proceed without a valid RA_CHANNEL_ID.');
-            process.exit(1);
-        }
+        // Create instances in the correct order
+        const userStats = new UserStats(database);
+        const userTracker = new UserTracker(database, userStats);
+        const leaderboardCache = createLeaderboardCache(database);
+        const commandHandler = new CommandHandler();
+        const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
+        const shadowGame = new ShadowGame();
 
         // Set up leaderboard cache
         leaderboardCache.setUserStats(userStats);
-        leaderboardCache.updateLeaderboards();
+        global.leaderboardCache = leaderboardCache;
+
+        // Initialize components
+        await shadowGame.loadConfig();
+        console.log('ShadowGame initialized.');
+        
+        await userTracker.initialize();
+        console.log('UserTracker initialized.');
+        
+        await userStats.loadStats(userTracker);
+        console.log('UserStats loaded successfully.');
+        
+        await announcer.initialize();
+        console.log('Announcer initialized.');
+
+        // Initialize UserTracker with RetroAchievements channel
+        const raChannel = await client.channels.fetch(process.env.RA_CHANNEL_ID);
+        if (!raChannel) {
+            throw new Error('RA channel not found! Bot cannot proceed without a valid RA_CHANNEL_ID.');
+        }
+
+        console.log('Found RA channel, scanning historical messages...');
+        await userTracker.scanHistoricalMessages(raChannel);
+
+        // Update leaderboards after all initializations
+        await leaderboardCache.updateValidUsers();
+        await leaderboardCache.updateLeaderboards();
         console.log('Leaderboard cache updated.');
 
         // Load commands
@@ -71,9 +76,33 @@ client.once('ready', async () => {
             userTracker
         });
         console.log('Commands loaded:', Array.from(commandHandler.commands.keys()));
-        console.log('Bot initialized successfully');
+
+        return {
+            userStats,
+            userTracker,
+            leaderboardCache,
+            commandHandler,
+            announcer,
+            shadowGame
+        };
     } catch (error) {
         console.error('Initialization error:', error);
+        throw error;
+    }
+}
+
+client.once('ready', async () => {
+    console.log(`Logged in as ${client.user.tag}!`);
+
+    try {
+        const services = await initializeServices();
+        
+        // Store services for message handling
+        client.services = services;
+        console.log('Bot initialized successfully');
+    } catch (error) {
+        console.error('Fatal initialization error:', error);
+        process.exit(1);
     }
 });
 
@@ -82,6 +111,8 @@ client.on('messageCreate', async (message) => {
 
     try {
         console.log('Received message:', message.content);
+
+        const { userTracker, shadowGame, commandHandler } = client.services;
 
         // Check for RA profile URLs if in the RA channel
         if (message.channel.id === process.env.RA_CHANNEL_ID) {
@@ -93,13 +124,7 @@ client.on('messageCreate', async (message) => {
             await shadowGame.checkMessage(message);
         }
 
-        await commandHandler.handleCommand(message, { 
-            shadowGame, 
-            userStats, 
-            announcer, 
-            leaderboardCache,
-            userTracker
-        });
+        await commandHandler.handleCommand(message, client.services);
     } catch (error) {
         console.error('Message handling error:', error);
     }
@@ -107,7 +132,9 @@ client.on('messageCreate', async (message) => {
 
 // Set up periodic tasks
 setInterval(() => {
-    leaderboardCache.updateLeaderboards();
+    if (client.services?.leaderboardCache) {
+        client.services.leaderboardCache.updateLeaderboards();
+    }
 }, 60 * 60 * 1000); // Every hour
 
 // Graceful shutdown handling
@@ -118,5 +145,3 @@ process.on('SIGINT', async () => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
-
