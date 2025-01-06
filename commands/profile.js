@@ -2,7 +2,17 @@ const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
 
 function calculateRank(username, leaderboard, rankMetric) {
-    const sortedLeaderboard = [...leaderboard].sort((a, b) => rankMetric(b) - rankMetric(a));
+    // First, find the user's value
+    const user = leaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
+    if (!user || rankMetric(user) === 0) {
+        return 'No Rank';
+    }
+
+    // Sort and calculate rank only for users with non-zero values
+    const sortedLeaderboard = [...leaderboard]
+        .filter(u => rankMetric(u) > 0)  // Only include users with values greater than 0
+        .sort((a, b) => rankMetric(b) - rankMetric(a));
+
     let rank = 1;
     let previousValue = null;
 
@@ -16,7 +26,8 @@ function calculateRank(username, leaderboard, rankMetric) {
             return `#${rank}`;
         }
     }
-    return 'Unranked';
+
+    return 'No Rank';  // This should never be reached if we found the user above
 }
 
 async function getInitialUserData(username, userStats) {
