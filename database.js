@@ -310,7 +310,7 @@ class Database {
         }
     }
 
-    async function refreshArcadeScores() {
+   async refreshArcadeScores() {
     try {
         const arcadeCollection = await this.getCollection('arcadeScores');
         const scores = await arcadeCollection.find({}).toArray();
@@ -321,12 +321,6 @@ class Database {
         throw error;
     }
 }
-
-module.exports = {
-    ...otherFunctions,
-    refreshArcadeScores,
-};
-    
     async resetArcadeScores(gameName) {
         try {
             const collection = await this.getCollection('arcadechallenge');
