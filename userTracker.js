@@ -3,7 +3,7 @@ class UserTracker {
     constructor(database, userStats) {
         this.database = database;
         this.userStats = userStats;
-        this.validUsers = new Set();
+        this.validUsers = new Map(); // Store lowercase -> original case mapping
     }
 
     extractUsername(url) {
@@ -15,7 +15,7 @@ class UserTracker {
 
             for (const pattern of patterns) {
                 const match = url.match(pattern);
-                if (match) return match[1];
+                if (match) return match[1]; // Return exact case from URL
             }
             return null;
         } catch (error) {
@@ -53,40 +53,50 @@ class UserTracker {
                 return false;
             }
 
-            const cleanUsername = username.trim().toLowerCase();
-            if (!cleanUsername) {
+            const originalCase = username.trim();
+            const lowercaseKey = originalCase.toLowerCase();
+            
+            if (!originalCase) {
                 console.warn('[USER TRACKER] Attempted to add empty username');
                 return false;
             }
 
             const validUsers = await this.database.getValidUsers();
-            if (!validUsers.includes(cleanUsername)) {
-                console.log(`[USER TRACKER] Adding new user: ${cleanUsername}`);
+            const existingUser = validUsers.find(u => u.toLowerCase() === lowercaseKey);
+            
+            if (!existingUser) {
+                console.log(`[USER TRACKER] Adding new user: ${originalCase}`);
                 
-                // Add to database
-                await this.database.addValidUser(cleanUsername);
-                this.validUsers.add(cleanUsername);
+                // Add to database with original case
+                await this.database.addValidUser(originalCase);
+                this.validUsers.set(lowercaseKey, originalCase);
                 
                 // Initialize user stats
                 if (this.userStats) {
-                    console.log(`[USER TRACKER] Initializing stats for: ${cleanUsername}`);
-                    await this.userStats.initializeUserIfNeeded(cleanUsername);
+                    console.log(`[USER TRACKER] Initializing stats for: ${originalCase}`);
+                    await this.userStats.initializeUserIfNeeded(originalCase);
                 } else {
                     console.warn('[USER TRACKER] UserStats not available for initialization');
                 }
                 
                 // Update leaderboard cache
                 if (global.leaderboardCache) {
-                    console.log(`[USER TRACKER] Updating leaderboard cache for: ${cleanUsername}`);
+                    console.log(`[USER TRACKER] Updating leaderboard cache for: ${originalCase}`);
                     await global.leaderboardCache.updateValidUsers();
                 } else {
                     console.warn('[USER TRACKER] LeaderboardCache not available for update');
                 }
 
-                console.log(`[USER TRACKER] Successfully added user: ${cleanUsername}`);
+                console.log(`[USER TRACKER] Successfully added user: ${originalCase}`);
+                return true;
+            } else if (existingUser !== originalCase) {
+                // Update case if it differs
+                console.log(`[USER TRACKER] Updating case for user from ${existingUser} to ${originalCase}`);
+                await this.database.updateUserCase(existingUser, originalCase);
+                this.validUsers.set(lowercaseKey, originalCase);
                 return true;
             } else {
-                console.log(`[USER TRACKER] User already exists: ${cleanUsername}`);
+                console.log(`[USER TRACKER] User already exists: ${originalCase}`);
                 return false;
             }
         } catch (error) {
@@ -99,19 +109,24 @@ class UserTracker {
         try {
             console.log('[USER TRACKER] Initializing...');
             const users = await this.database.getValidUsers();
-            this.validUsers = new Set(users.map(u => u.toLowerCase()));
+            
+            // Clear and rebuild the Map
+            this.validUsers.clear();
+            for (const user of users) {
+                this.validUsers.set(user.toLowerCase(), user);
+            }
             
             // Initialize stats for all users
             if (this.userStats) {
-                for (const username of this.validUsers) {
-                    await this.userStats.initializeUserIfNeeded(username);
+                for (const [_, originalCase] of this.validUsers) {
+                    await this.userStats.initializeUserIfNeeded(originalCase);
                 }
             }
 
             console.log('[USER TRACKER] Initialized with', this.validUsers.size, 'users');
         } catch (error) {
             console.error('[USER TRACKER] Error initializing:', error);
-            this.validUsers = new Set();
+            this.validUsers.clear();
         }
     }
 
@@ -124,7 +139,11 @@ class UserTracker {
             let newUsersCount = 0;
 
             for (const message of messages.values()) {
+                const initialSize = this.validUsers.size;
                 await this.processMessage(message);
+                if (this.validUsers.size > initialSize) {
+                    newUsersCount++;
+                }
                 processedCount++;
             }
             
@@ -137,25 +156,27 @@ class UserTracker {
     }
 
     getValidUsers() {
-        return Array.from(this.validUsers);
+        return Array.from(this.validUsers.values());
     }
 
     async removeUser(username) {
         try {
-            const cleanUsername = username.toLowerCase();
-            if (this.validUsers.has(cleanUsername)) {
-                await this.database.removeValidUser(cleanUsername);
-                this.validUsers.delete(cleanUsername);
+            const lowercaseKey = username.toLowerCase();
+            const originalCase = this.validUsers.get(lowercaseKey);
+            
+            if (originalCase) {
+                await this.database.removeValidUser(originalCase);
+                this.validUsers.delete(lowercaseKey);
                 
                 if (this.userStats) {
-                    await this.userStats.removeUser(cleanUsername);
+                    await this.userStats.removeUser(originalCase);
                 }
                 
                 if (global.leaderboardCache) {
                     await global.leaderboardCache.updateValidUsers();
                 }
                 
-                console.log(`[USER TRACKER] Removed user: ${cleanUsername}`);
+                console.log(`[USER TRACKER] Removed user: ${originalCase}`);
                 return true;
             }
             return false;
