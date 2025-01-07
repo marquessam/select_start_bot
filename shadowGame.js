@@ -138,8 +138,8 @@ class ShadowGame {
                 }
             ],
             finalReward: {
-                gameId: "9999",
-                gameName: "[TEMPORAL ANOMALY RESOLVED]",
+                gameId: "10024",
+                gameName: "MarioTennis",
                 points: 2
             }
         };
