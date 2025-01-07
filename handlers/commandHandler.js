@@ -84,7 +84,7 @@ class CommandHandler {
     hasAdminPermission(message) {
         return message.member && (
             message.member.permissions.has(PermissionFlagsBits.Administrator) ||
-            message.member.roles.cache.has(process.env.1322500575295836160)
+            message.member.roles.cache.has(process.env.ADMIN_ROLE_ID)
         );
     }
 
