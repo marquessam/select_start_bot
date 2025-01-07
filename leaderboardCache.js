@@ -6,11 +6,10 @@ class LeaderboardCache {
         this.userStats = null;
         this.cache = {
             validUsers: new Set(),
-            yearlyLeaderboard: null,
-            monthlyLeaderboard: null,
+            yearlyLeaderboard: [],
+            monthlyLeaderboard: [],
             lastUpdated: null,
-            updateInterval: 15 * 60 * 1000, // 15 minutes
-            retryDelay: 5 * 60 * 1000      // 5 minutes
+            updateInterval: 15 * 60 * 1000  // 15 minutes
         };
     }
 
@@ -18,22 +17,31 @@ class LeaderboardCache {
         this.userStats = userStatsInstance;
     }
 
-    shouldUpdate() {
-        return !this.cache.lastUpdated || 
-               (Date.now() - this.cache.lastUpdated) > this.cache.updateInterval;
+    async initialize() {
+        try {
+            console.log('[LEADERBOARD CACHE] Initializing...');
+            await this.updateValidUsers();
+            await this.updateLeaderboards(true); // Force initial update
+            console.log('[LEADERBOARD CACHE] Initialization complete');
+            return true;
+        } catch (error) {
+            console.error('[LEADERBOARD CACHE] Initialization error:', error);
+            return false;
+        }
     }
 
     async updateValidUsers() {
         try {
             if (!this.userStats) {
-                console.error('[LEADERBOARD CACHE] UserStats instance not set');
-                return false;
+                throw new Error('UserStats instance not set');
             }
 
             const users = await this.database.getValidUsers();
             this.cache.validUsers = new Set(users.map(u => u.toLowerCase()));
 
-            // Initialize stats for new users
+            console.log(`[LEADERBOARD CACHE] Updated valid users: ${users.length} users`);
+
+            // Initialize stats for all valid users
             for (const username of users) {
                 await this.userStats.initializeUserIfNeeded(username);
             }
@@ -46,55 +54,61 @@ class LeaderboardCache {
     }
 
     isValidUser(username) {
-        return this.cache.validUsers.has(username.toLowerCase());
+        return username && this.cache.validUsers.has(username.toLowerCase());
     }
 
     async updateLeaderboards(force = false) {
-        if (!force && !this.shouldUpdate()) {
-            return;
-        }
-
         try {
             if (!this.userStats) {
                 throw new Error('UserStats instance not set');
             }
+
+            if (!force && !this._shouldUpdate()) {
+                return;
+            }
+
+            console.log('[LEADERBOARD CACHE] Updating leaderboards...');
 
             // Ensure we have valid users
             if (this.cache.validUsers.size === 0) {
                 await this.updateValidUsers();
             }
 
+            // Get yearly leaderboard
             const currentYear = new Date().getFullYear().toString();
-
-            // Update yearly leaderboard
+            const validUsers = Array.from(this.cache.validUsers);
+            
             this.cache.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(
                 currentYear,
-                Array.from(this.cache.validUsers)
+                validUsers
             );
 
-            // Update monthly leaderboard
+            // Get monthly leaderboard
             try {
                 const monthlyData = await fetchLeaderboardData();
                 this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
+                
+                // Update participation tracking
                 await this.userStats.updateMonthlyParticipation(monthlyData);
             } catch (error) {
                 console.error('[LEADERBOARD CACHE] Error fetching monthly data:', error);
                 // Keep existing monthly data if fetch fails
-                if (!this.cache.monthlyLeaderboard) {
+                if (!this.cache.monthlyLeaderboard.length) {
                     this.cache.monthlyLeaderboard = [];
                 }
-                // Schedule retry
-                setTimeout(() => this.updateLeaderboards(true), this.cache.retryDelay);
             }
 
             this.cache.lastUpdated = Date.now();
+            console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
         } catch (error) {
             console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
-            this.cache.yearlyLeaderboard = [];
-            this.cache.monthlyLeaderboard = [];
-            // Schedule retry
-            setTimeout(() => this.updateLeaderboards(true), this.cache.retryDelay);
+            throw error;
         }
+    }
+
+    _shouldUpdate() {
+        return !this.cache.lastUpdated || 
+               (Date.now() - this.cache.lastUpdated) > this.cache.updateInterval;
     }
 
     _constructMonthlyLeaderboard(monthlyData) {
@@ -104,9 +118,10 @@ class LeaderboardCache {
                 return [];
             }
 
-            const validParticipants = Array.from(this.cache.validUsers);
+            const validUsers = Array.from(this.cache.validUsers);
+            console.log(`[LEADERBOARD CACHE] Constructing monthly leaderboard for ${validUsers.length} users`);
 
-            const monthlyParticipants = validParticipants.map(participant => {
+            const monthlyParticipants = validUsers.map(participant => {
                 const user = monthlyData.leaderboard.find(
                     u => u.username.toLowerCase() === participant.toLowerCase()
                 );
@@ -122,9 +137,8 @@ class LeaderboardCache {
 
             return monthlyParticipants.sort((a, b) => {
                 const percentageDiff = b.completionPercentage - a.completionPercentage;
-                return percentageDiff !== 0 ? 
-                       percentageDiff : 
-                       b.completedAchievements - a.completedAchievements;
+                if (percentageDiff !== 0) return percentageDiff;
+                return b.completedAchievements - a.completedAchievements;
             });
         } catch (error) {
             console.error('[LEADERBOARD CACHE] Error constructing monthly leaderboard:', error);
@@ -133,7 +147,7 @@ class LeaderboardCache {
     }
 
     getYearlyLeaderboard() {
-        if (!this.cache.yearlyLeaderboard) {
+        if (!this.cache.yearlyLeaderboard || !this.cache.yearlyLeaderboard.length) {
             console.warn('[LEADERBOARD CACHE] Yearly leaderboard not initialized');
             return [];
         }
@@ -141,23 +155,24 @@ class LeaderboardCache {
     }
 
     getMonthlyLeaderboard() {
-        if (!this.cache.monthlyLeaderboard) {
+        if (!this.cache.monthlyLeaderboard || !this.cache.monthlyLeaderboard.length) {
             console.warn('[LEADERBOARD CACHE] Monthly leaderboard not initialized');
             return [];
         }
         return this.cache.monthlyLeaderboard;
     }
 
-    async refreshLeaderboard() {
-        await this.updateLeaderboards(true);
-    }
-
     getLastUpdated() {
         return this.cache.lastUpdated;
     }
+
+    async refreshLeaderboard() {
+        await this.updateLeaderboards(true);
+    }
 }
 
-// Export a factory function
-module.exports = function createLeaderboardCache(database) {
+function createLeaderboardCache(database) {
     return new LeaderboardCache(database);
-};
+}
+
+module.exports = createLeaderboardCache;
