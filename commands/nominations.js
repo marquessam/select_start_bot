@@ -15,7 +15,7 @@ const nominations = {
             const subcommand = args[0].toLowerCase();
 
             // Define admin-only subcommands
-            const adminCommands = ['populate', 'open', 'close'];
+            const adminCommands = ['open', 'close'];
             
             // Check permissions only for admin subcommands
             if (adminCommands.includes(subcommand)) {
@@ -37,9 +37,6 @@ const nominations = {
                 case 'add':
                     await this.handleAdd(message, args.slice(1));
                     break;
-                case 'populate':
-                    await this.handlePopulate(message);
-                    break;
                 case 'open':
                     await this.handleOpen(message);
                     break;
@@ -56,15 +53,27 @@ const nominations = {
     },
 
     async showHelp(message) {
+        // Check if user has admin permissions
+        const isAdmin = message.member && (
+            message.member.permissions.has('Administrator') ||
+            message.member.roles.cache.has(process.env.ADMIN_ROLE_ID)
+        );
+
+        // Base commands that everyone can see
+        const baseCommands = 
+            '!nominations view - View current nominations\n' +
+            '!nominations add <platform> <game> - Submit a nomination';
+
+        // Admin commands that only admins will see
+        const adminCommands = 
+            '\n!nominations open - Open nominations\n' +
+            '!nominations close - Close nominations';
+
         const embed = new TerminalEmbed()
             .setTerminalTitle('NOMINATION SYSTEM')
             .setTerminalDescription('[HELP MENU]')
             .addTerminalField('AVAILABLE COMMANDS',
-                '!nominations view - View current nominations\n' +
-                '!nominations add <platform> <game> - Submit a nomination\n' +
-                '!nominations open - Open nominations (Admin)\n' +
-                '!nominations close - Close nominations (Admin)\n' +
-                '!nominations populate - Import predefined nominations (Admin)')
+                isAdmin ? baseCommands + adminCommands : baseCommands)
             .addTerminalField('VALID PLATFORMS', 
                 'NES, SNES, GB, GBC, GBA, PSX, N64')
             .setTerminalFooter();
@@ -162,82 +171,6 @@ const nominations = {
                 `PLATFORM: ${platform}\n` +
                 `SUBMITTED BY: ${message.author.username}\n` +
                 `DATE: ${new Date().toLocaleDateString()}`)
-            .setTerminalFooter();
-
-        await message.channel.send({ embeds: [embed] });
-    },
-
-    async handlePopulate(message) {
-        const nominations = [
-            { game: "Ape Escape", platform: "PSX" },
-            { game: "Pokemon Emerald", platform: "GBA" },
-            { game: "Crystalis", platform: "NES" },
-            { game: "Xenogears", platform: "PSX" },
-            { game: "Brigadine", platform: "PSX" },
-            { game: "Mega Man Legends", platform: "PSX" },
-            { game: "Metal Gear Solid", platform: "PSX" },
-            { game: "Act Raiser", platform: "SNES" },
-            { game: "Mega Man 2", platform: "SNES" },
-            { game: "Super Bomberman", platform: "SNES" },
-            { game: "Zelda: Ocarina of Time", platform: "N64" },
-            { game: "Spyro the Dragon", platform: "PSX" },
-            { game: "Castlevania: Bloodlines", platform: "Genesis" },
-            { game: "Zelda: Majora's Mask", platform: "N64" },
-            { game: "LOTR: Return of the King", platform: "GBA" },
-            { game: "Harley's Humungous Adventure", platform: "SNES" },
-            { game: "Zelda: Link to the Past", platform: "SNES" },
-            { game: "Super Mario Land", platform: "GB" },
-            { game: "Dragon Quest V", platform: "PS2" },
-            { game: "Donkey Kong Country", platform: "SNES" },
-            { game: "Advanced Wars", platform: "GBA" },
-            { game: "Crash Bandicoot 3: Warped", platform: "PSX" },
-            { game: "Castlevania: Symphony of the Night", platform: "PSX" },
-            { game: "Glover", platform: "PSX" },
-            { game: "Tail of the Sun", platform: "PSX" },
-            { game: "Incredible Crisis", platform: "PSX" },
-            { game: "Banjo-Kazooie", platform: "N64" },
-            { game: "The Adventures of Batman & Robin", platform: "SNES" },
-            { game: "Crash Team Racing", platform: "PSX" },
-            { game: "Suikoden 2", platform: "PSX" },
-            { game: "Pokemon Red/Blue", platform: "GB" },
-            { game: "Harvest Moon: Back to Nature", platform: "PSX" },
-            { game: "Croc: Legend of the Gobbos", platform: "PSX" }
-        ];
-
-        await database.setNominationStatus(true);
-
-        const collection = await database.getCollection('nominations');
-        const period = new Date().toISOString().slice(0, 7);
-        
-        await collection.updateOne(
-            { _id: 'currentPeriod' },
-            { $set: { period } },
-            { upsert: true }
-        );
-
-        const nominationsWithDetails = nominations.map(nom => ({
-            ...nom,
-            discordId: 'legacy',
-            discordUsername: 'Legacy Import',
-            timestamp: new Date().toISOString()
-        }));
-
-        await collection.updateOne(
-            { _id: 'nominations' },
-            { 
-                $set: { 
-                    [`nominations.${period}`]: nominationsWithDetails 
-                } 
-            },
-            { upsert: true }
-        );
-
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('NOMINATIONS IMPORTED')
-            .setTerminalDescription('[IMPORT SUCCESSFUL]')
-            .addTerminalField('SUMMARY', 
-                `Total nominations imported: ${nominations.length}\n` +
-                `Current period: ${period}`)
             .setTerminalFooter();
 
         await message.channel.send({ embeds: [embed] });
