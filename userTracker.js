@@ -1,23 +1,53 @@
-// userTracker.js
 class UserTracker {
     constructor(database, userStats) {
         this.database = database;
         this.userStats = userStats;
         this.validUsers = new Map(); // Store lowercase -> original case mapping
+        this.cache = {
+            lastUpdate: null,
+            updateInterval: 5 * 60 * 1000, // 5 minutes
+            profileUrlPattern: /(?:retroachievements\.org|ra\.org)\/user\/([^\/\s]+)/i
+        };
+    }
+
+    async initialize() {
+        try {
+            console.log('[USER TRACKER] Initializing...');
+            await this.refreshUserCache();
+            return true;
+        } catch (error) {
+            console.error('[USER TRACKER] Error initializing:', error);
+            this.validUsers.clear();
+            return false;
+        }
+    }
+
+    async refreshUserCache() {
+        try {
+            const users = await this.database.getValidUsers();
+            
+            this.validUsers.clear();
+            for (const user of users) {
+                this.validUsers.set(user.toLowerCase(), user);
+            }
+
+            this.cache.lastUpdate = Date.now();
+            return true;
+        } catch (error) {
+            console.error('[USER TRACKER] Error refreshing cache:', error);
+            return false;
+        }
+    }
+
+    shouldRefreshCache() {
+        return !this.cache.lastUpdate || 
+               (Date.now() - this.cache.lastUpdate) > this.cache.updateInterval;
     }
 
     extractUsername(url) {
         try {
-            const patterns = [
-                /retroachievements\.org\/user\/([^\/\s]+)/i,
-                /ra\.org\/user\/([^\/\s]+)/i
-            ];
-
-            for (const pattern of patterns) {
-                const match = url.match(pattern);
-                if (match) return match[1]; // Return exact case from URL
-            }
-            return null;
+            const match = url.match(this.cache.profileUrlPattern);
+            return match ? match[1] : null;
         } catch (error) {
             console.error('[USER TRACKER] Error extracting username:', error);
             return null;
@@ -25,10 +55,16 @@ class UserTracker {
     }
 
     async processMessage(message) {
+        if (message.author.bot) return;
+
         try {
-            if (message.author.bot) return;
+            if (this.shouldRefreshCache()) {
+                await this.refreshUserCache();
+            }
 
             const words = message.content.split(/\s+/);
+            let updatedAny = false;
+
             for (const word of words) {
                 if (word.includes('retroachievements.org/user/') || 
                     word.includes('ra.org/user/')) {
@@ -36,10 +72,15 @@ class UserTracker {
                     if (username) {
                         const added = await this.addUser(username);
                         if (added) {
-                            await message.react('✅');
+                            updatedAny = true;
                         }
                     }
                 }
+            }
+
+            if (updatedAny) {
+                await message.react('✅');
+                await this.refreshUserCache(); // Refresh cache after changes
             }
         } catch (error) {
             console.error('[USER TRACKER] Error processing message:', error);
@@ -48,53 +89,36 @@ class UserTracker {
 
     async addUser(username) {
         try {
-            if (!username) {
-                console.warn('[USER TRACKER] Attempted to add null/undefined username');
-                return false;
-            }
+            if (!username) return false;
 
             const originalCase = username.trim();
             const lowercaseKey = originalCase.toLowerCase();
 
-            if (!originalCase) {
-                console.warn('[USER TRACKER] Attempted to add empty username');
-                return false;
-            }
+            if (!originalCase) return false;
 
-            const validUsers = await this.database.getValidUsers();
-            const existingUser = validUsers.find(u => u.toLowerCase() === lowercaseKey);
+            // Check cache first
+            const existingUser = this.validUsers.get(lowercaseKey);
 
             if (!existingUser) {
-                console.log(`[USER TRACKER] Adding new user: ${originalCase}`);
-
-                await this.database.addValidUser(originalCase);
+                await this.database.manageUser('add', originalCase);
                 this.validUsers.set(lowercaseKey, originalCase);
 
                 if (this.userStats) {
-                    console.log(`[USER TRACKER] Initializing stats for: ${originalCase}`);
                     await this.userStats.initializeUserIfNeeded(originalCase);
-                } else {
-                    console.warn('[USER TRACKER] UserStats not available for initialization');
                 }
 
                 if (global.leaderboardCache) {
-                    console.log(`[USER TRACKER] Updating leaderboard cache for: ${originalCase}`);
                     await global.leaderboardCache.updateValidUsers();
-                } else {
-                    console.warn('[USER TRACKER] LeaderboardCache not available for update');
                 }
 
-                console.log(`[USER TRACKER] Successfully added user: ${originalCase}`);
                 return true;
             } else if (existingUser !== originalCase) {
-                console.log(`[USER TRACKER] Updating case for user from ${existingUser} to ${originalCase}`);
-                await this.database.updateUserCase(existingUser, originalCase);
+                await this.database.manageUser('update', existingUser, originalCase);
                 this.validUsers.set(lowercaseKey, originalCase);
                 return true;
-            } else {
-                console.log(`[USER TRACKER] User already exists: ${originalCase}`);
-                return false;
             }
+
+            return false;
         } catch (error) {
             console.error('[USER TRACKER] Error adding user:', error);
             return false;
@@ -117,10 +141,7 @@ class UserTracker {
                         const username = this.extractUsername(word);
                         if (username) {
                             const added = await this.addUser(username);
-                            if (added) {
-                                //await message.react('✅');
-                                addedUsers++;
-                            }
+                            if (added) addedUsers++;
                         }
                     }
                 }
@@ -128,37 +149,13 @@ class UserTracker {
             }
             
             console.log(`[USER TRACKER] Processed ${processedCount} messages, found ${addedUsers} new users`);
+            if (addedUsers > 0) {
+                await this.refreshUserCache();
+            }
         } catch (error) {
             console.error('[USER TRACKER] Error scanning historical messages:', error);
             throw error;
         }
-    }
-
-    async initialize() {
-        try {
-            console.log('[USER TRACKER] Initializing...');
-            const users = await this.database.getValidUsers();
-
-            this.validUsers.clear();
-            for (const user of users) {
-                this.validUsers.set(user.toLowerCase(), user);
-            }
-
-            if (this.userStats) {
-                for (const [_, originalCase] of this.validUsers) {
-                    await this.userStats.initializeUserIfNeeded(originalCase);
-                }
-            }
-
-            console.log('[USER TRACKER] Initialized with', this.validUsers.size, 'users');
-        } catch (error) {
-            console.error('[USER TRACKER] Error initializing:', error);
-            this.validUsers.clear();
-        }
-    }
-
-    getValidUsers() {
-        return Array.from(this.validUsers.values());
     }
 
     async removeUser(username) {
@@ -167,7 +164,7 @@ class UserTracker {
             const originalCase = this.validUsers.get(lowercaseKey);
 
             if (originalCase) {
-                await this.database.removeValidUser(originalCase);
+                await this.database.manageUser('remove', originalCase);
                 this.validUsers.delete(lowercaseKey);
 
                 if (this.userStats) {
@@ -178,7 +175,6 @@ class UserTracker {
                     await global.leaderboardCache.updateValidUsers();
                 }
 
-                console.log(`[USER TRACKER] Removed user: ${originalCase}`);
                 return true;
             }
             return false;
@@ -186,6 +182,10 @@ class UserTracker {
             console.error('[USER TRACKER] Error removing user:', error);
             return false;
         }
+    }
+
+    getValidUsers() {
+        return Array.from(this.validUsers.values());
     }
 }
 
