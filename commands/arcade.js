@@ -13,11 +13,17 @@ module.exports = {
             const [command, ...subArgs] = args;
 
             // Admin commands check
-            const isAdmin = message.member.permissions.has('Administrator');
             const adminCommands = ['reset', 'rules'];
-            if (adminCommands.includes(command) && !isAdmin) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
-                return;
+            if (adminCommands.includes(command)) {
+                const hasPermission = message.member && (
+                    message.member.permissions.has('Administrator') ||
+                    message.member.roles.cache.has(process.env.ADMIN_ROLE_ID)
+                );
+
+                if (!hasPermission) {
+                    await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
+                    return;
+                }
             }
 
             switch(command) {
@@ -65,7 +71,7 @@ async function showGameList(message) {
 
 async function handleViewGame(message, args) {
     const gameNum = parseInt(args[0]);
-    const arcadeData = await database.getHighScores();
+    const arcadeData = await database.getArcadeScores();
     const games = Object.entries(arcadeData.games);
     
     if (isNaN(gameNum) || gameNum < 1 || gameNum > games.length) {
@@ -101,7 +107,7 @@ async function handleReset(message, args) {
     const gameNum = parseInt(args[0]);
     const username = args[1]?.toLowerCase();
 
-    const arcadeData = await database.getHighScores();
+    const arcadeData = await database.getArcadeScores();
     const games = Object.entries(arcadeData.games);
 
     if (gameNum < 1 || gameNum > games.length) {
@@ -118,7 +124,7 @@ async function handleReset(message, args) {
         await database.resetArcadeScores(gameName);
     }
 
-    const updatedData = await database.getHighScores();
+    const updatedData = await database.getArcadeScores();
     const updatedScores = updatedData.games[gameName].scores;
 
     const embed = new TerminalEmbed()
@@ -167,7 +173,7 @@ async function handleRules(message) {
     }
 
     const gameNum = parseInt(gameResponse.first().content);
-    const arcadeData = await database.getHighScores();
+    const arcadeData = await database.getArcadeScores();
     const games = Object.entries(arcadeData.games);
 
     if (isNaN(gameNum) || gameNum < 1 || gameNum > games.length) {
@@ -193,8 +199,7 @@ async function handleRules(message) {
     }
 
     const newRules = rulesResponse.first().content;
-    arcadeData.games[gameName].description = newRules;
-    await database.saveHighScores(arcadeData);
+    await database.updateArcadeRules(gameName, newRules);
 
     const embed = new TerminalEmbed()
         .setTerminalTitle('GAME RULES UPDATED')
