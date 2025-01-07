@@ -37,8 +37,8 @@ module.exports = {
                 '\x1b[32m!awardretropoints <month> "<game name>"\x1b[0m\nAward missing participation points\n\n' +
 
                 '\x1b[37m=== TESTING ===\x1b[0m\n' +
-                '\x1b[32m!testmonth\x1b[0m\nTest monthly cycle with real data\n' +
-                '\x1b[32m!testwithoutarchive\x1b[0m\nTest announcements without affecting data\n\n' +
+                '\x1b[32m!test month\x1b[0m\nTest monthly cycle with real data\n' +
+                '\x1b[32m!test announce\x1b[0m\nTest announcements without affecting data\n\n'
 
                 '\x1b[37m=== SHADOW GAME ===\x1b[0m\n' +
                 '\x1b[32m!shadowreset\x1b[0m\nReset Shadow Game progress\n\n' +
