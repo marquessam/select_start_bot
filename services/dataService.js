@@ -47,9 +47,9 @@ class DataService {
         return await database.getCurrentChallenge();
     }
 
-    static async getHighScores() {
-        return await database.getHighScores();
-    }
+    static async getArcadeScores() {
+    return await database.getArcadeScores();
+}
 
     static async getUserProgress(username) {
         try {
