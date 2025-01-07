@@ -226,7 +226,7 @@ class Database {
     // Arcade Methods
     // =================
     
-    async getHighScores() {
+async getArcadeScores() {
         const collection = await this.getCollection('arcadechallenge');
         return await fetchData(collection, { _id: 'scores' }, {
             games: {
