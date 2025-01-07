@@ -27,7 +27,7 @@ module.exports = {
 
                 '\x1b[37m=== ARCADE MANAGEMENT ===\x1b[0m\n' +
                 '\x1b[32m!arcade reset <game_number> [username]\x1b[0m\nReset game scores\n' +
-                '\x1b[32m!arcade rules\x1b[0m\nUpdate game rules\n\n'
+                '\x1b[32m!arcade rules\x1b[0m\nUpdate game rules\n\n' +
 
                 '\x1b[37m=== USER MANAGEMENT ===\x1b[0m\n' +
                 '\x1b[32m!removeuser <username>\x1b[0m\nRemove a user from the system\n\n' +
