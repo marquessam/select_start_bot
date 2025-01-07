@@ -15,7 +15,7 @@ const nominations = {
             const subcommand = args[0].toLowerCase();
 
             // Define admin-only subcommands
-            const adminCommands = ['open', 'close'];
+            const adminCommands = ['open', 'close', 'remove', 'edit'];
             
             // Check permissions only for admin subcommands
             if (adminCommands.includes(subcommand)) {
@@ -36,6 +36,12 @@ const nominations = {
                     break;
                 case 'add':
                     await this.handleAdd(message, args.slice(1));
+                    break;
+                case 'remove':
+                    await this.handleRemove(message, args.slice(1));
+                    break;
+                case 'edit':
+                    await this.handleEdit(message, args.slice(1));
                     break;
                 case 'open':
                     await this.handleOpen(message);
@@ -67,7 +73,9 @@ const nominations = {
         // Admin commands that only admins will see
         const adminCommands = 
             '\n!nominations open - Open nominations\n' +
-            '!nominations close - Close nominations';
+            '!nominations close - Close nominations\n' +
+            '!nominations remove <game> - Remove a nomination\n' +
+            '!nominations edit <game> | <new name> [platform] - Edit a nomination';
 
         const embed = new TerminalEmbed()
             .setTerminalTitle('NOMINATION SYSTEM')
@@ -171,6 +179,107 @@ const nominations = {
                 `PLATFORM: ${platform}\n` +
                 `SUBMITTED BY: ${message.author.username}\n` +
                 `DATE: ${new Date().toLocaleDateString()}`)
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [embed] });
+    },
+
+    async handleRemove(message, args) {
+        if (args.length < 1) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !nominations remove <game name>\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
+        const gameName = args.join(' ');
+        const nominations = await database.getNominations();
+        const nomination = nominations.find(n => n.game.toLowerCase() === gameName.toLowerCase());
+
+        if (!nomination) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Nomination not found\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
+        const collection = await database.getCollection('nominations');
+        const period = new Date().toISOString().slice(0, 7);
+
+        await collection.updateOne(
+            { _id: 'nominations' },
+            { 
+                $pull: { 
+                    [`nominations.${period}`]: { game: nomination.game }
+                } 
+            }
+        );
+
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('NOMINATION REMOVED')
+            .setTerminalDescription('[UPDATE SUCCESSFUL]')
+            .addTerminalField('DETAILS',
+                `GAME: ${nomination.game}\n` +
+                `PLATFORM: ${nomination.platform}\n` +
+                `SUBMITTED BY: ${nomination.discordUsername}`)
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [embed] });
+    },
+
+    async handleEdit(message, args) {
+        const fullArg = args.join(' ');
+        const [oldName, ...newDetails] = fullArg.split('|').map(s => s.trim());
+        
+        if (!oldName || !newDetails.length) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !nominations edit <current game name> | <new game name> [platform]\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
+        const nominations = await database.getNominations();
+        const nomination = nominations.find(n => n.game.toLowerCase() === oldName.toLowerCase());
+
+        if (!nomination) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Nomination not found\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
+        const newDetailsArr = newDetails[0].split(' ');
+        let newName = newDetailsArr.slice(0, -1).join(' ') || newDetailsArr[0];
+        let newPlatform = newDetailsArr[newDetailsArr.length - 1].toUpperCase();
+
+        // If the last word isn't a valid platform, assume it's part of the game name
+        const validPlatforms = ['NES', 'SNES', 'GB', 'GBC', 'GBA', 'PSX', 'N64'];
+        if (!validPlatforms.includes(newPlatform)) {
+            newName = newDetails[0];
+            newPlatform = nomination.platform;
+        } else if (newDetailsArr.length === 1) {
+            // If only platform was provided, keep old name
+            newName = nomination.game;
+        }
+
+        const collection = await database.getCollection('nominations');
+        const period = new Date().toISOString().slice(0, 7);
+
+        // Update the nomination
+        await collection.updateOne(
+            { 
+                _id: 'nominations',
+                [`nominations.${period}.game`]: nomination.game
+            },
+            { 
+                $set: { 
+                    [`nominations.${period}.$.game`]: newName,
+                    [`nominations.${period}.$.platform`]: newPlatform
+                }
+            }
+        );
+
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('NOMINATION EDITED')
+            .setTerminalDescription('[UPDATE SUCCESSFUL]')
+            .addTerminalField('ORIGINAL',
+                `GAME: ${nomination.game}\n` +
+                `PLATFORM: ${nomination.platform}`)
+            .addTerminalField('UPDATED',
+                `GAME: ${newName}\n` +
+                `PLATFORM: ${newPlatform}`)
             .setTerminalFooter();
 
         await message.channel.send({ embeds: [embed] });
