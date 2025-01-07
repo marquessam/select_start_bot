@@ -6,20 +6,30 @@ module.exports = {
     description: 'Add or update high scores',
     async execute(message, args) {
         try {
-            // Step 0: Refresh arcade scores to ensure database consistency
-            console.log('Refreshing arcade scores...');
-            const highscores = await database.refreshArcadeScores(); // Refresh the database with default values if needed
+            // Check admin permissions
+            const hasPermission = message.member && (
+                message.member.permissions.has('Administrator') ||
+                message.member.roles.cache.has(process.env.ADMIN_ROLE_ID)
+            );
 
+            if (!hasPermission) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            // Get current arcade scores
+            const arcadeScores = await database.getArcadeScores();
             const filter = m => m.author.id === message.author.id;
-            const timeout = 30000; // 30 seconds timeout for each prompt
+            const timeout = 30000;
 
-            // Step 1: Show game list and prompt for game number
-            const gameList = Object.keys(highscores.games)
+            // Show game list
+            const gameList = Object.keys(arcadeScores.games)
                 .map((name, index) => `${index + 1}. ${name}`)
                 .join('\n');
 
             await message.channel.send('```ansi\n\x1b[32mAvailable Games:\n' + gameList + '\n\nEnter the game number:\x1b[0m```');
 
+            // Get game selection
             let gameResponse;
             try {
                 gameResponse = await message.channel.awaitMessages({
@@ -34,13 +44,13 @@ module.exports = {
             }
 
             const gameNum = parseInt(gameResponse.first().content);
-            if (isNaN(gameNum) || gameNum < 1 || gameNum > Object.keys(highscores.games).length) {
+            if (isNaN(gameNum) || gameNum < 1 || gameNum > Object.keys(arcadeScores.games).length) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
                 return;
             }
-            const gameName = Object.keys(highscores.games)[gameNum - 1];
+            const gameName = Object.keys(arcadeScores.games)[gameNum - 1];
 
-            // Step 2: Get username
+            // Get username
             await message.channel.send('```ansi\n\x1b[32mEnter the username:\x1b[0m```');
             let userResponse;
             try {
@@ -56,7 +66,7 @@ module.exports = {
             }
             const username = userResponse.first().content;
 
-            // Step 3: Get score
+            // Get score
             await message.channel.send('```ansi\n\x1b[32mEnter the score:\x1b[0m```');
             let scoreResponse;
             try {
@@ -77,24 +87,10 @@ module.exports = {
             }
 
             // Store previous scores for verification
-            const previousScores = [...highscores.games[gameName].scores];
+            const previousScores = [...arcadeScores.games[gameName].scores];
 
-            // Update scores array - automatically handle ranking
-            let scores = highscores.games[gameName].scores || [];
-            
-            // Remove any existing score by this user
-            scores = scores.filter(s => s.username.toLowerCase() !== username.toLowerCase());
-            
-            // Add new score
-            scores.push({ username, score, date: new Date().toISOString() });
-            
-            // Sort by score (highest to lowest) and limit to top 3
-            scores.sort((a, b) => b.score - a.score);
-            scores = scores.slice(0, 3);
-
-            // Update in database
-            highscores.games[gameName].scores = scores;
-            await database.saveArcadeScore(gameName, username, score); // Fix: Correct method call to database instance
+            // Save the new score
+            const updatedScores = await database.saveArcadeScore(gameName, username, score);
 
             // Create confirmation embed
             const embed = new TerminalEmbed()
@@ -112,7 +108,7 @@ module.exports = {
                     }).join('\n') :
                     'No previous scores')
                 .addTerminalField('NEW RANKINGS',
-                    scores.map((s, index) => {
+                    updatedScores.map((s, index) => {
                         const medals = ['🥇', '🥈', '🥉'];
                         return `${medals[index]} ${s.username}: ${s.score.toLocaleString()}`;
                     }).join('\n'))
