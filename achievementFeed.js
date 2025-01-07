@@ -50,7 +50,7 @@ class AchievementFeed {
                 for (const achievement of user.achievements) {
                     if (parseInt(achievement.DateEarned) > 0) {
                         currentAchievements.add(achievement.ID);
-                        
+
                         // Check if this is a new achievement
                         if (!previousAchievements.has(achievement.ID)) {
                             await this.announceAchievement(user.username, achievement);
@@ -69,19 +69,30 @@ class AchievementFeed {
     async announceAchievement(username, achievement) {
         try {
             const channel = await this.client.channels.fetch(this.channelId);
-            if (!channel) return;
+            if (!channel) {
+                console.error('Channel not found');
+                return;
+            }
+
+            // Validate and format the thumbnail URL
+            const badgeUrl = achievement.BadgeName
+                ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
+                : 'https://media.retroachievements.org/Badge/placeholder.png';
+
+            const userIconUrl = `https://retroachievements.org/UserPic/${username}.png`;
 
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
                 .setTitle('Achievement Unlocked! 🏆')
-                .setThumbnail(`https://retroachievements.org${achievement.BadgeName}`)
+                .setThumbnail(badgeUrl)
                 .setDescription(`**${username}** earned **${achievement.Title}**\n*${achievement.Description}*`)
                 .setFooter({ 
                     text: `Points: ${achievement.Points}`,
-                    iconURL: `https://retroachievements.org/UserPic/${username}.png`
+                    iconURL: userIconUrl
                 })
                 .setTimestamp();
 
+            console.log('Announcing achievement for:', username, achievement.Title);
             await channel.send({ embeds: [embed] });
         } catch (error) {
             console.error('Error announcing achievement:', error);
