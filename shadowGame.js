@@ -4,7 +4,7 @@ const database = require('./database');
 class ShadowGame {
     constructor() {
         this.config = null;
-        this.errorChance = 0.50;
+        this.errorChance = 0.99;
     }
 
     async loadConfig() {
