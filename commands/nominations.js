@@ -4,46 +4,55 @@ const database = require('../database');
 module.exports = {
     name: 'nominations',
     description: 'Manage game nominations',
-    async execute(message, args, { shadowGame }) {
-        try {
-            if (!args.length) {
-                return await showHelp(message);
-            }
+   async execute(message, args, { database, shadowGame }) {
+    try {
+        if (!args.length) {
+            await this.showHelp(message);
+            return;
+        }
 
-            const [subcommand, ...subArgs] = args;
+        const subcommand = args[0].toLowerCase();
 
-            // Admin commands check
-            const isAdmin = message.member.permissions.has('Administrator');
-            const adminCommands = ['populate', 'open', 'close'];
-            if (adminCommands.includes(subcommand) && !isAdmin) {
+        // Define admin-only subcommands
+        const adminCommands = ['populate', 'open', 'close'];
+        
+        // Check permissions only for admin subcommands
+        if (adminCommands.includes(subcommand)) {
+            const hasPermission = message.member && (
+                message.member.permissions.has('Administrator') ||
+                message.member.roles.cache.has(process.env.ADMIN_ROLE_ID)
+            );
+
+            if (!hasPermission) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
                 return;
             }
-
-            switch(subcommand) {
-                case 'view':
-                    await handleView(message, shadowGame);
-                    break;
-                case 'add':
-                    await handleAdd(message, subArgs);
-                    break;
-                case 'populate':
-                    await handlePopulate(message);
-                    break;
-                case 'open':
-                    await handleOpen(message);
-                    break;
-                case 'close':
-                    await handleClose(message);
-                    break;
-                default:
-                    await showHelp(message);
-            }
-        } catch (error) {
-            console.error('Nominations Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to process nomination command\n[Ready for input]█\x1b[0m```');
         }
+
+        switch(subcommand) {
+            case 'view':
+                await this.viewNominations(message, database, shadowGame);
+                break;
+            case 'add':
+                await this.submitNomination(message, args.slice(1), database);
+                break;
+            case 'populate':
+                await this.handlePopulate(message);
+                break;
+            case 'open':
+                await this.openNominations(message, database);
+                break;
+            case 'close':
+                await this.closeNominations(message, database);
+                break;
+            default:
+                await this.showHelp(message);
+        }
+    } catch (error) {
+        console.error('Nominations Error:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Unable to process nomination command\n[Ready for input]█\x1b[0m```');
     }
+}
 };
 
 async function showHelp(message) {
