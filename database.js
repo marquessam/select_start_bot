@@ -89,288 +89,24 @@ class Database {
     }
 
     // ==================
-    // Game List Methods
-    // ==================
-    async getValidGamesList() {
-        try {
-            const currentChallenge = await this.getCurrentChallenge();
-            const arcadeGames = await this.getArcadeScores();
-            const reviews = await this.getReviews();
-            const previousGames = await this.getPreviousChallenges();
-            
-            const validGames = new Set([
-                currentChallenge.gameName,
-                ...Object.keys(arcadeGames.games),
-                ...Object.keys(reviews.games),
-                ...previousGames.map(game => game.gameName)
-            ].filter(Boolean));
-
-            return Array.from(validGames);
-        } catch (error) {
-            ErrorHandler.logError(error, 'Get Valid Games List');
-            throw error;
-        }
-    }
-
-    async getPreviousChallenges() {
-        const collection = await this.getCollection('challenges');
-        return await fetchData(collection, { _id: 'history' }, {
-            games: []
-        }).then(data => data.games || []);
-    }
-
-    async addGameToHistory(gameData) {
-        const collection = await this.getCollection('challenges');
-        await collection.updateOne(
-            { _id: 'history' },
-            { $addToSet: { games: gameData } },
-            { upsert: true }
-        );
-    }
-
-    // ================
-    // Review Methods
-    // ================
-    async getReviews() {
-        const collection = await this.getCollection('reviews');
-        return await fetchData(collection, { _id: 'reviews' }, {
-            games: {}
-        });
-    }
-
-    async saveReview(gameName, username, review) {
-        try {
-            const collection = await this.getCollection('reviews');
-            const reviews = await this.getReviews();
-
-            if (!reviews.games[gameName]) {
-                reviews.games[gameName] = {
-                    reviews: [],
-                    averageScores: {
-                        art: 0,
-                        story: 0,
-                        combat: 0,
-                        music: 0,
-                        overall: 0
-                    }
-                };
-            }
-
-            const gameReviews = reviews.games[gameName];
-            const existingReviewIndex = gameReviews.reviews.findIndex(r => 
-                r.username.toLowerCase() === username.toLowerCase()
-            );
-
-            const reviewData = {
-                username,
-                ...review,
-                date: new Date().toISOString()
-            };
-
-            if (existingReviewIndex !== -1) {
-                gameReviews.reviews[existingReviewIndex] = reviewData;
-            } else {
-                gameReviews.reviews.push(reviewData);
-            }
-
-            // Update average scores
-            const avgScores = gameReviews.averageScores;
-            const reviewCount = gameReviews.reviews.length;
-            
-            ['art', 'story', 'combat', 'music', 'overall'].forEach(category => {
-                const sum = gameReviews.reviews.reduce((acc, r) => acc + r.scores[category], 0);
-                avgScores[category] = Number((sum / reviewCount).toFixed(1));
-            });
-
-            await collection.updateOne(
-                { _id: 'reviews' },
-                { $set: reviews },
-                { upsert: true }
-            );
-
-            return gameReviews;
-        } catch (error) {
-            ErrorHandler.logError(error, 'Save Review');
-            throw error;
-        }
-    }
-
-    // =================
-    // Arcade Methods
-    // =================
-    async getArcadeScores() {
-        const collection = await this.getCollection('arcadechallenge');
-        return await fetchData(collection, { _id: 'scores' }, {
-            games: {
-                "Tony Hawk's Pro Skater": {
-                    platform: "PSX",
-                    description: "Highest possible score in 2 minute runs",
-                    scores: []
-                },
-                "Mr. Driller": {
-                    platform: "PSX",
-                    description: "Deepest depth reached (in feet)",
-                    scores: []
-                },
-                "Tetris": {
-                    platform: "Game Boy",
-                    description: "Highest possible score",
-                    scores: []
-                },
-                "Ms. Pac-Man": {
-                    platform: "NES",
-                    description: "Highest score on first board",
-                    scores: []
-                },
-                "Raiden Trad": {
-                    platform: "SNES",
-                    description: "Highest possible score",
-                    scores: []
-                },
-                "Community Game 1": {
-                    platform: "TBA",
-                    description: "TBD",
-                    scores: []
-                },
-                "Community Game 2": {
-                    platform: "TBA",
-                    description: "TBD",
-                    scores: []
-                },
-                "Community Game 3": {
-                    platform: "TBA",
-                    description: "TBD",
-                    scores: []
-                }
-            },
-            expiryDate: "December 1st 2025"
-        });
-    }
-
-    async getHighScores() {
-        return this.getArcadeScores();
-    }
-
-   async saveArcadeScore(game, username, score) {
-    try {
-        const collection = await this.getCollection('arcadechallenge');
-        const scores = await this.getArcadeScores();
-
-        // Ensure scores structure is valid
-        if (!scores || !scores.games || !scores.games[game]) {
-            throw new Error(`Invalid game name: ${game}`);
-        }
-
-        const newScore = {
-            username: username.toLowerCase(),
-            score: score,
-            date: new Date().toISOString(),
-        };
-
-        // Update game scores
-        let gameScores = scores.games[game].scores || [];
-        gameScores = gameScores.filter(s => s.username !== username.toLowerCase());
-        gameScores.push(newScore);
-
-        // Sort and limit top 3 scores
-        gameScores.sort((a, b) => b.score - a.score);
-        scores.games[game].scores = gameScores.slice(0, 3);
-
-        // Save updated scores to the database
-        await collection.updateOne(
-            { _id: 'scores' },
-            { $set: scores },
-            { upsert: true }
-        );
-
-        console.log(`[DATABASE] Updated scores for game: ${game}`);
-        return scores.games[game].scores;
-    } catch (error) {
-        console.error(`[DATABASE] Error saving arcade score: ${error.message}`);
-        ErrorHandler.logError(error, 'Save Arcade Score');
-        throw error;
-    }
-}
-
-
-    async removeArcadeScore(gameName, username) {
-        try {
-            const collection = await this.getCollection('arcadechallenge');
-            const data = await this.getArcadeScores();
-            
-            if (!data.games[gameName]) {
-                throw new Error('Invalid game name');
-            }
-
-            data.games[gameName].scores = data.games[gameName].scores.filter(
-                score => score.username !== username.toLowerCase()
-            );
-            
-            await collection.updateOne(
-                { _id: 'scores' },
-                { $set: data },
-                { upsert: true }
-            );
-            
-            return data.games[gameName].scores;
-        } catch (error) {
-            ErrorHandler.logError(error, 'Remove Arcade Score');
-            throw error;
-        }
-    }
-
-  async refreshArcadeScores() {
-    try {
-        const collection = await this.getCollection('arcadechallenge');
-        const currentScores = await this.getArcadeScores();
-        
-        // Update/upsert the scores document
-        await collection.updateOne(
-            { _id: 'scores' },
-            { 
-                $set: {
-                    ...currentScores,
-                    lastUpdated: new Date().toISOString()
-                }
-            },
-            { upsert: true }
-        );
-        
-        console.log('[DATABASE] Refreshed arcade scores');
-        return currentScores;
-    } catch (error) {
-        console.error('[DATABASE] Error refreshing arcade scores:', error);
-        throw error;
-    }
-}
-    
-    async resetArcadeScores(gameName) {
-        try {
-            const collection = await this.getCollection('arcadechallenge');
-            const data = await this.getArcadeScores();
-            
-            if (!data.games[gameName]) {
-                throw new Error('Invalid game name');
-            }
-
-            data.games[gameName].scores = [];
-            
-            await collection.updateOne(
-                { _id: 'scores' },
-                { $set: data },
-                { upsert: true }
-            );
-            
-            return [];
-        } catch (error) {
-            ErrorHandler.logError(error, 'Reset Arcade Scores');
-            throw error;
-        }
-    }
-
-    // ===================
     // Challenge Methods
-    // ===================
+    // ==================
+    
+    async saveChallenge(data, type = 'current') {
+        try {
+            const collection = await this.getCollection('challenges');
+            await collection.updateOne(
+                { _id: type },
+                { $set: data },
+                { upsert: true }
+            );
+            return true;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Save Challenge');
+            throw error;
+        }
+    }
+
     async getCurrentChallenge() {
         const collection = await this.getCollection('challenges');
         return await fetchData(collection, { _id: 'current' }, {
@@ -407,281 +143,254 @@ class Database {
         return await fetchData(collection, { _id: 'next' }, null);
     }
 
-   // ==================
-    // User Methods
-    // ==================
-    async getUserStats() {
-        const collection = await this.getCollection('userstats');
-        return await fetchData(collection, { _id: 'stats' }, {
-            users: {},
-            yearlyStats: {},
-            monthlyStats: {},
-            gameCompletions: {},
-            achievementStats: {},
-            communityRecords: {
-                fastestCompletions: {},
-                highestScores: {},
-                monthlyRecords: {},
-                milestones: [],
-                hallOfFame: {
-                    perfectMonths: [],
-                    speedrunners: [],
-                    completionists: [],
+    // ===================
+    // User Management
+    // ===================
+    
+    async manageUser(action, username, newUsername = null) {
+        try {
+            const collection = await this.getCollection('users');
+            const cleanUsername = username.trim().toLowerCase();
+            const data = await collection.findOne({ _id: 'validUsers' });
+            const existingUsers = data?.users || [];
+
+            switch(action) {
+                case 'add': {
+                    const filteredUsers = existingUsers.filter(
+                        u => u.toLowerCase() !== cleanUsername
+                    );
+                    filteredUsers.push(username.trim());
+                    await collection.updateOne(
+                        { _id: 'validUsers' },
+                        { $set: { users: filteredUsers } },
+                        { upsert: true }
+                    );
+                    return true;
                 }
-            }
-        });
-    }
-
-    async saveUserStats(stats) {
-        const collection = await this.getCollection('userstats');
-        await collection.updateOne(
-            { _id: 'stats' },
-            { $set: stats },
-            { upsert: true }
-        );
-    }
-
-   async addValidUser(username) {
-    try {
-        // First add to valid users list
-        const collection = await this.getCollection('users');
-        const data = await collection.findOne({ _id: 'validUsers' });
-        const existingUsers = data?.users || [];
-
-        const filteredUsers = existingUsers.filter(
-            u => u.toLowerCase() !== username.toLowerCase()
-        );
-
-        filteredUsers.push(username.trim());
-
-        await collection.updateOne(
-            { _id: 'validUsers' },
-            { $set: { users: filteredUsers } },
-            { upsert: true }
-        );
-
-        // Initialize user stats
-        const stats = await this.getUserStats();
-        const cleanUsername = username.trim().toLowerCase();
-        const year = new Date().getFullYear().toString();
-
-        if (!stats.users[cleanUsername]) {
-            stats.users[cleanUsername] = {
-                totalPoints: 0,
-                yearlyPoints: {},
-                monthlyAchievements: {},
-                bonusPoints: [],
-                completedGames: {},
-                monthlyStats: {},
-                yearlyStats: {},
-                participationMonths: [],
-                completionMonths: [],
-                masteryMonths: [],
-                achievements: {
-                    titles: [],
-                    badges: [],
-                    milestones: [],
-                    specialUnlocks: [],
-                    records: [],
-                    streaks: {
-                        current: 0,
-                        longest: 0,
-                        lastUpdate: null
+                
+                case 'remove': {
+                    const filteredUsers = existingUsers.filter(
+                        u => u.toLowerCase() !== cleanUsername
+                    );
+                    await collection.updateOne(
+                        { _id: 'validUsers' },
+                        { $set: { users: filteredUsers } }
+                    );
+                    return true;
+                }
+                
+                case 'update': {
+                    if (!newUsername || cleanUsername !== newUsername.toLowerCase()) {
+                        throw new Error('Invalid username update parameters');
                     }
+                    const index = existingUsers.findIndex(
+                        u => u.toLowerCase() === cleanUsername
+                    );
+                    if (index !== -1) {
+                        existingUsers[index] = newUsername;
+                        await collection.updateOne(
+                            { _id: 'validUsers' },
+                            { $set: { users: existingUsers } }
+                        );
+                        return true;
+                    }
+                    return false;
                 }
-            };
-        }
-
-        if (!stats.users[cleanUsername].yearlyStats[year]) {
-            stats.users[cleanUsername].yearlyStats[year] = {
-                totalGamesCompleted: 0,
-                totalAchievementsUnlocked: 0,
-                hardcoreCompletions: 0,
-                softcoreCompletions: 0,
-                monthlyParticipations: 0,
-                perfectMonths: 0,
-                totalPoints: 0,
-                averageCompletion: 0,
-                longestStreak: 0,
-                currentStreak: 0,
-                highestSingleDay: 0,
-                mastery100Count: 0,
-                participationRate: 0,
-                rareAchievements: 0,
-                personalBests: {
-                    fastestCompletion: null,
-                    highestPoints: 0,
-                    bestRank: 0
-                },
-                achievementsPerMonth: {},
-                dailyActivity: {},
-                hardestGame: ""
-            };
-        }
-
-        // Save the updated stats
-        await this.saveUserStats(stats);
-        console.log(`[DATABASE] Added and initialized user: ${username}`);
-        
-        return true;
-    } catch (error) {
-        ErrorHandler.logError(error, 'Add Valid User');
-        throw error;
-    }
-}
-
-async getValidUsers() {
-    try {
-        const collection = await this.getCollection('users');
-        const data = await collection.findOne({ _id: 'validUsers' });
-        return (data?.users || []).map(u => u.trim().toLowerCase());
-    } catch (error) {
-        ErrorHandler.logError(error, 'Get Valid Users');
-        return [];
-    }
-}
-
-
-    async findUser(username) {
-        try {
-            const collection = await this.getCollection('users');
-            const data = await collection.findOne({ _id: 'validUsers' });
-            return data?.users?.find(u => u.toLowerCase() === username.toLowerCase()) || null;
-        } catch (error) {
-            ErrorHandler.logError(error, 'Find User');
-            return null;
-        }
-    }
-
-    async updateUserCase(oldUsername, newUsername) {
-        try {
-            if (oldUsername.toLowerCase() !== newUsername.toLowerCase()) {
-                throw new Error('Cannot update case for different usernames');
+                
+                case 'find':
+                    return existingUsers.find(
+                        u => u.toLowerCase() === cleanUsername
+                    ) || null;
+                
+                default:
+                    throw new Error('Invalid user management action');
             }
-
-            const collection = await this.getCollection('users');
-            const data = await collection.findOne({ _id: 'validUsers' });
-            const users = data?.users || [];
-            
-            const index = users.findIndex(u => u.toLowerCase() === oldUsername.toLowerCase());
-            if (index !== -1) {
-                users[index] = newUsername;
-                await collection.updateOne(
-                    { _id: 'validUsers' },
-                    { $set: { users: users } }
-                );
-                console.log(`[DATABASE] Updated username case from ${oldUsername} to ${newUsername}`);
-                return true;
-            }
-            return false;
         } catch (error) {
-            ErrorHandler.logError(error, 'Update User Case');
+            ErrorHandler.logError(error, `User Management - ${action}`);
             throw error;
         }
     }
 
-        async removeValidUser(username) {
+    async getValidUsers() {
         try {
             const collection = await this.getCollection('users');
             const data = await collection.findOne({ _id: 'validUsers' });
-            const users = data?.users || [];
-            
-            // Filter case-insensitively
-            const filteredUsers = users.filter(u => u.toLowerCase() !== username.toLowerCase());
-            
+            return (data?.users || []).map(u => u.trim().toLowerCase());
+        } catch (error) {
+            ErrorHandler.logError(error, 'Get Valid Users');
+            return [];
+        }
+    }
+
+    // =================
+    // Arcade Methods
+    // =================
+    
+    async getHighScores() {
+        const collection = await this.getCollection('arcadechallenge');
+        return await fetchData(collection, { _id: 'scores' }, {
+            games: {
+                "Tony Hawk's Pro Skater": {
+                    platform: "PSX",
+                    description: "Highest possible score in 2 minute runs",
+                    scores: []
+                },
+                "Mr. Driller": {
+                    platform: "PSX",
+                    description: "Deepest depth reached (in feet)",
+                    scores: []
+                },
+                "Tetris": {
+                    platform: "Game Boy",
+                    description: "Highest possible score",
+                    scores: []
+                },
+                "Ms. Pac-Man": {
+                    platform: "NES",
+                    description: "Highest score on first board",
+                    scores: []
+                },
+                "Raiden Trad": {
+                    platform: "SNES",
+                    description: "Highest possible score",
+                    scores: []
+                }
+            },
+            expiryDate: "December 1st 2025"
+        });
+    }
+
+    async saveArcadeScore(game, username, score) {
+        try {
+            const collection = await this.getCollection('arcadechallenge');
+            const scores = await this.getHighScores();
+
+            if (!scores.games[game]) {
+                throw new Error(`Invalid game name: ${game}`);
+            }
+
+            let gameScores = scores.games[game].scores || [];
+            gameScores = gameScores.filter(s => s.username.toLowerCase() !== username.toLowerCase());
+            gameScores.push({
+                username: username.toLowerCase(),
+                score: score,
+                date: new Date().toISOString(),
+            });
+
+            gameScores.sort((a, b) => b.score - a.score);
+            scores.games[game].scores = gameScores.slice(0, 3);
+
             await collection.updateOne(
-                { _id: 'validUsers' },
-                { $set: { users: filteredUsers } }
+                { _id: 'scores' },
+                { $set: scores },
+                { upsert: true }
             );
 
-            console.log(`[DATABASE] Removed user: ${username}`);
+            return scores.games[game].scores;
         } catch (error) {
-            ErrorHandler.logError(error, 'Remove Valid User');
+            ErrorHandler.logError(error, 'Save Arcade Score');
+            throw error;
+        }
+    }
+
+    async removeArcadeScore(gameName, username) {
+        try {
+            const collection = await this.getCollection('arcadechallenge');
+            const data = await this.getHighScores();
+            
+            if (!data.games[gameName]) {
+                throw new Error('Invalid game name');
+            }
+
+            data.games[gameName].scores = data.games[gameName].scores.filter(
+                score => score.username !== username.toLowerCase()
+            );
+            
+            await collection.updateOne(
+                { _id: 'scores' },
+                { $set: data },
+                { upsert: true }
+            );
+            
+            return data.games[gameName].scores;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Remove Arcade Score');
+            throw error;
+        }
+    }
+
+    // =================
+    // Review Methods
+    // =================
+    
+    async getReviews() {
+        const collection = await this.getCollection('reviews');
+        return await fetchData(collection, { _id: 'reviews' }, {
+            games: {}
+        });
+    }
+
+    async saveReview(gameName, username, review) {
+        try {
+            const collection = await this.getCollection('reviews');
+            const reviews = await this.getReviews();
+
+            if (!reviews.games[gameName]) {
+                reviews.games[gameName] = {
+                    reviews: [],
+                    averageScores: {
+                        art: 0,
+                        story: 0,
+                        combat: 0,
+                        music: 0,
+                        overall: 0
+                    }
+                };
+            }
+
+            const gameReviews = reviews.games[gameName];
+            const existingReviewIndex = gameReviews.reviews.findIndex(
+                r => r.username.toLowerCase() === username.toLowerCase()
+            );
+
+            const reviewData = {
+                username,
+                ...review,
+                date: new Date().toISOString()
+            };
+
+            if (existingReviewIndex !== -1) {
+                gameReviews.reviews[existingReviewIndex] = reviewData;
+            } else {
+                gameReviews.reviews.push(reviewData);
+            }
+
+            // Update average scores
+            const avgScores = gameReviews.averageScores;
+            const reviewCount = gameReviews.reviews.length;
+            
+            ['art', 'story', 'combat', 'music', 'overall'].forEach(category => {
+                const sum = gameReviews.reviews.reduce((acc, r) => acc + r.scores[category], 0);
+                avgScores[category] = Number((sum / reviewCount).toFixed(1));
+            });
+
+            await collection.updateOne(
+                { _id: 'reviews' },
+                { $set: reviews },
+                { upsert: true }
+            );
+
+            return gameReviews;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Save Review');
             throw error;
         }
     }
 
     // ===================
-    // Game Request Methods
-    // ===================
-    async requestNewGame(gameName, requestedBy) {
-        const collection = await this.getCollection('gameRequests');
-        await collection.updateOne(
-            { _id: 'requests' },
-            {
-                $push: {
-                    pending: {
-                        gameName,
-                        requestedBy,
-                        requestDate: new Date().toISOString(),
-                        status: 'pending'
-                    }
-                }
-            },
-            { upsert: true }
-        );
-    }
-
-    async approveGame(gameName) {
-        const collection = await this.getCollection('gameRequests');
-        await collection.updateOne(
-            { _id: 'requests' },
-            {
-                $pull: { pending: { gameName } },
-                $push: {
-                    approved: {
-                        gameName,
-                        approvedDate: new Date().toISOString()
-                    }
-                }
-            }
-        );
-        return true;
-    }
-
-    async getGameRequests() {
-        const collection = await this.getCollection('gameRequests');
-        return await fetchData(collection, { _id: 'requests' }, {
-            pending: [],
-            approved: []
-        });
-    }
-
-    // ====================
-    // Configuration Methods
-    // ====================
-    async getConfiguration() {
-        const collection = await this.getCollection('config');
-        return await fetchData(collection, { _id: 'settings' }, {
-            defaultRules: [
-                "Hardcore mode must be enabled",
-                "All achievements are eligible",
-                "Progress tracked via retroachievements",
-                "No hacks/save states/cheats allowed",
-            ],
-            defaultPoints: {
-                first: 6,
-                second: 4,
-                third: 2,
-            },
-            channels: {
-                announcements: '',
-                submissions: '',
-                leaderboard: '',
-            },
-            betaTesters: [],
-            admins: [],
-            nominatedGames: [],
-            achievements: {
-                titles: {},
-                badges: {},
-            }
-        });
-    }
-    
-// ===================
     // Nomination Methods
     // ===================
+    
     async getNominationStatus() {
         const collection = await this.getCollection('nominations');
         return await fetchData(collection, { _id: 'status' }, {
@@ -706,34 +415,21 @@ async getValidUsers() {
         );
     }
 
-    async hasUserNominated(userId) {
+    async getNominations(period = null) {
         const collection = await this.getCollection('nominations');
-        const status = await this.getNominationStatus();
         
-        // If nominations aren't open, return false
-        if (!status?.isOpen) return false;
+        if (!period) {
+            const currentPeriod = await collection.findOne({ _id: 'currentPeriod' });
+            period = currentPeriod?.period || new Date().toISOString().slice(0, 7);
+        }
 
-        const currentPeriod = await collection.findOne({ _id: 'currentPeriod' });
-        if (!currentPeriod) return false;
-
-        const userNomination = await collection.findOne({
-            _id: 'nominations',
-            [`nominations.${currentPeriod.period}.userId`]: userId
-        });
-
-        return !!userNomination;
+        const nominations = await collection.findOne({ _id: 'nominations' });
+        return nominations?.nominations?.[period] || [];
     }
 
     async addNomination(nomination) {
         const collection = await this.getCollection('nominations');
-        const status = await this.getNominationStatus();
-        
-        if (!status?.isOpen) {
-            throw new Error('Nominations are currently closed');
-        }
-
-        const currentPeriod = await collection.findOne({ _id: 'currentPeriod' });
-        const period = currentPeriod?.period || new Date().toISOString().slice(0, 7); // YYYY-MM format
+        const period = new Date().toISOString().slice(0, 7);
 
         await collection.updateOne(
             { _id: 'nominations' },
@@ -745,31 +441,17 @@ async getValidUsers() {
             { upsert: true }
         );
 
-        // Update current period if it doesn't exist
-        if (!currentPeriod) {
-            await collection.updateOne(
-                { _id: 'currentPeriod' },
-                { $set: { period } },
-                { upsert: true }
-            );
-        }
+        await collection.updateOne(
+            { _id: 'currentPeriod' },
+            { $set: { period } },
+            { upsert: true }
+        );
     }
 
-    async getNominations(period = null) {
-        const collection = await this.getCollection('nominations');
-        
-        if (!period) {
-            const currentPeriod = await collection.findOne({ _id: 'currentPeriod' });
-            period = currentPeriod?.period || new Date().toISOString().slice(0, 7);
-        }
-
-        const nominations = await collection.findOne({ _id: 'nominations' });
-        return nominations?.nominations?.[period] || [];
-     }
-    
     // ===================
     // Shadow Game Methods
     // ===================
+    
     async getShadowGame() {
         const collection = await this.getCollection('shadowgame');
         return await fetchData(collection, { _id: 'current' }, {
@@ -799,9 +481,48 @@ async getValidUsers() {
         }
     }
 
+  // ===================
+    // Stats Methods
     // ===================
-    // Community Records Methods
-    // ===================
+    
+    async getUserStats() {
+        const collection = await this.getCollection('userstats');
+        return await fetchData(collection, { _id: 'stats' }, {
+            users: {},
+            yearlyStats: {},
+            monthlyStats: {},
+            gameCompletions: {},
+            achievementStats: {},
+            communityRecords: {
+                fastestCompletions: {},
+                highestScores: {},
+                monthlyRecords: {},
+                yearlyRecords: {},
+                milestones: [],
+                hallOfFame: {
+                    perfectMonths: [],
+                    speedrunners: [],
+                    completionists: [],
+                }
+            }
+        });
+    }
+
+    async saveUserStats(stats) {
+        try {
+            const collection = await this.getCollection('userstats');
+            await collection.updateOne(
+                { _id: 'stats' },
+                { $set: stats },
+                { upsert: true }
+            );
+            return true;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Save User Stats');
+            throw error;
+        }
+    }
+
     async getCommunityRecords() {
         const collection = await this.getCollection('records');
         return await fetchData(collection, { _id: 'records' }, {
@@ -829,6 +550,101 @@ async getValidUsers() {
             return true;
         } catch (error) {
             ErrorHandler.logError(error, 'Save Community Records');
+            throw error;
+        }
+    }
+
+    // ===================
+    // Configuration Methods
+    // ===================
+    
+    async getConfiguration() {
+        const collection = await this.getCollection('config');
+        return await fetchData(collection, { _id: 'settings' }, {
+            defaultRules: [
+                "Hardcore mode must be enabled",
+                "All achievements are eligible",
+                "Progress tracked via retroachievements",
+                "No hacks/save states/cheats allowed",
+            ],
+            defaultPoints: {
+                first: 6,
+                second: 4,
+                third: 2,
+            },
+            channels: {
+                announcements: '',
+                submissions: '',
+                leaderboard: '',
+            },
+            betaTesters: [],
+            admins: [],
+            nominatedGames: [],
+            achievements: {
+                titles: {},
+                badges: {},
+            }
+        });
+    }
+
+    async saveConfiguration(config) {
+        try {
+            const collection = await this.getCollection('config');
+            await collection.updateOne(
+                { _id: 'settings' },
+                { $set: config },
+                { upsert: true }
+            );
+            return true;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Save Configuration');
+            throw error;
+        }
+    }
+
+    // ===================
+    // Game List Methods
+    // ===================
+    
+    async getValidGamesList() {
+        try {
+            const currentChallenge = await this.getCurrentChallenge();
+            const highScores = await this.getHighScores();
+            const reviews = await this.getReviews();
+            const previousChallenges = await this.getPreviousChallenges();
+            
+            const validGames = new Set([
+                currentChallenge.gameName,
+                ...Object.keys(highScores.games),
+                ...Object.keys(reviews.games),
+                ...previousChallenges.map(game => game.gameName)
+            ].filter(Boolean));
+
+            return Array.from(validGames);
+        } catch (error) {
+            ErrorHandler.logError(error, 'Get Valid Games List');
+            throw error;
+        }
+    }
+
+    async getPreviousChallenges() {
+        const collection = await this.getCollection('challenges');
+        return await fetchData(collection, { _id: 'history' }, {
+            games: []
+        }).then(data => data.games || []);
+    }
+
+    async addGameToHistory(gameData) {
+        try {
+            const collection = await this.getCollection('challenges');
+            await collection.updateOne(
+                { _id: 'history' },
+                { $addToSet: { games: gameData } },
+                { upsert: true }
+            );
+            return true;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Add Game To History');
             throw error;
         }
     }
