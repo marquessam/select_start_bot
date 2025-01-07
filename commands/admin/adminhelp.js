@@ -11,10 +11,11 @@ module.exports = {
             .setTerminalTitle('ADMIN TERMINAL ACCESS')
             .setTerminalDescription(
                 '\x1b[37m=== POINTS MANAGEMENT ===\x1b[0m\n' +
-                '\x1b[32m!addpoints <user> <points> <reason>\x1b[0m\nAdd/remove points from a user\n' +
-                '\x1b[32m!addpointsall <points> <reason>\x1b[0m\nAdd points to all participants\n' +
-                '\x1b[32m!addpointsmulti <points> <reason> <user1> <user2> ...\x1b[0m\nAdd points to multiple users\n' +
-                '\x1b[32m!resetpoints <user>\x1b[0m\nReset all points for a user\n\n' +
+                 '\x1b[32m!points add <user> <points> <reason>\x1b[0m\nAdd/remove points from a user\n' +
+                 '\x1b[32m!points addall <points> <reason>\x1b[0m\nAdd points to all participants\n' +
+                 '\x1b[32m!points addmulti <points> <reason> <user1> <user2> ...\x1b[0m\nAdd points to multiple users\n' +
+                 '\x1b[32m!points reset <user>\x1b[0m\nReset all points for a user\n' +
+                 '\x1b[32m!points restore\x1b[0m\nRestore beta participant points\n\n'
 
                 '\x1b[37m=== CHALLENGE MANAGEMENT ===\x1b[0m\n' +
                 '\x1b[32m!updatemonth <month> <first> <second> <third>\x1b[0m\nUpdate monthly rankings\n' +
