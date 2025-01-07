@@ -13,8 +13,7 @@ module.exports = {
             const [subcommand, ...subArgs] = args;
 
             // Admin commands check
-            const { hasAdminPermission } = message.client.commandHandler; // Assuming CommandHandler is attached to the client
-            const isAdmin = hasAdminPermission(message);
+            const isAdmin = message.member.permissions.has('Administrator');
             const adminCommands = ['populate', 'open', 'close'];
             if (adminCommands.includes(subcommand) && !isAdmin) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
