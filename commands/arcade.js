@@ -1,65 +1,208 @@
-// commands/arcade.js
 const TerminalEmbed = require('../utils/embedBuilder');
 const database = require('../database');
 
 module.exports = {
     name: 'arcade',
-    description: 'Display arcade challenge games and scores',
+    description: 'Manage arcade games and scores',
     async execute(message, args) {
         try {
-            const arcadeData = await database.getHighScores();
+            if (!args.length) {
+                return await showGameList(message);
+            }
 
-            if (args.length === 0) {
-                // Show game list
-                const gameList = Object.entries(arcadeData.games)
-                    .map(([name, game], index) => {
-                        const hasScores = game.scores.length > 0 ? '✓' : ' ';
-                        return `${index + 1}. ${name} (${game.platform}) ${hasScores}`;
-                    })
-                    .join('\n');
+            const [command, ...subArgs] = args;
 
-             const embed = new TerminalEmbed()
-                    .setTerminalTitle('ARCADE CHALLENGE')
-                    .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT A GAME TO VIEW RANKINGS]\n[EXPIRES: ' + arcadeData.expiryDate + ']')
-                    .addTerminalField('SUBMISSION REQUIREMENTS', 'All high scores must be verified with screenshot evidence posted in the screenshot-submissions channel.')
-                    .addTerminalField('AVAILABLE GAMES', gameList + '\n\n✓ = Scores recorded')
-                    .addTerminalField('USAGE', '!arcade <game number>\nExample: !arcade 1')
-                    .setTerminalFooter();
-
-                await message.channel.send({ embeds: [embed] });
+            // Admin commands check
+            const isAdmin = message.member.permissions.has('Administrator');
+            const adminCommands = ['reset', 'rules'];
+            if (adminCommands.includes(command) && !isAdmin) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
-            // Show specific game scores
-            const gameNum = parseInt(args[0]);
-            const games = Object.entries(arcadeData.games);
-            
-            if (isNaN(gameNum) || gameNum < 1 || gameNum > games.length) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
-                return;
+            switch(command) {
+                case 'reset':
+                    await handleReset(message, subArgs);
+                    break;
+                case 'rules':
+                    await handleRules(message);
+                    break;
+                default:
+                    await handleViewGame(message, args);
+                    break;
             }
-
-            const [gameName, gameData] = games[gameNum - 1];
-            const scoreList = gameData.scores.length > 0 ?
-                gameData.scores
-                    .map((score, index) => `${['🥇', '🥈', '🥉'][index]} ${score.username}: ${score.score.toLocaleString()}`)
-                    .join('\n') :
-                'No scores recorded';
-
-            const embed = new TerminalEmbed()
-                .setTerminalTitle(`${gameName} RANKINGS`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
-                .addTerminalField('GAME INFO', 
-                    `PLATFORM: ${gameData.platform}\n` +
-                    `RULES: ${gameData.description}`)
-                .addTerminalField('HIGH SCORES', scoreList)
-                .setTerminalFooter();
-
-            await message.channel.send({ embeds: [embed] });
-
         } catch (error) {
             console.error('Arcade Command Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve arcade data\n[Ready for input]█\x1b[0m```');
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Arcade operation failed\n[Ready for input]█\x1b[0m```');
         }
     }
 };
+
+async function showGameList(message) {
+    const arcadeData = await database.getHighScores();
+
+    const gameList = Object.entries(arcadeData.games)
+        .map(([name, game], index) => {
+            const hasScores = game.scores.length > 0 ? '✓' : ' ';
+            return `${index + 1}. ${name} (${game.platform}) ${hasScores}`;
+        })
+        .join('\n');
+
+    const embed = new TerminalEmbed()
+        .setTerminalTitle('ARCADE CHALLENGE')
+        .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT A GAME TO VIEW RANKINGS]\n[EXPIRES: ' + arcadeData.expiryDate + ']')
+        .addTerminalField('SUBMISSION REQUIREMENTS', 
+            'All high scores must be verified with screenshot evidence posted in the screenshot-submissions channel.')
+        .addTerminalField('AVAILABLE GAMES', gameList + '\n\n✓ = Scores recorded')
+        .addTerminalField('USAGE', 
+            '!arcade <game number> - View specific game rankings\n' +
+            '!arcade reset <game_number> [username] - Reset scores\n' +
+            '!arcade rules - Update game rules')
+        .setTerminalFooter();
+
+    await message.channel.send({ embeds: [embed] });
+}
+
+async function handleViewGame(message, args) {
+    const gameNum = parseInt(args[0]);
+    const arcadeData = await database.getHighScores();
+    const games = Object.entries(arcadeData.games);
+    
+    if (isNaN(gameNum) || gameNum < 1 || gameNum > games.length) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
+        return;
+    }
+
+    const [gameName, gameData] = games[gameNum - 1];
+    const scoreList = gameData.scores.length > 0 ?
+        gameData.scores
+            .map((score, index) => `${['🥇', '🥈', '🥉'][index]} ${score.username}: ${score.score.toLocaleString()}`)
+            .join('\n') :
+        'No scores recorded';
+
+    const embed = new TerminalEmbed()
+        .setTerminalTitle(`${gameName} RANKINGS`)
+        .setTerminalDescription('[DATABASE ACCESS GRANTED]')
+        .addTerminalField('GAME INFO', 
+            `PLATFORM: ${gameData.platform}\n` +
+            `RULES: ${gameData.description}`)
+        .addTerminalField('HIGH SCORES', scoreList)
+        .setTerminalFooter();
+
+    await message.channel.send({ embeds: [embed] });
+}
+
+async function handleReset(message, args) {
+    if (!args.length) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !arcade reset <game_number> [username]\n[Ready for input]█\x1b[0m```');
+        return;
+    }
+
+    const gameNum = parseInt(args[0]);
+    const username = args[1]?.toLowerCase();
+
+    const arcadeData = await database.getHighScores();
+    const games = Object.entries(arcadeData.games);
+
+    if (gameNum < 1 || gameNum > games.length) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
+        return;
+    }
+
+    const [gameName, gameData] = games[gameNum - 1];
+    const oldScores = [...(gameData.scores || [])];
+
+    if (username) {
+        await database.removeArcadeScore(gameName, username);
+    } else {
+        await database.resetArcadeScores(gameName);
+    }
+
+    const updatedData = await database.getHighScores();
+    const updatedScores = updatedData.games[gameName].scores;
+
+    const embed = new TerminalEmbed()
+        .setTerminalTitle(`${gameName} - SCORES RESET`)
+        .setTerminalDescription('[UPDATE COMPLETE]')
+        .addTerminalField('ACTION TAKEN', 
+            username ? `Removed score for user: ${username}` : 'Reset all scores for game');
+
+    if (oldScores.length > 0) {
+        embed.addTerminalField('PREVIOUS RANKINGS',
+            oldScores.map((score, index) => {
+                const medals = ['🥇', '🥈', '🥉'];
+                return `${medals[index]} ${score.username}: ${score.score.toLocaleString()}`;
+            }).join('\n'));
+    }
+
+    embed.addTerminalField('CURRENT RANKINGS',
+        updatedScores.length > 0 ? 
+            updatedScores.map((score, index) => {
+                const medals = ['🥇', '🥈', '🥉'];
+                return `${medals[index]} ${score.username}: ${score.score.toLocaleString()}`;
+            }).join('\n') :
+            'No scores recorded');
+
+    embed.setTerminalFooter();
+    await message.channel.send({ embeds: [embed] });
+}
+
+async function handleRules(message) {
+    const filter = m => m.author.id === message.author.id;
+    const timeout = 30000;
+
+    await message.channel.send('```ansi\n\x1b[32mEnter the game number to update rules for:\x1b[0m```');
+
+    let gameResponse;
+    try {
+        gameResponse = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: timeout,
+            errors: ['time']
+        });
+    } catch (error) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Time expired\n[Ready for input]█\x1b[0m```');
+        return;
+    }
+
+    const gameNum = parseInt(gameResponse.first().content);
+    const arcadeData = await database.getHighScores();
+    const games = Object.entries(arcadeData.games);
+
+    if (isNaN(gameNum) || gameNum < 1 || gameNum > games.length) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
+        return;
+    }
+
+    const [gameName, gameData] = games[gameNum - 1];
+
+    await message.channel.send('```ansi\n\x1b[32mEnter the new rules:\x1b[0m```');
+
+    let rulesResponse;
+    try {
+        rulesResponse = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: timeout,
+            errors: ['time']
+        });
+    } catch (error) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Time expired\n[Ready for input]█\x1b[0m```');
+        return;
+    }
+
+    const newRules = rulesResponse.first().content;
+    arcadeData.games[gameName].description = newRules;
+    await database.saveHighScores(arcadeData);
+
+    const embed = new TerminalEmbed()
+        .setTerminalTitle('GAME RULES UPDATED')
+        .setTerminalDescription('[UPDATE SUCCESSFUL]')
+        .addTerminalField('DETAILS',
+            `GAME: ${gameName}\n` +
+            `NEW RULES: ${newRules}`)
+        .setTerminalFooter();
+
+    await message.channel.send({ embeds: [embed] });
+}
