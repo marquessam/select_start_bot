@@ -20,9 +20,10 @@ module.exports = {
                 '\x1b[37m=== CHALLENGE MANAGEMENT ===\x1b[0m\n' +
                 '\x1b[32m!updatemonth <month> <first> <second> <third>\x1b[0m\nUpdate monthly rankings\n' +
                 '\x1b[32m!archivemonth\x1b[0m\nArchive current rankings\n' +
-                '\x1b[32m!setnextchallenge\x1b[0m\nInitialize setup for next month\n' +
-                '\x1b[32m!setnext <parameter> <value>\x1b[0m\nSet next challenge details\n' +
-                '\x1b[32m!switchchallenge\x1b[0m\nSwitch to next challenge\n\n' +
+                '\x1b[32m!challengemanager init\x1b[0m\nInitialize setup for next month\n' +
+                '\x1b[32m!challengemanager next <parameter> <value>\x1b[0m\nSet next challenge details\n' +
+                '\x1b[32m!challengemanager switch\x1b[0m\nSwitch to next challenge\n' +
+                '\x1b[32m!challengemanager set\x1b[0m\nSet current challenge details\n\n'
 
                 '\x1b[37m=== ARCADE MANAGEMENT ===\x1b[0m\n' +
                 '\x1b[32m!addhighscore\x1b[0m\nAdd or update high scores\n' +
