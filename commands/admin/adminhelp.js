@@ -40,7 +40,8 @@ module.exports = {
                 '\x1b[32m!test announce\x1b[0m\nTest announcements without affecting data\n\n'
 
                 '\x1b[37m=== SHADOW GAME ===\x1b[0m\n' +
-                '\x1b[32m!shadowreset\x1b[0m\nReset Shadow Game progress\n\n' +
+                '\x1b[32m!shadow reset\x1b[0m\nReset Shadow Game progress\n' +
+                '\x1b[32m!shadow init\x1b[0m\nInitialize Shadow Game system\n\n'
                 '\x1b[32m[ADMIN ACCESS GRANTED]█\x1b[0m'
             )
             .setTerminalFooter();
