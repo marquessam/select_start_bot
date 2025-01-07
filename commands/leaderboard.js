@@ -148,7 +148,7 @@ module.exports = {
 
     async displayHighScores(message, args, shadowGame) {
         try {
-            const highscores = await DataService.getHighScores();
+            const highscores = await DataService.getArcadeScores();
 
             if (!args.length) {
                 await message.channel.send('```ansi\n\x1b[32m> Accessing high score database...\x1b[0m\n```');
