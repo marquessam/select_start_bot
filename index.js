@@ -8,8 +8,14 @@ const Announcer = require('./utils/announcer');
 const createLeaderboardCache = require('./leaderboardCache');
 const ShadowGame = require('./shadowGame');
 const ErrorHandler = require('./utils/errorHandler');
+const AchievementFeed = require('./achievementFeed');
 
-const REQUIRED_ENV_VARS = ['RA_CHANNEL_ID', 'DISCORD_TOKEN', 'ANNOUNCEMENT_CHANNEL_ID'];
+const REQUIRED_ENV_VARS = [
+    'RA_CHANNEL_ID', 
+    'DISCORD_TOKEN', 
+    'ANNOUNCEMENT_CHANNEL_ID',
+    'ACHIEVEMENT_FEED_CHANNEL'
+];
 
 const client = new Client({
     intents: [
@@ -48,6 +54,7 @@ async function createCoreServices() {
         const commandHandler = new CommandHandler();
         const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
+        const achievementFeed = new AchievementFeed(client, database);
 
         // Set up leaderboard cache
         leaderboardCache.setUserStats(userStats);
@@ -59,7 +66,8 @@ async function createCoreServices() {
             leaderboardCache,
             commandHandler,
             announcer,
-            shadowGame
+            shadowGame,
+            achievementFeed
         };
     } catch (error) {
         ErrorHandler.logError(error, 'Creating Core Services');
@@ -68,7 +76,15 @@ async function createCoreServices() {
 }
 
 async function initializeServices(coreServices) {
-    const { userTracker, userStats, announcer, commandHandler, shadowGame, leaderboardCache } = coreServices;
+    const { 
+        userTracker, 
+        userStats, 
+        announcer, 
+        commandHandler, 
+        shadowGame, 
+        leaderboardCache,
+        achievementFeed 
+    } = coreServices;
 
     try {
         console.log('Initializing services...');
@@ -86,7 +102,9 @@ async function initializeServices(coreServices) {
             commandHandler.loadCommands(coreServices)
                 .catch(e => ErrorHandler.logError(e, 'Command Handler Init')),
             leaderboardCache.initialize()
-                .catch(e => ErrorHandler.logError(e, 'Leaderboard Cache Init'))
+                .catch(e => ErrorHandler.logError(e, 'Leaderboard Cache Init')),
+            achievementFeed.initialize()
+                .catch(e => ErrorHandler.logError(e, 'Achievement Feed Init'))
         ]);
 
         console.log('All services initialized successfully');
