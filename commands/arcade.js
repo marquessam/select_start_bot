@@ -39,8 +39,8 @@ module.exports = {
 };
 
 async function showGameList(message) {
-    const arcadeData = await database.getHighScores();
-
+    const arcadeData = await database.getArcadeScores();
+    
     const gameList = Object.entries(arcadeData.games)
         .map(([name, game], index) => {
             const hasScores = game.scores.length > 0 ? '✓' : ' ';
