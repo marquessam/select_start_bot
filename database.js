@@ -222,11 +222,11 @@ class Database {
         }
     }
 
-    // =================
+   // =================
     // Arcade Methods
     // =================
     
-async getArcadeScores() {
+    async getArcadeScores() {
         const collection = await this.getCollection('arcadechallenge');
         return await fetchData(collection, { _id: 'scores' }, {
             games: {
@@ -263,7 +263,7 @@ async getArcadeScores() {
     async saveArcadeScore(game, username, score) {
         try {
             const collection = await this.getCollection('arcadechallenge');
-            const scores = await this.getHighScores();
+            const scores = await this.getArcadeScores();
 
             if (!scores.games[game]) {
                 throw new Error(`Invalid game name: ${game}`);
@@ -296,7 +296,7 @@ async getArcadeScores() {
     async removeArcadeScore(gameName, username) {
         try {
             const collection = await this.getCollection('arcadechallenge');
-            const data = await this.getHighScores();
+            const data = await this.getArcadeScores();
             
             if (!data.games[gameName]) {
                 throw new Error('Invalid game name');
@@ -315,6 +315,54 @@ async getArcadeScores() {
             return data.games[gameName].scores;
         } catch (error) {
             ErrorHandler.logError(error, 'Remove Arcade Score');
+            throw error;
+        }
+    }
+
+    async updateArcadeRules(gameName, newRules) {
+        try {
+            const collection = await this.getCollection('arcadechallenge');
+            const data = await this.getArcadeScores();
+            
+            if (!data.games[gameName]) {
+                throw new Error('Invalid game name');
+            }
+
+            data.games[gameName].description = newRules;
+            
+            await collection.updateOne(
+                { _id: 'scores' },
+                { $set: data },
+                { upsert: true }
+            );
+            
+            return data.games[gameName];
+        } catch (error) {
+            ErrorHandler.logError(error, 'Update Arcade Rules');
+            throw error;
+        }
+    }
+
+    async resetArcadeScores(gameName) {
+        try {
+            const collection = await this.getCollection('arcadechallenge');
+            const data = await this.getArcadeScores();
+            
+            if (!data.games[gameName]) {
+                throw new Error('Invalid game name');
+            }
+
+            data.games[gameName].scores = [];
+            
+            await collection.updateOne(
+                { _id: 'scores' },
+                { $set: data },
+                { upsert: true }
+            );
+            
+            return [];
+        } catch (error) {
+            ErrorHandler.logError(error, 'Reset Arcade Scores');
             throw error;
         }
     }
