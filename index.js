@@ -29,41 +29,85 @@ async function validateEnvironment() {
     }
 }
 
-async function initializeCore() {
-    await database.connect();
-    const userStats = new UserStats(database);
-    const userTracker = new UserTracker(database, userStats);
-    const leaderboardCache = createLeaderboardCache(database);
-    const commandHandler = new CommandHandler();
-    const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
-    const shadowGame = new ShadowGame();
+async function connectDatabase() {
+    try {
+        await database.connect();
+        console.log('MongoDB connected successfully');
+        return true;
+    } catch (error) {
+        ErrorHandler.logError(error, 'Database Connection');
+        throw error;
+    }
+}
 
-    leaderboardCache.setUserStats(userStats);
-    global.leaderboardCache = leaderboardCache;
+async function createCoreServices() {
+    try {
+        const userStats = new UserStats(database);
+        const userTracker = new UserTracker(database, userStats);
+        const leaderboardCache = createLeaderboardCache(database);
+        const commandHandler = new CommandHandler();
+        const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
+        const shadowGame = new ShadowGame();
 
-    return {
-        userStats,
-        userTracker,
-        leaderboardCache,
-        commandHandler,
-        announcer,
-        shadowGame
-    };
+        // Set up leaderboard cache
+        leaderboardCache.setUserStats(userStats);
+        global.leaderboardCache = leaderboardCache;
+
+        return {
+            userStats,
+            userTracker,
+            leaderboardCache,
+            commandHandler,
+            announcer,
+            shadowGame
+        };
+    } catch (error) {
+        ErrorHandler.logError(error, 'Creating Core Services');
+        throw error;
+    }
 }
 
 async function initializeServices(coreServices) {
-    const { userTracker, userStats, announcer, commandHandler, shadowGame } = coreServices;
+    const { userTracker, userStats, announcer, commandHandler, shadowGame, leaderboardCache } = coreServices;
 
-    const initTasks = [
-        shadowGame.loadConfig().catch(e => ErrorHandler.logError(e, 'Shadow Game Init')),
-        userTracker.initialize().catch(e => ErrorHandler.logError(e, 'User Tracker Init')),
-        userStats.loadStats(userTracker).catch(e => ErrorHandler.logError(e, 'User Stats Init')),
-        announcer.initialize().catch(e => ErrorHandler.logError(e, 'Announcer Init')),
-        commandHandler.loadCommands(coreServices).catch(e => ErrorHandler.logError(e, 'Command Handler Init'))
-    ];
+    try {
+        console.log('Initializing services...');
 
-    await Promise.allSettled(initTasks);
-    return coreServices;
+        // Initialize components in parallel
+        await Promise.all([
+            shadowGame.loadConfig()
+                .catch(e => ErrorHandler.logError(e, 'Shadow Game Init')),
+            userTracker.initialize()
+                .catch(e => ErrorHandler.logError(e, 'User Tracker Init')),
+            userStats.loadStats(userTracker)
+                .catch(e => ErrorHandler.logError(e, 'User Stats Init')),
+            announcer.initialize()
+                .catch(e => ErrorHandler.logError(e, 'Announcer Init')),
+            commandHandler.loadCommands(coreServices)
+                .catch(e => ErrorHandler.logError(e, 'Command Handler Init')),
+            leaderboardCache.initialize()
+                .catch(e => ErrorHandler.logError(e, 'Leaderboard Cache Init'))
+        ]);
+
+        console.log('All services initialized successfully');
+        return coreServices;
+    } catch (error) {
+        ErrorHandler.logError(error, 'Service Initialization');
+        throw error;
+    }
+}
+
+async function setupBot() {
+    try {
+        await validateEnvironment();
+        await connectDatabase();
+        const coreServices = await createCoreServices();
+        services = await initializeServices(coreServices);
+        console.log('Bot setup completed successfully');
+    } catch (error) {
+        ErrorHandler.logError(error, 'Bot Setup');
+        throw error;
+    }
 }
 
 async function handleMessage(message, services) {
@@ -71,23 +115,27 @@ async function handleMessage(message, services) {
     const tasks = [];
 
     if (message.channel.id === process.env.RA_CHANNEL_ID) {
-        tasks.push(userTracker.processMessage(message));
+        tasks.push(
+            userTracker.processMessage(message)
+                .catch(e => ErrorHandler.logError(e, 'User Tracker Message Processing'))
+        );
     }
 
     tasks.push(
-        shadowGame.checkMessage(message),
+        shadowGame.checkMessage(message)
+            .catch(e => ErrorHandler.logError(e, 'Shadow Game Message Check')),
         commandHandler.handleCommand(message, services)
+            .catch(e => ErrorHandler.logError(e, 'Command Handler'))
     );
 
     await Promise.allSettled(tasks);
 }
 
+// Event Handlers
 client.once('ready', async () => {
     try {
-        await validateEnvironment();
-        const coreServices = await initializeCore();
-        services = await initializeServices(coreServices);
-        console.log(`Bot initialized and logged in as ${client.user.tag}`);
+        console.log(`Logged in as ${client.user.tag}`);
+        await setupBot();
     } catch (error) {
         console.error('Fatal initialization error:', error);
         process.exit(1);
@@ -96,6 +144,7 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !services) return;
+    
     try {
         await handleMessage(message, services);
     } catch (error) {
@@ -103,7 +152,7 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// Optimize periodic tasks with error recovery
+// Periodic Tasks
 const updateLeaderboards = async () => {
     if (!services?.leaderboardCache) return;
     
@@ -118,11 +167,12 @@ const updateLeaderboards = async () => {
 
 setInterval(updateLeaderboards, 60 * 60 * 1000); // Every hour
 
-// Graceful shutdown
-const shutdown = async () => {
-    console.log('Shutting down gracefully...');
+// Graceful Shutdown Handler
+const shutdown = async (signal) => {
+    console.log(`Received ${signal}. Shutting down gracefully...`);
     try {
         await database.disconnect();
+        console.log('Cleanup completed');
         process.exit(0);
     } catch (error) {
         console.error('Error during shutdown:', error);
@@ -130,18 +180,17 @@ const shutdown = async () => {
     }
 };
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
-
-// Handle uncaught errors
-process.on('unhandledRejection', (error) => {
-    ErrorHandler.logError(error, 'Unhandled Rejection');
-});
-
+// Process Event Handlers
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('uncaughtException', (error) => {
     ErrorHandler.logError(error, 'Uncaught Exception');
     // Give time for error logging before exit
     setTimeout(() => process.exit(1), 1000);
 });
+process.on('unhandledRejection', (error) => {
+    ErrorHandler.logError(error, 'Unhandled Rejection');
+});
 
+// Start the bot
 client.login(process.env.DISCORD_TOKEN);
