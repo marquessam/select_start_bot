@@ -6,7 +6,7 @@ class DataService {
         const stats = await database.getUserStats();
         const userStats = stats.users[username.toLowerCase()] || {
             yearlyPoints: 0,
-            gamesCompleted: 0,
+            gamesBeaten: 0,
             achievementsUnlocked: 0,
             monthlyParticipations: 0,
             bonusPoints: 0,
