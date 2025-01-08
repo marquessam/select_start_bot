@@ -4,54 +4,60 @@ const ErrorHandler = require('./utils/errorHandler');
 class UserStats {
     constructor(database) {
         this.database = database;
-       this.cache = {
+        this.cache = {
             stats: {
                 users: {},
                 yearlyStats: {},
                 monthlyStats: {},
-                gamesBeaten: {},  // Changed from gameCompletions
+                gamesBeaten: {}, // Changed from gameCompletions
                 achievementStats: {},
                 communityRecords: {}
             },
             lastUpdate: null,
             updateInterval: 5 * 60 * 1000, // 5 minutes
             validUsers: new Set(),
-            pendingUpdates: new Set()  // Track updates that need to be saved
+            pendingUpdates: new Set() // Track updates that need to be saved
         };
         this.currentYear = new Date().getFullYear();
-        
+
         // Start periodic cache save if there are pending updates
         setInterval(() => this.savePendingUpdates(), 30000); // Every 30 seconds
     }
 
-    // Core Methods
+    // =======================
+    //         Core
+    // =======================
     async loadStats(userTracker) {
         try {
             const dbStats = await this.database.getUserStats();
-            
-           this.cache.stats = {
+
+            // Merge or default to empty objects
+            this.cache.stats = {
                 users: dbStats.users || {},
                 yearlyStats: dbStats.yearlyStats || {},
                 monthlyStats: dbStats.monthlyStats || {},
-                gamesBeaten: dbStats.gamesBeaten || dbStats.gameCompletions || {},  // Migration handling
+                gamesBeaten: dbStats.gamesBeaten || dbStats.gameCompletions || {},
                 achievementStats: dbStats.achievementStats || {},
                 communityRecords: dbStats.communityRecords || {}
             };
 
             const users = await userTracker.getValidUsers();
-            console.log('Found users:', users);
+            // Logging the entire user list might be optional;
+            // consider removing if you don't need to see it:
+            // console.log('Found users:', users);
+
             this.cache.validUsers = new Set(users.map(u => u.toLowerCase()));
 
             // Batch initialize users
             await Promise.all(
-                Array.from(this.cache.validUsers).map(username => 
+                Array.from(this.cache.validUsers).map(username =>
                     this.initializeUserIfNeeded(username)
                 )
             );
 
             await this.saveStats();
             this.cache.lastUpdate = Date.now();
-            console.log('Stats loaded and synchronized with UserTracker');
+            // console.log('Stats loaded and synchronized with UserTracker');
         } catch (error) {
             ErrorHandler.logError(error, 'Loading Stats');
             throw error;
@@ -76,8 +82,10 @@ class UserStats {
     }
 
     shouldRefreshCache() {
-        return !this.cache.lastUpdate || 
-               (Date.now() - this.cache.lastUpdate) > this.cache.updateInterval;
+        return (
+            !this.cache.lastUpdate ||
+            Date.now() - this.cache.lastUpdate > this.cache.updateInterval
+        );
     }
 
     async refreshCache() {
@@ -92,7 +100,9 @@ class UserStats {
         }
     }
 
-    // User Management Methods
+    // =======================
+    //   User Management
+    // =======================
     async initializeUserIfNeeded(username) {
         if (!username) return;
 
@@ -100,8 +110,8 @@ class UserStats {
         if (!cleanUsername) return;
 
         if (!this.cache.stats.users[cleanUsername]) {
-            console.log(`Initializing stats for new user: ${cleanUsername}`);
-            
+            // console.log(`Initializing stats for new user: ${cleanUsername}`);
+
             this.cache.stats.users[cleanUsername] = {
                 yearlyPoints: {},
                 completedGames: {},
@@ -139,7 +149,7 @@ class UserStats {
             };
 
             this.cache.pendingUpdates.add(cleanUsername);
-            
+
             if (global.leaderboardCache) {
                 await global.leaderboardCache.updateLeaderboards();
             }
@@ -163,7 +173,7 @@ class UserStats {
                 this.cache.validUsers.delete(cleanUsername);
                 this.cache.pendingUpdates.add(cleanUsername);
                 await this.saveStats();
-                console.log(`User "${username}" removed successfully.`);
+                // console.log(`User "${username}" removed successfully.`);
             }
         } catch (error) {
             ErrorHandler.logError(error, 'Removing User');
@@ -171,7 +181,9 @@ class UserStats {
         }
     }
 
-    // Points Management Methods
+    // =======================
+    //  Points Management
+    // =======================
     async addBonusPoints(username, points, reason) {
         try {
             const cleanUsername = username.trim().toLowerCase();
@@ -182,7 +194,7 @@ class UserStats {
             }
 
             const year = this.currentYear.toString();
-            
+
             if (!user.bonusPoints) user.bonusPoints = [];
             if (!user.yearlyPoints) user.yearlyPoints = {};
 
@@ -217,18 +229,18 @@ class UserStats {
 
             const currentYear = this.currentYear.toString();
             user.yearlyPoints[currentYear] = 0;
-            
+
             if (user.monthlyAchievements?.[currentYear]) {
                 user.monthlyAchievements[currentYear] = {};
             }
 
-            user.bonusPoints = user.bonusPoints.filter(bonus => 
-                bonus.year !== currentYear
+            user.bonusPoints = user.bonusPoints.filter(
+                bonus => bonus.year !== currentYear
             );
 
             this.cache.pendingUpdates.add(cleanUsername);
             await this.saveStats();
-            
+
             if (global.leaderboardCache) {
                 await global.leaderboardCache.updateLeaderboards();
             }
@@ -238,25 +250,31 @@ class UserStats {
         }
     }
 
-    // Leaderboard Methods
+    // =======================
+    //   Leaderboard
+    // =======================
     async getYearlyLeaderboard(year = null, allParticipants = []) {
         try {
             const targetYear = year || this.currentYear.toString();
-            
+
             if (!this.cache.stats.users) return [];
 
             const leaderboard = Object.entries(this.cache.stats.users)
-                .filter(([username]) => allParticipants.includes(username.toLowerCase()))
+                .filter(([username]) =>
+                    allParticipants.includes(username.toLowerCase())
+                )
                 .map(([username, stats]) => ({
                     username,
-                    points: stats.yearlyPoints[targetYear] || 0,
-                    gamesBeaten: stats.yearlyStats?.[targetYear]?.gamesBeaten || 0,
-                    achievementsUnlocked: stats.yearlyStats?.[targetYear]?.totalAchievementsUnlocked || 0,
-                    monthlyParticipations: stats.yearlyStats?.[targetYear]?.monthlyParticipations || 0,
+                    points: stats.yearlyPoints?.[targetYear] || 0,
+                    gamesBeaten:
+                        stats.yearlyStats?.[targetYear]?.gamesBeaten || 0,
+                    achievementsUnlocked:
+                        stats.yearlyStats?.[targetYear]?.totalAchievementsUnlocked ||
+                        0,
+                    monthlyParticipations:
+                        stats.yearlyStats?.[targetYear]?.monthlyParticipations || 0
                 }))
-                .sort((a, b) => 
-                    b.points - a.points || b.gamesBeaten - a.gamesBeaten
-        );
+                .sort((a, b) => b.points - a.points || b.gamesBeaten - a.gamesBeaten);
 
             return leaderboard;
         } catch (error) {
@@ -265,191 +283,220 @@ class UserStats {
         }
     }
 
-    // Achievement Tracking Methods
-async updateMonthlyParticipation(data) {
-    try {
-        const currentYear = this.currentYear.toString();
-        const currentChallenge = await this.database.getCurrentChallenge();
-        const currentMonth = new Date().getMonth();
-        const participants = data.leaderboard.filter(user => 
-            user.completedAchievements > 0
+    // =======================
+    // Achievement Tracking
+    // =======================
+    async updateMonthlyParticipation(data) {
+        try {
+            const currentYear = this.currentYear.toString();
+            const currentChallenge = await this.database.getCurrentChallenge();
+            const currentMonth = new Date().getMonth();
+            const participants = data.leaderboard.filter(
+                user => user.completedAchievements > 0
+            );
+
+            await Promise.all(
+                participants.map(async user => {
+                    const username = user.username.toLowerCase();
+                    if (!this.cache.stats.users[username]) {
+                        await this.initializeUserIfNeeded(username);
+                    }
+
+                    const userStats = this.cache.stats.users[username];
+                    if (!userStats) return;
+
+                    if (!userStats.yearlyStats[currentYear]) {
+                        userStats.yearlyStats[currentYear] = {
+                            monthlyParticipations: 0,
+                            totalAchievementsUnlocked: 0,
+                            gamesBeaten: 0
+                        };
+                    }
+
+                    const monthlyKey = `${currentYear}-${currentMonth}`;
+                    if (!userStats.monthlyAchievements[currentYear]) {
+                        userStats.monthlyAchievements[currentYear] = {};
+                    }
+
+                    // Update achievements if changed
+                    if (
+                        userStats.monthlyAchievements[currentYear][monthlyKey] !==
+                        user.completedAchievements
+                    ) {
+                        userStats.monthlyAchievements[currentYear][monthlyKey] =
+                            user.completedAchievements;
+
+                        userStats.yearlyStats[currentYear].totalAchievementsUnlocked =
+                            Object.values(
+                                userStats.monthlyAchievements[currentYear]
+                            ).reduce((total, count) => total + count, 0);
+                    }
+
+                    // Handle participation
+                    if (!userStats.participationMonths) {
+                        userStats.participationMonths = [];
+                    }
+
+                    const participationKey = `${currentYear}-${currentMonth}`;
+                    if (!userStats.participationMonths.includes(participationKey)) {
+                        userStats.participationMonths.push(participationKey);
+                        userStats.yearlyStats[currentYear].monthlyParticipations++;
+                        await this.addBonusPoints(
+                            username,
+                            1,
+                            `${currentChallenge.gameName} - participation`
+                        );
+                    }
+
+                    await this._handleBeatenAndMastery(
+                        user,
+                        username,
+                        currentYear,
+                        currentMonth,
+                        currentChallenge
+                    );
+
+                    this.cache.pendingUpdates.add(username);
+                })
+            );
+
+            await this.saveStats();
+        } catch (error) {
+            ErrorHandler.logError(error, 'Updating Monthly Participation');
+            throw error;
+        }
+    }
+
+    async _handleBeatenAndMastery(
+        user,
+        username,
+        currentYear,
+        currentMonth,
+        currentChallenge
+    ) {
+        // If you don't need these debug logs, remove them:
+        // console.log('DEBUG: Starting _handleBeatenAndMastery for', username);
+        // console.log('DEBUG: User achievements:', user.achievements?.length ?? 'no achievements');
+        // console.log('DEBUG: hasBeatenGame status:', user.hasBeatenGame);
+
+        const userStats = this.cache.stats.users[username];
+        if (!userStats) return;
+
+        // Handle beaten game
+        const beatAchievement = user.achievements.find(
+            ach =>
+                (ach.Flags & 2) === 2 && // "beat the game" achievement
+                parseInt(ach.DateEarned) > 0 && // earned
+                currentChallenge &&
+                ach.GameID === currentChallenge.gameId // for current challenge
         );
 
-        await Promise.all(participants.map(async user => {
-            const username = user.username.toLowerCase();
-            if (!this.cache.stats.users[username]) {
-                await this.initializeUserIfNeeded(username);
+        // console.log('DEBUG: beatAchievement found:', !!beatAchievement);
+        if (beatAchievement) {
+            const beatenKey = `beaten-${currentYear}-${currentMonth}`;
+            if (!userStats.beatenMonths) {
+                userStats.beatenMonths = [];
             }
 
-            const userStats = this.cache.stats.users[username];
-            if (!userStats) return;
-
-            if (!userStats.yearlyStats[currentYear]) {
-                userStats.yearlyStats[currentYear] = {
-                    monthlyParticipations: 0,
-                    totalAchievementsUnlocked: 0,
-                    gamesBeaten: 0
-                };
+            if (!userStats.beatenMonths.includes(beatenKey)) {
+                userStats.beatenMonths.push(beatenKey);
+                if (!userStats.yearlyStats[currentYear].gamesBeaten) {
+                    userStats.yearlyStats[currentYear].gamesBeaten = 0;
+                }
+                userStats.yearlyStats[currentYear].gamesBeaten += 1;
+                await this.addBonusPoints(
+                    username,
+                    1,
+                    `${currentChallenge.gameName} - beaten`
+                );
+                // console.log(`DEBUG: Awarded point for beating the challenge: ${currentChallenge.gameName}`);
             }
-
-            const monthlyKey = `${currentYear}-${currentMonth}`;
-            if (!userStats.monthlyAchievements[currentYear]) {
-                userStats.monthlyAchievements[currentYear] = {};
-            }
-
-            // Update achievements if changed
-            if (userStats.monthlyAchievements[currentYear][monthlyKey] !== user.completedAchievements) {
-                userStats.monthlyAchievements[currentYear][monthlyKey] = user.completedAchievements;
-                userStats.yearlyStats[currentYear].totalAchievementsUnlocked =
-                    Object.values(userStats.monthlyAchievements[currentYear])
-                        .reduce((total, count) => total + count, 0);
-            }
-
-            // Handle participation
-            if (!userStats.participationMonths) {
-                userStats.participationMonths = [];
-            }
-
-            const participationKey = `${currentYear}-${currentMonth}`;
-            if (!userStats.participationMonths.includes(participationKey)) {
-                userStats.participationMonths.push(participationKey);
-                userStats.yearlyStats[currentYear].monthlyParticipations++;
-                await this.addBonusPoints(username, 1, `${currentChallenge.gameName} - participation`);
-            }
-
-            await this._handleBeatenAndMastery(
-                user, 
-                username, 
-                currentYear, 
-                currentMonth, 
-                currentChallenge
-            );
-
-            this.cache.pendingUpdates.add(username);
-        }));
-
-        await this.saveStats();
-    } catch (error) {
-        ErrorHandler.logError(error, 'Updating Monthly Participation');
-        throw error;
-    }
-}
-
-async _handleBeatenAndMastery(user, username, currentYear, currentMonth, currentChallenge) {
-    console.log('DEBUG: Starting _handleBeatenAndMastery for', username);
-    console.log('DEBUG: User achievements:', user.achievements ? user.achievements.length : 'no achievements');
-    console.log('DEBUG: hasBeatenGame status:', user.hasBeatenGame);
-    
-    const userStats = this.cache.stats.users[username];
-    
-    // Handle beaten game
-    const beatAchievement = user.achievements.find(ach => 
-        (ach.Flags & 2) === 2 && // Check if it's a "beat the game" achievement
-        parseInt(ach.DateEarned) > 0 && // Check if it's been earned
-        currentChallenge &&
-        ach.GameID === currentChallenge.gameId // Check if it's for the current challenge game
-    );
-
-    console.log('DEBUG: beatAchievement found:', !!beatAchievement);
-    if (beatAchievement) {
-        console.log('DEBUG: Found beat achievement:', beatAchievement);
-        const beatenKey = `beaten-${currentYear}-${currentMonth}`;
-        if (!userStats.beatenMonths) {
-            userStats.beatenMonths = [];
         }
 
-        if (!userStats.beatenMonths.includes(beatenKey)) {
-            userStats.beatenMonths.push(beatenKey);
-            if (!userStats.yearlyStats[currentYear].gamesBeaten) {
-                userStats.yearlyStats[currentYear].gamesBeaten = 0;
-            }
-            userStats.yearlyStats[currentYear].gamesBeaten += 1;
-            await this.addBonusPoints(
-                username, 
-                1, 
-                `${currentChallenge.gameName} - beaten`
-            );
-            console.log(`DEBUG: Awarded point for beating the challenge: ${currentChallenge.gameName}`);
-        }
-    }
-
-    // Handle mastery
-    if (user.completedAchievements === user.totalAchievements && 
-        user.totalAchievements > 0) {
-        const masteryKey = `mastery-${currentYear}-${currentMonth}`;
-        if (!userStats.masteryMonths) {
-            userStats.masteryMonths = [];
-        }
-
-        if (!userStats.masteryMonths.includes(masteryKey)) {
-            userStats.masteryMonths.push(masteryKey);
-            await this.addBonusPoints(
-                username, 
-                5, 
-                `${currentChallenge.gameName} - mastery`
-            );
-            console.log(`DEBUG: Awarded points for mastery: ${currentChallenge.gameName}`);
-        }
-    }
-}
-
-    async handleMastery(user, userStats, username, currentYear, currentMonth, currentChallenge) {
-    try {
-        if (!user || !userStats) {
-            console.warn('handleMastery: Missing user or userStats');
-            return;
-        }
-
-        const { completedAchievements, totalAchievements } = user;
-
+        // Handle mastery
         if (
-            typeof completedAchievements === 'number' &&
-            typeof totalAchievements === 'number' &&
-            completedAchievements > 0 &&
-            totalAchievements > 0 &&
-            completedAchievements === totalAchievements
+            user.completedAchievements === user.totalAchievements &&
+            user.totalAchievements > 0
         ) {
             const masteryKey = `mastery-${currentYear}-${currentMonth}`;
-
-            if (!Array.isArray(userStats.masteryMonths)) {
+            if (!userStats.masteryMonths) {
                 userStats.masteryMonths = [];
             }
 
             if (!userStats.masteryMonths.includes(masteryKey)) {
                 userStats.masteryMonths.push(masteryKey);
-
-                try {
-                    await this.addBonusPoints(
-                        username,
-                        5,
-                        `${currentChallenge?.gameName || 'Unknown Game'} - mastery`
-                    );
-                    console.log(
-                        `Mastery points awarded to ${username} for ${
-                            currentChallenge?.gameName || 'Unknown Game'
-                        }`
-                    );
-                } catch (error) {
-                    console.error('Error adding mastery points:', error);
-                }
+                await this.addBonusPoints(
+                    username,
+                    5,
+                    `${currentChallenge.gameName} - mastery`
+                );
+                // console.log(`DEBUG: Awarded points for mastery: ${currentChallenge.gameName}`);
             }
         }
-    } catch (error) {
-        console.error('Error in handleMastery:', error);
     }
-}
 
+    async handleMastery(
+        user,
+        userStats,
+        username,
+        currentYear,
+        currentMonth,
+        currentChallenge
+    ) {
+        try {
+            if (!user || !userStats) return;
 
-    // Utility Methods
+            const { completedAchievements, totalAchievements } = user;
+
+            if (
+                typeof completedAchievements === 'number' &&
+                typeof totalAchievements === 'number' &&
+                completedAchievements > 0 &&
+                totalAchievements > 0 &&
+                completedAchievements === totalAchievements
+            ) {
+                const masteryKey = `mastery-${currentYear}-${currentMonth}`;
+
+                if (!Array.isArray(userStats.masteryMonths)) {
+                    userStats.masteryMonths = [];
+                }
+
+                if (!userStats.masteryMonths.includes(masteryKey)) {
+                    userStats.masteryMonths.push(masteryKey);
+
+                    try {
+                        await this.addBonusPoints(
+                            username,
+                            5,
+                            `${currentChallenge?.gameName || 'Unknown Game'} - mastery`
+                        );
+                        // console.log(
+                        //   `Mastery points awarded to ${username} for ${
+                        //       currentChallenge?.gameName || 'Unknown Game'
+                        //   }`
+                        // );
+                    } catch (error) {
+                        console.error('Error adding mastery points:', error);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error in handleMastery:', error);
+        }
+    }
+
+    // =======================
+    //     Utility
+    // =======================
     async getUserStats(username) {
         try {
             const cleanUsername = username.trim().toLowerCase();
             await this.refreshCache();
-            
+
             if (!this.cache.stats.users[cleanUsername]) {
                 await this.initializeUserIfNeeded(cleanUsername);
             }
-            
+
             return this.cache.stats.users[cleanUsername] || null;
         } catch (error) {
             ErrorHandler.logError(error, 'Getting User Stats');
