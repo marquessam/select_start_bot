@@ -349,33 +349,48 @@ async _handleBeatenAndMastery(user, username, currentYear, currentMonth, current
         currentChallenge &&
         ach.GameID === currentChallenge.gameId // Check if it's for the current challenge game
     );
+
     console.log('DEBUG: beatAchievement found:', !!beatAchievement);
     if (beatAchievement) {
         console.log('DEBUG: Found beat achievement:', beatAchievement);
-    
-   if (beatAchievement) {
-    const beatenKey = `beaten-${currentYear}-${currentMonth}`;
-    if (!userStats.beatenMonths) {
-        userStats.beatenMonths = [];
-    }
-
-    if (!userStats.beatenMonths.includes(beatenKey)) {
-        userStats.beatenMonths.push(beatenKey);
-
-        if (!userStats.yearlyStats[currentYear].gamesBeaten) {
-            userStats.yearlyStats[currentYear].gamesBeaten = 0;
+        const beatenKey = `beaten-${currentYear}-${currentMonth}`;
+        if (!userStats.beatenMonths) {
+            userStats.beatenMonths = [];
         }
-        userStats.yearlyStats[currentYear].gamesBeaten += 1;
 
-        await this.addBonusPoints(
-            username, 
-            1, 
-            `${currentChallenge.gameName} - beaten`
-        );
-
-        console.log(`Awarded point for beating the challenge: ${currentChallenge.gameName}`);
+        if (!userStats.beatenMonths.includes(beatenKey)) {
+            userStats.beatenMonths.push(beatenKey);
+            if (!userStats.yearlyStats[currentYear].gamesBeaten) {
+                userStats.yearlyStats[currentYear].gamesBeaten = 0;
+            }
+            userStats.yearlyStats[currentYear].gamesBeaten += 1;
+            await this.addBonusPoints(
+                username, 
+                1, 
+                `${currentChallenge.gameName} - beaten`
+            );
+            console.log(`DEBUG: Awarded point for beating the challenge: ${currentChallenge.gameName}`);
+        }
     }
-}
+
+    // Handle mastery
+    if (user.completedAchievements === user.totalAchievements && 
+        user.totalAchievements > 0) {
+        const masteryKey = `mastery-${currentYear}-${currentMonth}`;
+        if (!userStats.masteryMonths) {
+            userStats.masteryMonths = [];
+        }
+
+        if (!userStats.masteryMonths.includes(masteryKey)) {
+            userStats.masteryMonths.push(masteryKey);
+            await this.addBonusPoints(
+                username, 
+                5, 
+                `${currentChallenge.gameName} - mastery`
+            );
+            console.log(`DEBUG: Awarded points for mastery: ${currentChallenge.gameName}`);
+        }
+    }
 }
 
     async handleMastery(user, userStats, username, currentYear, currentMonth, currentChallenge) {
