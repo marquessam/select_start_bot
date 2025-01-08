@@ -336,16 +336,23 @@ async updateMonthlyParticipation(data) {
 }
 
 async _handleBeatenAndMastery(user, username, currentYear, currentMonth, currentChallenge) {
+    console.log('DEBUG: Starting _handleBeatenAndMastery for', username);
+    console.log('DEBUG: User achievements:', user.achievements ? user.achievements.length : 'no achievements');
+    console.log('DEBUG: hasBeatenGame status:', user.hasBeatenGame);
+    
     const userStats = this.cache.stats.users[username];
     
     // Handle beaten game
     const beatAchievement = user.achievements.find(ach => 
-    (ach.Flags & 2) === 2 &&
-    parseInt(ach.DateEarned) > 0 &&
-    currentChallenge &&
-    ach.GameID === currentChallenge.gameId
-);
-
+        (ach.Flags & 2) === 2 && // Check if it's a "beat the game" achievement
+        parseInt(ach.DateEarned) > 0 && // Check if it's been earned
+        currentChallenge &&
+        ach.GameID === currentChallenge.gameId // Check if it's for the current challenge game
+    );
+    console.log('DEBUG: beatAchievement found:', !!beatAchievement);
+    if (beatAchievement) {
+        console.log('DEBUG: Found beat achievement:', beatAchievement);
+    
    if (beatAchievement) {
     const beatenKey = `beaten-${currentYear}-${currentMonth}`;
     if (!userStats.beatenMonths) {
