@@ -371,7 +371,7 @@ async _handleBeatenAndMastery(user, username, currentYear, currentMonth, current
 }
 }
     // Handle mastery
-    if (user.completedAchievements === user.totalAchievements && 
+    if (user && user.completedAchievements === user.totalAchievements &&
         user.totalAchievements > 0) {
         const masteryKey = `mastery-${currentYear}-${currentMonth}`;
         if (!userStats.masteryMonths) {
