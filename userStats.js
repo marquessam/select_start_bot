@@ -371,16 +371,21 @@ async _handleBeatenAndMastery(user, username, currentYear, currentMonth, current
 }
 }
 
-    // Handle mastery
-async function handleMastery(user, userStats, username, currentYear, currentMonth, currentChallenge) {
-    if (user) {
+    async handleMastery(user, userStats, username, currentYear, currentMonth, currentChallenge) {
+    try {
+        if (!user || !userStats) {
+            console.warn('handleMastery: Missing user or userStats');
+            return;
+        }
+
         const { completedAchievements, totalAchievements } = user;
 
         if (
             typeof completedAchievements === 'number' &&
             typeof totalAchievements === 'number' &&
-            completedAchievements === totalAchievements &&
-            totalAchievements > 0
+            completedAchievements > 0 &&
+            totalAchievements > 0 &&
+            completedAchievements === totalAchievements
         ) {
             const masteryKey = `mastery-${currentYear}-${currentMonth}`;
 
@@ -397,12 +402,18 @@ async function handleMastery(user, userStats, username, currentYear, currentMont
                         5,
                         `${currentChallenge?.gameName || 'Unknown Game'} - mastery`
                     );
-                    console.log(`Mastery points awarded to ${username} for ${currentChallenge?.gameName || 'Unknown Game'}`);
+                    console.log(
+                        `Mastery points awarded to ${username} for ${
+                            currentChallenge?.gameName || 'Unknown Game'
+                        }`
+                    );
                 } catch (error) {
                     console.error('Error adding mastery points:', error);
                 }
             }
         }
+    } catch (error) {
+        console.error('Error in handleMastery:', error);
     }
 }
 
