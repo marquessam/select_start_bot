@@ -146,14 +146,15 @@ async function fetchLeaderboardData() {
 );
 
                     usersProgress.push({
-                    username,
-                    profileImage: profile.profileImage,
-                    profileUrl: profile.profileUrl,
-                    completedAchievements: completed,
-                    totalAchievements: numAchievements,
-                    completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : "0.00",
-                    hasBeatenGame: hasBeatenGame,
-                    achievements: achievements
+                        username,
+                        profileImage: profile.profileImage,
+                        profileUrl: profile.profileUrl,
+                        completedAchievements: completed,
+                        totalAchievements: numAchievements,
+                        completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : "0.00",
+                        hasBeatenGame: beatAchievement ? true : false,  
+                        achievements: achievements
+});
 });
 
                 console.log(`[RA API] Fetched progress for ${username}: ${completed}/${numAchievements} achievements`);
