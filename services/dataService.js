@@ -51,36 +51,38 @@ class DataService {
     return await database.getArcadeScores();
 }
 
-    static async getUserProgress(username) {
-        try {
-            // First check if user is valid
-            if (!await this.isValidUser(username)) {
-                return {
-                    completionPercentage: 0,
-                    completedAchievements: 0,
-                    totalAchievements: 0,
-                };
-            }
-
-            const leaderboard = await this.getLeaderboard('monthly');
-            const user = leaderboard.find(
-                user => user.username.toLowerCase() === username.toLowerCase()
-            );
-            
-            return user || {
-                completionPercentage: 0,
-                completedAchievements: 0,
-                totalAchievements: 0,
-            };
-        } catch (error) {
-            console.error('[DATA SERVICE] Error getting user progress:', error);
+   static async getUserProgress(username) {
+    try {
+        // First check if user is valid
+        if (!await this.isValidUser(username)) {
             return {
                 completionPercentage: 0,
                 completedAchievements: 0,
                 totalAchievements: 0,
+                hasBeatenGame: false
             };
         }
+        const leaderboard = await this.getLeaderboard('monthly');
+        const user = leaderboard.find(
+            user => user.username.toLowerCase() === username.toLowerCase()
+        );
+        
+        return user || {
+            completionPercentage: 0,
+            completedAchievements: 0,
+            totalAchievements: 0,
+            hasBeatenGame: false
+        };
+    } catch (error) {
+        console.error('[DATA SERVICE] Error getting user progress:', error);
+        return {
+            completionPercentage: 0,
+            completedAchievements: 0,
+            totalAchievements: 0,
+            hasBeatenGame: false
+        };
     }
+}
 
     static async refreshUserList() {
         try {
