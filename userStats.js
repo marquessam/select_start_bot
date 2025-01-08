@@ -370,38 +370,42 @@ async _handleBeatenAndMastery(user, username, currentYear, currentMonth, current
     }
 }
 }
-   // Handle mastery
-if (user) {
-    const { completedAchievements, totalAchievements } = user;
 
-    if (
-        typeof completedAchievements === 'number' &&
-        typeof totalAchievements === 'number' &&
-        completedAchievements === totalAchievements &&
-        totalAchievements > 0
-    ) {
-        const masteryKey = `mastery-${currentYear}-${currentMonth}`;
+    // Handle mastery
+async function handleMastery(user, userStats, username, currentYear, currentMonth, currentChallenge) {
+    if (user) {
+        const { completedAchievements, totalAchievements } = user;
 
-        if (!Array.isArray(userStats.masteryMonths)) {
-            userStats.masteryMonths = [];
-        }
+        if (
+            typeof completedAchievements === 'number' &&
+            typeof totalAchievements === 'number' &&
+            completedAchievements === totalAchievements &&
+            totalAchievements > 0
+        ) {
+            const masteryKey = `mastery-${currentYear}-${currentMonth}`;
 
-        if (!userStats.masteryMonths.includes(masteryKey)) {
-            userStats.masteryMonths.push(masteryKey);
+            if (!Array.isArray(userStats.masteryMonths)) {
+                userStats.masteryMonths = [];
+            }
 
-            try {
-                await this.addBonusPoints(
-                    username,
-                    5,
-                    `${currentChallenge?.gameName || 'Unknown Game'} - mastery`
-                );
-                console.log(`Mastery points awarded to ${username} for ${currentChallenge?.gameName || 'Unknown Game'}`);
-            } catch (error) {
-                console.error('Error adding mastery points:', error);
+            if (!userStats.masteryMonths.includes(masteryKey)) {
+                userStats.masteryMonths.push(masteryKey);
+
+                try {
+                    await this.addBonusPoints(
+                        username,
+                        5,
+                        `${currentChallenge?.gameName || 'Unknown Game'} - mastery`
+                    );
+                    console.log(`Mastery points awarded to ${username} for ${currentChallenge?.gameName || 'Unknown Game'}`);
+                } catch (error) {
+                    console.error('Error adding mastery points:', error);
+                }
             }
         }
     }
 }
+
 
     // Utility Methods
     async getUserStats(username) {
