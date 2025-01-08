@@ -155,7 +155,7 @@ async function fetchLeaderboardData() {
                         hasBeatenGame: beatAchievement ? true : false,  
                         achievements: achievements
 });
-});
+
 
                 console.log(`[RA API] Fetched progress for ${username}: ${completed}/${numAchievements} achievements`);
             } catch (error) {
