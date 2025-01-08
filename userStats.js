@@ -340,10 +340,11 @@ async _handleBeatenAndMastery(user, username, currentYear, currentMonth, current
     
     // Handle beaten game
     const beatAchievement = user.achievements.find(ach => 
-        (ach.Flags & 2) === 2 && // Check if it's a "beat the game" achievement
-        parseInt(ach.DateEarned) > 0 && // Check if it's been earned
-        ach.GameID === currentChallenge.gameId // Check if it's for the current challenge game
-    );
+    (ach.Flags & 2) === 2 &&
+    parseInt(ach.DateEarned) > 0 &&
+    currentChallenge &&
+    ach.GameID === currentChallenge.gameId
+);
 
    if (beatAchievement) {
     const beatenKey = `beaten-${currentYear}-${currentMonth}`;
@@ -353,14 +354,21 @@ async _handleBeatenAndMastery(user, username, currentYear, currentMonth, current
 
     if (!userStats.beatenMonths.includes(beatenKey)) {
         userStats.beatenMonths.push(beatenKey);
-        userStats.yearlyStats[currentYear].gamesBeaten = 
-            (userStats.yearlyStats[currentYear].gamesBeaten || 0) + 1;
+
+        if (!userStats.yearlyStats[currentYear].gamesBeaten) {
+            userStats.yearlyStats[currentYear].gamesBeaten = 0;
+        }
+        userStats.yearlyStats[currentYear].gamesBeaten += 1;
+
         await this.addBonusPoints(
             username, 
             1, 
             `${currentChallenge.gameName} - beaten`
         );
+
+        console.log(`Awarded point for beating the challenge: ${currentChallenge.gameName}`);
     }
+}
 }
     // Handle mastery
     if (user.completedAchievements === user.totalAchievements && 
