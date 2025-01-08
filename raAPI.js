@@ -150,7 +150,7 @@ async function fetchLeaderboardData() {
                 // Check for beaten achievement
                const hasBeatenGame = achievements.some(ach => {
     // Check specifically for "Win/Beat Game" type achievements
-    const isWinCondition = (ach.Flags & 3) === 3;  // This specifically checks for beat/win achievements
+    const isWinCondition = (ach.Flags & 2) === 2;
     const isEarned = parseInt(ach.DateEarned) > 0;
     return isWinCondition && isEarned;
 });
