@@ -1,21 +1,22 @@
+// dataService.js
 const database = require('../database');
 const raAPI = require('../raAPI');
 
 class DataService {
     static async getUserStats(username) {
         const stats = await database.getUserStats();
-        const userStats = stats.users[username.toLowerCase()] || {
+        // Fall back to a default object if user isn't found
+        return stats.users[username.toLowerCase()] || {
             yearlyPoints: 0,
             gamesBeaten: 0,
             achievementsUnlocked: 0,
             monthlyParticipations: 0,
-            bonusPoints: 0,
+            bonusPoints: 0
         };
-        return userStats;
     }
 
     static async getValidUsers() {
-        return await database.getValidUsers();
+        return database.getValidUsers();
     }
 
     static async isValidUser(username) {
@@ -34,9 +35,11 @@ class DataService {
                 return global.leaderboardCache.getMonthlyLeaderboard() || [];
             } else if (type === 'yearly') {
                 const validUsers = await this.getValidUsers();
-                return global.leaderboardCache.getYearlyLeaderboard(null, validUsers) || [];
+                return (
+                    global.leaderboardCache.getYearlyLeaderboard(null, validUsers) || []
+                );
             }
-            throw new Error('Invalid leaderboard type');
+            throw new Error(`Invalid leaderboard type: "${type}"`);
         } catch (error) {
             console.error('[DATA SERVICE] Error getting leaderboard:', error);
             return [];
@@ -44,17 +47,42 @@ class DataService {
     }
 
     static async getCurrentChallenge() {
-        return await database.getCurrentChallenge();
+        return database.getCurrentChallenge();
     }
 
     static async getArcadeScores() {
-    return await database.getArcadeScores();
-}
+        return database.getArcadeScores();
+    }
 
-   static async getUserProgress(username) {
-    try {
-        // First check if user is valid
-        if (!await this.isValidUser(username)) {
+    static async getUserProgress(username) {
+        try {
+            // Check if user is valid first
+            if (!(await this.isValidUser(username))) {
+                return {
+                    completionPercentage: 0,
+                    completedAchievements: 0,
+                    totalAchievements: 0,
+                    hasBeatenGame: false
+                };
+            }
+
+            // Attempt to find user in monthly leaderboard
+            const leaderboard = await this.getLeaderboard('monthly');
+            const userEntry = leaderboard.find(
+                u => u.username.toLowerCase() === username.toLowerCase()
+            );
+
+            // If not found, return default progress
+            return (
+                userEntry || {
+                    completionPercentage: 0,
+                    completedAchievements: 0,
+                    totalAchievements: 0,
+                    hasBeatenGame: false
+                }
+            );
+        } catch (error) {
+            console.error('[DATA SERVICE] Error getting user progress:', error);
             return {
                 completionPercentage: 0,
                 completedAchievements: 0,
@@ -62,27 +90,7 @@ class DataService {
                 hasBeatenGame: false
             };
         }
-        const leaderboard = await this.getLeaderboard('monthly');
-        const user = leaderboard.find(
-            user => user.username.toLowerCase() === username.toLowerCase()
-        );
-        
-        return user || {
-            completionPercentage: 0,
-            completedAchievements: 0,
-            totalAchievements: 0,
-            hasBeatenGame: false
-        };
-    } catch (error) {
-        console.error('[DATA SERVICE] Error getting user progress:', error);
-        return {
-            completionPercentage: 0,
-            completedAchievements: 0,
-            totalAchievements: 0,
-            hasBeatenGame: false
-        };
     }
-}
 
     static async refreshUserList() {
         try {
@@ -93,10 +101,12 @@ class DataService {
 
             await global.leaderboardCache.updateValidUsers();
             await global.leaderboardCache.updateLeaderboards();
-            
+
             // Get fresh list of valid users from database
             const validUsers = await this.getValidUsers();
-            console.log(`User list refreshed successfully. ${validUsers.length} valid users found.`);
+            console.log(
+                `User list refreshed successfully. ${validUsers.length} valid users found.`
+            );
         } catch (error) {
             console.error('[DATA SERVICE] Error refreshing user list:', error);
         }
@@ -105,7 +115,7 @@ class DataService {
     static async getRAProfileImage(username) {
         try {
             // Only fetch profile image for valid users
-            if (!await this.isValidUser(username)) {
+            if (!(await this.isValidUser(username))) {
                 return null;
             }
             const profile = await raAPI.fetchUserProfile(username);
@@ -122,13 +132,21 @@ class DataService {
             if (!isValid) {
                 return {
                     isValid: false,
-                    error: `User "${username}" is not a registered participant. Users must post their RetroAchievements profile URL in #retroachievements`
+                    error: `User "${username}" is not a registered participant. ` +
+                        'Users must post their RetroAchievements profile URL in #retroachievements'
                 };
             }
+
+            // Build user info
+            const [userStats, userProgress] = await Promise.all([
+                this.getUserStats(username),
+                this.getUserProgress(username)
+            ]);
+
             return {
                 isValid: true,
-                userStats: await this.getUserStats(username),
-                userProgress: await this.getUserProgress(username)
+                userStats,
+                userProgress
             };
         } catch (error) {
             console.error('[DATA SERVICE] Error validating user:', error);
