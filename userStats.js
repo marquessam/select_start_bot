@@ -118,7 +118,7 @@ class UserStats {
             this.cache.stats.users[cleanUsername].yearlyStats[currentYear] = {
                 monthlyParticipations: 0,
                 totalAchievementsUnlocked: 0,
-                totalGamesCompleted: 0,
+                gamesBeaten: 0,
                 hardcoreCompletions: 0,
                 softcoreCompletions: 0,
                 perfectMonths: 0,
@@ -250,7 +250,7 @@ class UserStats {
                 .map(([username, stats]) => ({
                     username,
                     points: stats.yearlyPoints[targetYear] || 0,
-                    gamesCompleted: stats.yearlyStats?.[targetYear]?.totalGamesCompleted || 0,
+                    gamesBeaten: stats.yearlyStats?.[targetYear]?.gamesBeaten || 0,
                     achievementsUnlocked: stats.yearlyStats?.[targetYear]?.totalAchievementsUnlocked || 0,
                     monthlyParticipations: stats.yearlyStats?.[targetYear]?.monthlyParticipations || 0,
                 }))
@@ -266,7 +266,6 @@ class UserStats {
     }
 
     // Achievement Tracking Methods
-   // Achievement Tracking Methods
 async updateMonthlyParticipation(data) {
     try {
         const currentYear = this.currentYear.toString();
@@ -346,22 +345,23 @@ async _handleBeatenAndMastery(user, username, currentYear, currentMonth, current
         ach.GameID === currentChallenge.gameId // Check if it's for the current challenge game
     );
 
-    if (beatAchievement) {
-        const beatenKey = `beaten-${currentYear}-${currentMonth}`;
-        if (!userStats.beatenMonths) {
-            userStats.beatenMonths = [];
-        }
-
-        if (!userStats.beatenMonths.includes(beatenKey)) {
-            userStats.beatenMonths.push(beatenKey);
-            await this.addBonusPoints(
-                username, 
-                1, 
-                `${currentChallenge.gameName} - beaten`
-            );
-        }
+   if (beatAchievement) {
+    const beatenKey = `beaten-${currentYear}-${currentMonth}`;
+    if (!userStats.beatenMonths) {
+        userStats.beatenMonths = [];
     }
 
+    if (!userStats.beatenMonths.includes(beatenKey)) {
+        userStats.beatenMonths.push(beatenKey);
+        userStats.yearlyStats[currentYear].gamesBeaten = 
+            (userStats.yearlyStats[currentYear].gamesBeaten || 0) + 1;
+        await this.addBonusPoints(
+            username, 
+            1, 
+            `${currentChallenge.gameName} - beaten`
+        );
+    }
+}
     // Handle mastery
     if (user.completedAchievements === user.totalAchievements && 
         user.totalAchievements > 0) {
