@@ -148,16 +148,19 @@ async function fetchLeaderboardData() {
 })));
                 
                 // Check for beaten achievement
-                const hasBeatenGame = achievements.some(ach => {
-    const isBeatFlag = (ach.Flags & 2) === 2;
+               const hasBeatenGame = achievements.some(ach => {
+    // Check specifically for "Win/Beat Game" type achievements
+    const isWinCondition = (ach.Flags & 3) === 3;  // This specifically checks for beat/win achievements
     const isEarned = parseInt(ach.DateEarned) > 0;
-    console.log(`DEBUG Achievement "${ach.Title}":`, {
-        flags: ach.Flags,
-        isBeatFlag,
-        isEarned,
-        dateEarned: ach.DateEarned
-    });
-    return isBeatFlag && isEarned;
+    return isWinCondition && isEarned;
+});
+
+console.log(`DEBUG ${username} Beat check:`, {
+    hasBeatenGame,
+    winAchievements: achievements.filter(ach => (ach.Flags & 3) === 3).map(ach => ({
+        title: ach.Title,
+        earned: !!parseInt(ach.DateEarned)
+    }))
 });
                 
                     usersProgress.push({
