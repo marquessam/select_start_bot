@@ -1,6 +1,8 @@
 // userStats.js
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const ErrorHandler = require('./utils/errorHandler');
+const path = require('path');
+const raGameRules = require(path.join(__dirname, 'raGameRules.json'));
 
 class UserStats {
     constructor(database) {
@@ -375,38 +377,82 @@ class UserStats {
         const userStats = this.cache.stats.users[username];
         if (!userStats) return;
 
-        // -----------------------------
-        // Handle "Beaten" Achievement
-        // -----------------------------
-        const beatAchievement = user.achievements.find(
-            ach =>
-                (ach.Flags & 2) === 2 && // "beat the game" bit
-                parseInt(ach.DateEarned) > 0 && // earned
-                currentChallenge &&
-                ach.GameID === currentChallenge.gameId
-        );
+      // -----------------------------
+    // Handle "Beaten" Achievement
+  // -----------------------------
+// First, see if we have special rules for this game ID
+const ruleSet = raGameRules[currentChallenge.gameId];
 
-        if (beatAchievement) {
-            const beatenKey = `beaten-${currentYear}-${currentMonth}`;
-            if (!userStats.beatenMonths) {
-                userStats.beatenMonths = [];
-            }
+if (ruleSet) {
+    // 1) Check progression achievements
+    const hasAllProgression = ruleSet.progression.every((achId) =>
+        user.achievements.some(
+            (a) => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
+        )
+    );
 
-            if (!userStats.beatenMonths.includes(beatenKey)) {
-                userStats.beatenMonths.push(beatenKey);
+    // 2) Check win condition achievements
+    const hasAnyWinCondition = ruleSet.winCondition.some((achId) =>
+        user.achievements.some(
+            (a) => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
+        )
+    );
 
-                if (!userStats.yearlyStats[currentYear].gamesBeaten) {
-                    userStats.yearlyStats[currentYear].gamesBeaten = 0;
-                }
-                userStats.yearlyStats[currentYear].gamesBeaten += 1;
-
-                await this.addBonusPoints(
-                    username,
-                    1,
-                    `${currentChallenge.gameName} - beaten`
-                );
-            }
+    if (hasAllProgression && hasAnyWinCondition) {
+        // Mark "beaten" if not already done this month
+        const beatenKey = `beaten-${currentYear}-${currentMonth}`;
+        if (!userStats.beatenMonths) {
+            userStats.beatenMonths = [];
         }
+
+        if (!userStats.beatenMonths.includes(beatenKey)) {
+            userStats.beatenMonths.push(beatenKey);
+
+            if (!userStats.yearlyStats[currentYear].gamesBeaten) {
+                userStats.yearlyStats[currentYear].gamesBeaten = 0;
+            }
+            userStats.yearlyStats[currentYear].gamesBeaten += 1;
+
+            await this.addBonusPoints(
+                username,
+                1,
+                `${currentChallenge.gameName} - beaten`
+            );
+        }
+    }
+} else {
+    // Fallback: If no special rules, do your old bit-check logic
+    const beatAchievement = user.achievements.find(
+        (ach) =>
+            (ach.Flags & 2) === 2 && // "beat the game" bit
+            parseInt(ach.DateEarned) > 0 && // earned
+            currentChallenge &&
+            ach.GameID === currentChallenge.gameId
+    );
+
+    if (beatAchievement) {
+        const beatenKey = `beaten-${currentYear}-${currentMonth}`;
+        if (!userStats.beatenMonths) {
+            userStats.beatenMonths = [];
+        }
+
+        if (!userStats.beatenMonths.includes(beatenKey)) {
+            userStats.beatenMonths.push(beatenKey);
+
+            if (!userStats.yearlyStats[currentYear].gamesBeaten) {
+                userStats.yearlyStats[currentYear].gamesBeaten = 0;
+            }
+            userStats.yearlyStats[currentYear].gamesBeaten += 1;
+
+            await this.addBonusPoints(
+                username,
+                1,
+                `${currentChallenge.gameName} - beaten`
+            );
+        }
+    }
+}
+
 
         // -----------------------------
         // Handle "Mastery"
