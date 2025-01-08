@@ -255,8 +255,8 @@ class UserStats {
                     monthlyParticipations: stats.yearlyStats?.[targetYear]?.monthlyParticipations || 0,
                 }))
                 .sort((a, b) => 
-                    b.points - a.points || b.gamesCompleted - a.gamesCompleted
-                );
+                    b.points - a.points || b.gamesBeaten - a.gamesBeaten
+        );
 
             return leaderboard;
         } catch (error) {
@@ -288,7 +288,7 @@ async updateMonthlyParticipation(data) {
                 userStats.yearlyStats[currentYear] = {
                     monthlyParticipations: 0,
                     totalAchievementsUnlocked: 0,
-                    totalGamesCompleted: 0
+                    gamesBeaten: 0
                 };
             }
 
