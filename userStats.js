@@ -4,12 +4,12 @@ const ErrorHandler = require('./utils/errorHandler');
 class UserStats {
     constructor(database) {
         this.database = database;
-        this.cache = {
+       this.cache = {
             stats: {
                 users: {},
                 yearlyStats: {},
                 monthlyStats: {},
-                gameCompletions: {},
+                gamesBeaten: {},  // Changed from gameCompletions
                 achievementStats: {},
                 communityRecords: {}
             },
