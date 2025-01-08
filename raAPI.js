@@ -152,7 +152,7 @@ async function fetchLeaderboardData() {
                         completedAchievements: completed,
                         totalAchievements: numAchievements,
                         completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : "0.00",
-                        hasBeatenGame: hasBeatenGame
+                        hasBeatenGame: hasBeatenGame,
                         achievements: achievements
 });
 
