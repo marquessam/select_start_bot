@@ -29,11 +29,11 @@ class UserStats {
         try {
             const dbStats = await this.database.getUserStats();
             
-            this.cache.stats = {
+           this.cache.stats = {
                 users: dbStats.users || {},
                 yearlyStats: dbStats.yearlyStats || {},
                 monthlyStats: dbStats.monthlyStats || {},
-                gameCompletions: dbStats.gameCompletions || {},
+                gamesBeaten: dbStats.gamesBeaten || dbStats.gameCompletions || {},  // Migration handling
                 achievementStats: dbStats.achievementStats || {},
                 communityRecords: dbStats.communityRecords || {}
             };
