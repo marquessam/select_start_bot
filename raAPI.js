@@ -144,7 +144,8 @@ async function fetchLeaderboardData() {
                 const hasBeatenGame = achievements.some(ach => 
                 (ach.Flags & 2) === 2 && parseInt(ach.DateEarned) > 0
 );
-
+console.log(`DEBUG: ${username} hasBeatenGame:`, hasBeatenGame);
+                
                     usersProgress.push({
                         username,
                         profileImage: profile.profileImage,
