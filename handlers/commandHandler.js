@@ -5,43 +5,54 @@ const ErrorHandler = require('../utils/errorHandler');
 
 class CommandHandler {
     constructor() {
+        // Separate collections for normal and admin commands
         this.commands = new Collection();
         this.adminCommands = new Collection();
+
+        // Cooldown map: key = `${userId}-${commandName}`, value = timestamp when cooldown ends
         this.cooldowns = new Map();
+
+        // Configuration
         this.config = {
-            defaultCooldown: 3000,  // 3 seconds
-            adminCooldown: 1000,    // 1 second
+            defaultCooldown: 3000,   // 3 seconds for normal commands
+            adminCooldown: 1000,     // 1 second for admin commands
             commandsPath: path.join(__dirname, '..', 'commands'),
             adminCommandsPath: path.join(__dirname, '..', 'commands', 'admin')
         };
     }
 
+    /**
+     * Load both normal and admin commands, then inject dependencies.
+     */
     async loadCommands(dependencies) {
         try {
-            // Clear existing commands
+            // Clear existing commands in both collections
             this.commands.clear();
             this.adminCommands.clear();
 
-            // Load regular commands
+            // Load normal commands
             await this._loadCommandsFromDirectory(
-                this.config.commandsPath, 
+                this.config.commandsPath,
                 this.commands,
-                false
+                false // isAdmin
             );
 
-            // Load admin commands
+            // Load admin commands (if directory exists)
             if (fs.existsSync(this.config.adminCommandsPath)) {
                 await this._loadCommandsFromDirectory(
                     this.config.adminCommandsPath,
                     this.adminCommands,
-                    true
+                    true // isAdmin
                 );
             }
 
-            // Inject dependencies into all commands
+            // Inject dependencies
             this._injectDependencies(dependencies);
 
-            console.log(`Loaded ${this.commands.size} regular commands and ${this.adminCommands.size} admin commands`);
+            console.log(
+                `CommandHandler: Loaded ${this.commands.size} normal commands and ` +
+                `${this.adminCommands.size} admin commands.`
+            );
             return true;
         } catch (error) {
             ErrorHandler.logError(error, 'Command Loading');
@@ -49,137 +60,191 @@ class CommandHandler {
         }
     }
 
-    async _loadCommandsFromDirectory(directoryPath, collection, isAdmin = false) {
-        const commandFiles = fs.readdirSync(directoryPath)
-            .filter(file => file.endsWith('.js'));
+    /**
+     * Loads .js files from a directory into either the normal commands
+     * collection or the admin commands collection.
+     */
+    async _loadCommandsFromDirectory(dirPath, collection, isAdmin = false) {
+        const commandFiles = fs
+            .readdirSync(dirPath)
+            .filter((file) => file.endsWith('.js'));
 
         for (const file of commandFiles) {
+            const filePath = path.join(dirPath, file);
             try {
-                const filePath = path.join(directoryPath, file);
-                delete require.cache[require.resolve(filePath)]; // Clear cache
+                // Clear the require cache so reloading is possible
+                delete require.cache[require.resolve(filePath)];
+
                 const command = require(filePath);
-                
                 if (command.name) {
+                    // Convert command name to lowercase for consistency
+                    const cmdName = command.name.toLowerCase();
+
+                    // Mark if it's an admin command
                     command.isAdmin = isAdmin;
-                    collection.set(command.name, command);
+
+                    // Store in the appropriate collection
+                    collection.set(cmdName, command);
                 }
-            } catch (error) {
-                ErrorHandler.logError(error, `Loading command ${file}`);
+            } catch (err) {
+                ErrorHandler.logError(err, `Loading command file: ${file}`);
             }
         }
     }
 
+    /**
+     * Inject shared dependencies into all commands (both normal & admin).
+     */
     _injectDependencies(dependencies) {
-        // Inject dependencies into regular commands
-        for (const [name, command] of this.commands) {
+        for (const command of this.commands.values()) {
             command.dependencies = dependencies;
         }
-
-        // Inject dependencies into admin commands
-        for (const [name, command] of this.adminCommands) {
+        for (const command of this.adminCommands.values()) {
             command.dependencies = dependencies;
         }
     }
 
+    /**
+     * Check if the message author has admin permission via either
+     * the Administrator bit or a special ADMIN_ROLE_ID.
+     */
     hasAdminPermission(message) {
-        return message.member && (
-            message.member.permissions.has(PermissionFlagsBits.Administrator) ||
-            message.member.roles.cache.has(process.env.ADMIN_ROLE_ID)
+        const member = message.member;
+        if (!member) return false;
+
+        return (
+            member.permissions.has(PermissionFlagsBits.Administrator) ||
+            member.roles.cache.has(process.env.ADMIN_ROLE_ID)
         );
     }
 
-    isOnCooldown(userId, commandName) {
+    /**
+     * Checks if the user is on cooldown for a given command.
+     * If not, sets a new cooldown.
+     */
+    isOnCooldown(userId, commandName, isAdmin) {
         const now = Date.now();
         const cooldownKey = `${userId}-${commandName}`;
-        const cooldownTime = this.cooldowns.get(cooldownKey);
 
-        if (cooldownTime && now < cooldownTime) {
+        const cooldownEnd = this.cooldowns.get(cooldownKey);
+        if (cooldownEnd && now < cooldownEnd) {
+            // Still on cooldown
             return true;
         }
 
-        // Set new cooldown
-        const command = this.commands.get(commandName) || this.adminCommands.get(commandName);
-        const cooldownDuration = command?.isAdmin ? 
-            this.config.adminCooldown : 
-            this.config.defaultCooldown;
+        // Determine the cooldown duration
+        const duration = isAdmin
+            ? this.config.adminCooldown
+            : this.config.defaultCooldown;
 
-        this.cooldowns.set(cooldownKey, now + cooldownDuration);
-        
-        // Clean up expired cooldowns periodically
-        if (Math.random() < 0.1) { // 10% chance to clean up on each command
+        // Set the new cooldown expiration time
+        this.cooldowns.set(cooldownKey, now + duration);
+
+        // Occasionally clean up old cooldowns
+        if (Math.random() < 0.1) {
             this._cleanupCooldowns();
         }
 
         return false;
     }
 
+    /**
+     * Cleanup expired entries in the cooldown map.
+     */
     _cleanupCooldowns() {
         const now = Date.now();
-        for (const [key, time] of this.cooldowns) {
-            if (now >= time) {
+        for (const [key, expireTime] of this.cooldowns.entries()) {
+            if (now >= expireTime) {
                 this.cooldowns.delete(key);
             }
         }
     }
 
+    /**
+     * Main handler for a message. Checks if it starts with "!", then finds
+     * the command in either normal or admin collections, handles perms & cooldowns.
+     */
     async handleCommand(message, services) {
+        // Only handle messages starting with '!'
         if (!message.content.startsWith('!')) return;
 
-        const args = message.content.slice(1).split(/ +/);
+        // Parse command name and args
+        const args = message.content.slice(1).trim().split(/\s+/);
         const commandName = args.shift().toLowerCase();
-        
-        // Check regular commands first
+
+        // Check normal commands first
         let command = this.commands.get(commandName);
         let isAdminCommand = false;
 
-        // If not found in regular commands, check admin commands
+        // If not found, check admin
         if (!command) {
             command = this.adminCommands.get(commandName);
-            isAdminCommand = true;
+            isAdminCommand = !!command;
         }
 
+        // If no command found at all, bail
         if (!command) return;
 
         try {
-            // Check permissions for admin commands
+            // If it's admin, verify user has permission
             if (isAdminCommand && !this.hasAdminPermission(message)) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
+                await message.channel.send(
+                    '```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```'
+                );
                 return;
             }
 
             // Check cooldown
-            if (this.isOnCooldown(message.author.id, commandName)) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Command on cooldown\n[Ready for input]█\x1b[0m```');
+            if (this.isOnCooldown(
+                message.author.id,
+                commandName,
+                isAdminCommand
+            )) {
+                await message.channel.send(
+                    '```ansi\n\x1b[32m[ERROR] Command on cooldown\n[Ready for input]█\x1b[0m```'
+                );
                 return;
             }
 
-            // Execute command
+            // Execute the command
             await command.execute(message, args, services);
         } catch (error) {
             ErrorHandler.logError(error, `Command Execution: ${commandName}`);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Command execution failed\n[Ready for input]█\x1b[0m```');
+            await message.channel.send(
+                '```ansi\n\x1b[32m[ERROR] Command execution failed\n[Ready for input]█\x1b[0m```'
+            );
         }
     }
 
-    // Utility method for command reloading
+    /**
+     * Utility to reload a single command by name, searching both
+     * normal and admin directories.
+     */
     async reloadCommand(commandName) {
         try {
-            // Check regular commands
-            const regularPath = path.join(this.config.commandsPath, `${commandName}.js`);
-            const adminPath = path.join(this.config.adminCommandsPath, `${commandName}.js`);
+            const nameLower = commandName.toLowerCase();
 
+            // Remove from normal or admin collections if exists
+            this.commands.delete(nameLower);
+            this.adminCommands.delete(nameLower);
+
+            // Attempt reload from normal commands
+            const regularPath = path.join(this.config.commandsPath, `${nameLower}.js`);
             if (fs.existsSync(regularPath)) {
                 delete require.cache[require.resolve(regularPath)];
-                const command = require(regularPath);
-                this.commands.set(commandName, command);
+                const cmd = require(regularPath);
+                cmd.isAdmin = false;
+                this.commands.set(nameLower, cmd);
                 return true;
             }
 
+            // Attempt reload from admin commands
+            const adminPath = path.join(this.config.adminCommandsPath, `${nameLower}.js`);
             if (fs.existsSync(adminPath)) {
                 delete require.cache[require.resolve(adminPath)];
-                const command = require(adminPath);
-                command.isAdmin = true;
-                this.adminCommands.set(commandName, command);
+                const cmd = require(adminPath);
+                cmd.isAdmin = true;
+                this.adminCommands.set(nameLower, cmd);
                 return true;
             }
 
