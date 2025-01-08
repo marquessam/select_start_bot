@@ -140,11 +140,25 @@ async function fetchLeaderboardData() {
                 const numAchievements = achievements.length;
                 const completed = achievements.filter(ach => parseInt(ach.DateEarned) > 0).length;
 
+                console.log(`DEBUG ${username} Achievement Flags:`, achievements.map(ach => ({
+    title: ach.Title,
+    flags: ach.Flags,
+    earned: !!parseInt(ach.DateEarned),
+    isBeatFlag: (ach.Flags & 2) === 2
+})));
+                
                 // Check for beaten achievement
-                const hasBeatenGame = achievements.some(ach => 
-                (ach.Flags & 2) === 2 && parseInt(ach.DateEarned) > 0
-);
-console.log(`DEBUG: ${username} hasBeatenGame:`, hasBeatenGame);
+                const hasBeatenGame = achievements.some(ach => {
+    const isBeatFlag = (ach.Flags & 2) === 2;
+    const isEarned = parseInt(ach.DateEarned) > 0;
+    console.log(`DEBUG Achievement "${ach.Title}":`, {
+        flags: ach.Flags,
+        isBeatFlag,
+        isEarned,
+        dateEarned: ach.DateEarned
+    });
+    return isBeatFlag && isEarned;
+});
                 
                     usersProgress.push({
                         username,
