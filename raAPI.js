@@ -140,21 +140,21 @@ async function fetchLeaderboardData() {
                 const numAchievements = achievements.length;
                 const completed = achievements.filter(ach => parseInt(ach.DateEarned) > 0).length;
 
-                // Check for completion achievement
-                const hasCompletion = achievements.some(ach => 
-                    (ach.Flags & 3) === 3 && parseInt(ach.DateEarned) > 0
-                );
+                // Check for beaten achievement
+                const hasBeatenGame = achievements.some(ach => 
+                (ach.Flags & 2) === 2 && parseInt(ach.DateEarned) > 0
+);
 
-                usersProgress.push({
+                    usersProgress.push({
                     username,
                     profileImage: profile.profileImage,
                     profileUrl: profile.profileUrl,
                     completedAchievements: completed,
                     totalAchievements: numAchievements,
                     completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : "0.00",
-                    hasCompletion: hasCompletion,
+                    hasBeatenGame: hasBeatenGame,
                     achievements: achievements
-                });
+});
 
                 console.log(`[RA API] Fetched progress for ${username}: ${completed}/${numAchievements} achievements`);
             } catch (error) {
