@@ -105,8 +105,10 @@ async function fetchUserProfile(username) {
 async function fetchLeaderboardData() {
     try {
         // Check if cached data is still valid
-        if (cache.leaderboardData && 
-            (Date.now() - cache.lastLeaderboardUpdate < cache.leaderboardTTL)) {
+        if (
+            cache.leaderboardData &&
+            Date.now() - cache.lastLeaderboardUpdate < cache.leaderboardTTL
+        ) {
             console.log('[RA API] Returning cached leaderboard data');
             return cache.leaderboardData;
         }
@@ -140,42 +142,31 @@ async function fetchLeaderboardData() {
                 const numAchievements = achievements.length;
                 const completed = achievements.filter(ach => parseInt(ach.DateEarned) > 0).length;
 
-                console.log(`DEBUG ${username} Achievement Flags:`, achievements.map(ach => ({
-    title: ach.Title,
-    flags: ach.Flags,
-    earned: !!parseInt(ach.DateEarned),
-    isBeatFlag: (ach.Flags & 2) === 2
-})));
-                
                 // Check for beaten achievement
-               const hasBeatenGame = achievements.some(ach => {
-    // Check specifically for "Win/Beat Game" type achievements
-    const isWinCondition = (ach.Flags & 2) === 2;
-    const isEarned = parseInt(ach.DateEarned) > 0;
-    return isWinCondition && isEarned;
-});
+                const hasBeatenGame = achievements.some(ach => {
+                    const isWinCondition = (ach.Flags & 2) === 2;
+                    const isEarned = parseInt(ach.DateEarned) > 0;
+                    return isWinCondition && isEarned;
+                });
 
-console.log(`DEBUG ${username} Beat check:`, {
-    hasBeatenGame,
-    winAchievements: achievements.filter(ach => (ach.Flags & 3) === 3).map(ach => ({
-        title: ach.Title,
-        earned: !!parseInt(ach.DateEarned)
-    }))
-});
-                
-                    usersProgress.push({
-                        username,
-                        profileImage: profile.profileImage,
-                        profileUrl: profile.profileUrl,
-                        completedAchievements: completed,
-                        totalAchievements: numAchievements,
-                        completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : "0.00",
-                        hasBeatenGame: hasBeatenGame ? true : false,
-                        achievements: achievements
-});
+                usersProgress.push({
+                    username,
+                    profileImage: profile.profileImage,
+                    profileUrl: profile.profileUrl,
+                    completedAchievements: completed,
+                    totalAchievements: numAchievements,
+                    completionPercentage:
+                        numAchievements > 0
+                            ? ((completed / numAchievements) * 100).toFixed(2)
+                            : '0.00',
+                    hasBeatenGame: !!hasBeatenGame,
+                    achievements: achievements
+                });
 
-
-                console.log(`[RA API] Fetched progress for ${username}: ${completed}/${numAchievements} achievements`);
+                console.log(
+                    `[RA API] Fetched progress for ${username}: ` +
+                    `${completed}/${numAchievements} achievements`
+                );
             } catch (error) {
                 console.error(`[RA API] Error fetching data for ${username}:`, error);
                 usersProgress.push({
@@ -192,7 +183,9 @@ console.log(`DEBUG ${username} Beat check:`, {
         }
 
         const leaderboardData = {
-            leaderboard: usersProgress.sort((a, b) => b.completionPercentage - a.completionPercentage),
+            leaderboard: usersProgress.sort(
+                (a, b) => b.completionPercentage - a.completionPercentage
+            ),
             gameInfo: challenge,
             lastUpdated: new Date().toISOString()
         };
@@ -201,7 +194,9 @@ console.log(`DEBUG ${username} Beat check:`, {
         cache.leaderboardData = leaderboardData;
         cache.lastLeaderboardUpdate = Date.now();
 
-        console.log(`[RA API] Leaderboard data updated with ${usersProgress.length} users`);
+        console.log(
+            `[RA API] Leaderboard data updated with ${usersProgress.length} users`
+        );
         return leaderboardData;
     } catch (error) {
         console.error('[RA API] Error fetching leaderboard data:', error);
@@ -211,5 +206,5 @@ console.log(`DEBUG ${username} Beat check:`, {
 
 module.exports = {
     fetchUserProfile,
-    fetchLeaderboardData,
+    fetchLeaderboardData
 };
