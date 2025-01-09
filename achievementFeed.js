@@ -82,15 +82,17 @@ class AchievementFeed {
     }
 
     async checkNewAchievements() {
-        // Ensure we still have a valid channel
-        if (!this.channel) {
-            console.error('AchievementFeed: No valid channel to post in');
-            return;
-        }
+    // Ensure we still have a valid channel
+    if (!this.channel) {
+        console.error('AchievementFeed: No valid channel to post in');
+        return;
+    }
 
+    try {
         const data = await fetchLeaderboardData();
         if (!data?.leaderboard) return;
 
+        // Process each user's achievements with built-in delay to avoid race conditions
         for (const user of data.leaderboard) {
             if (!user.achievements) continue;
 
@@ -98,14 +100,19 @@ class AchievementFeed {
             const previouslyEarned = this.lastAchievements.get(userKey) || new Set();
             const currentEarned = new Set();
 
+            // Track current achievements and check for new ones
             for (const ach of user.achievements) {
-                if (parseInt(ach.DateEarned, 10) > 0) {
+                const earnedDate = parseInt(ach.DateEarned, 10);
+                
+                // If achievement is earned
+                if (earnedDate > 0) {
                     currentEarned.add(ach.ID);
 
-                    // If it's newly earned
+                    // Check if it's newly earned since our last check
                     if (!previouslyEarned.has(ach.ID)) {
                         try {
-                            // Attempt to announce, subject to rate limiting
+                            // Add small delay between announcements to prevent rate limiting
+                            await new Promise(resolve => setTimeout(resolve, 1000));
                             await this.announceAchievement(user.username, ach);
                         } catch (err) {
                             console.error(
@@ -120,7 +127,10 @@ class AchievementFeed {
             // Update stored achievements for this user
             this.lastAchievements.set(userKey, currentEarned);
         }
+    } catch (error) {
+        console.error('AchievementFeed: Error checking achievements:', error);
     }
+}
 
     /**
      * Main announcement method, includes rate-limiting check.
