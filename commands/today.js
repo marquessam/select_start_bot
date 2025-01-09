@@ -1,10 +1,30 @@
 // commands/today.js
 const TerminalEmbed = require('../utils/embedBuilder');
-const ErrorHandler = require('../utils/errorHandler');
 
 module.exports = {
     name: 'today',
     description: 'Shows games released on this day in gaming history',
+    
+    // Helper function to split long text into chunks
+    splitIntoChunks(text, maxLength) {
+        const chunks = [];
+        const lines = text.split('\n');
+        let currentChunk = '';
+
+        for (const line of lines) {
+            if (currentChunk.length + line.length + 1 > maxLength) {
+                chunks.push(currentChunk.trim());
+                currentChunk = line;
+            } else {
+                currentChunk += (currentChunk ? '\n' : '') + line;
+            }
+        }
+        if (currentChunk) {
+            chunks.push(currentChunk.trim());
+        }
+        return chunks;
+    },
+
     async execute(message, args, { mobyAPI }) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing gaming history database...\x1b[0m\n```');
@@ -30,44 +50,43 @@ module.exports = {
                 .setTerminalTitle(`THIS DAY IN GAMING: ${month} ${day}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING HISTORICAL RELEASES]');
 
-            // Group games by decade for better organization
+            // Group games by decade
             const gamesByDecade = {};
             for (const game of sortedGames) {
                 const year = new Date(game.first_release_date).getFullYear();
-                const decade = Math.floor(year / 10) * 10;
-                if (!gamesByDecade[decade]) {
-                    gamesByDecade[decade] = [];
+                if (!isNaN(year)) { // Only process valid years
+                    const decade = Math.floor(year / 10) * 10;
+                    if (!gamesByDecade[decade]) {
+                        gamesByDecade[decade] = [];
+                    }
+                    const platforms = Array.isArray(game.platforms) 
+                        ? game.platforms.map(p => p.platform_name).join(', ')
+                        : 'Unknown Platform';
+                    gamesByDecade[decade].push(`${year} - ${game.title} (${platforms})`);
                 }
-                gamesByDecade[decade].push(game);
             }
 
-            // Add each decade's games to the embed
-            Object.keys(gamesByDecade)
-                .sort((a, b) => b - a) // Sort decades newest to oldest
-                .forEach(decade => {
-                    const games = gamesByDecade[decade];
-                    const gameList = games
-                        .map(game => {
-                            const year = new Date(game.first_release_date).getFullYear();
-                            const platforms = Array.isArray(game.platforms) 
-                                ? game.platforms.map(p => p.platform_name).join(', ')
-                                : 'Unknown Platform';
-                            return `${year} - ${game.title} (${platforms})`;
-                        })
-                        .join('\n');
-
-                    if (gameList) {
-                        embed.addTerminalField(`${decade}s`, gameList);
-                    }
+            // Process each decade
+            const decadeKeys = Object.keys(gamesByDecade).sort((a, b) => b - a);
+            for (const decade of decadeKeys) {
+                const gamesList = gamesByDecade[decade].join('\n');
+                
+                // Split long lists into multiple fields
+                const chunks = this.splitIntoChunks(gamesList, 900); // Using 900 to be safe
+                chunks.forEach((chunk, index) => {
+                    const fieldName = chunks.length > 1 
+                        ? `${decade}s (Part ${index + 1})`
+                        : `${decade}s`;
+                    embed.addTerminalField(fieldName, chunk);
                 });
+            }
 
-            // Add footer if we have data
-            if (Object.keys(gamesByDecade).length > 0) {
+            if (decadeKeys.length > 0) {
                 embed.setTerminalFooter();
                 await message.channel.send({ embeds: [embed] });
                 await message.channel.send('```ansi\n\x1b[32m> Historical data retrieved successfully\n[Ready for input]█\x1b[0m```');
             } else {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] No historical data found for today\n[Ready for input]█\x1b[0m```');
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] No valid historical data found for today\n[Ready for input]█\x1b[0m```');
             }
 
         } catch (error) {
