@@ -104,11 +104,8 @@ async function fetchUserProfile(username) {
 
 async function fetchLeaderboardData() {
     try {
-        // Check if cached data is still valid
-        if (
-            cache.leaderboardData &&
-            Date.now() - cache.lastLeaderboardUpdate < cache.leaderboardTTL
-        ) {
+        // Existing cache check
+        if (cache.leaderboardData && Date.now() - cache.lastLeaderboardUpdate < cache.leaderboardTTL) {
             console.log('[RA API] Returning cached leaderboard data');
             return cache.leaderboardData;
         }
@@ -120,34 +117,52 @@ async function fetchLeaderboardData() {
             throw new Error('No active challenge found in database');
         }
 
-        // Get users from database
         const validUsers = await database.getValidUsers();
         console.log(`[RA API] Fetching data for ${validUsers.length} users`);
 
         const usersProgress = [];
         for (const username of validUsers) {
             try {
-                const params = new URLSearchParams({
+                // Fetch challenge progress
+                const challengeParams = new URLSearchParams({
                     z: process.env.RA_USERNAME,
                     y: process.env.RA_API_KEY,
                     g: challenge.gameId,
                     u: username
                 });
 
-                const url = `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`;
-                const data = await rateLimiter.makeRequest(url);
+                // Fetch recent achievements
+                const recentParams = new URLSearchParams({
+                    z: process.env.RA_USERNAME,
+                    y: process.env.RA_API_KEY,
+                    u: username,
+                    c: 50  // Last 50 achievements
+                });
 
-                const profile = await fetchUserProfile(username);
-                const achievements = data.Achievements ? Object.values(data.Achievements) : [];
-                const numAchievements = achievements.length;
-                const completed = achievements.filter(ach => parseInt(ach.DateEarned) > 0).length;
+                // Make both requests
+                const [challengeData, profile, recentAchievements] = await Promise.all([
+                    rateLimiter.makeRequest(`https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${challengeParams}`),
+                    fetchUserProfile(username),
+                    rateLimiter.makeRequest(`https://retroachievements.org/API/API_GetUserRecentAchievements.php?${recentParams}`)
+                ]);
 
-                // Check for beaten achievement
-                const hasBeatenGame = achievements.some(ach => {
+                // Process challenge achievements
+                const challengeAchievements = challengeData.Achievements ? Object.values(challengeData.Achievements) : [];
+                const numAchievements = challengeAchievements.length;
+                const completed = challengeAchievements.filter(ach => parseInt(ach.DateEarned) > 0).length;
+
+                // Check for beaten game achievement in challenge
+                const hasBeatenGame = challengeAchievements.some(ach => {
                     const isWinCondition = (ach.Flags & 2) === 2;
                     const isEarned = parseInt(ach.DateEarned) > 0;
                     return isWinCondition && isEarned;
                 });
+
+                // Combine achievements for feed
+                const allAchievements = [
+                    ...challengeAchievements,
+                    ...(recentAchievements || [])
+                ];
 
                 usersProgress.push({
                     username,
@@ -155,18 +170,12 @@ async function fetchLeaderboardData() {
                     profileUrl: profile.profileUrl,
                     completedAchievements: completed,
                     totalAchievements: numAchievements,
-                    completionPercentage:
-                        numAchievements > 0
-                            ? ((completed / numAchievements) * 100).toFixed(2)
-                            : '0.00',
+                    completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : '0.00',
                     hasBeatenGame: !!hasBeatenGame,
-                    achievements: achievements
+                    achievements: allAchievements  // Now includes both challenge and recent achievements
                 });
 
-                console.log(
-                    `[RA API] Fetched progress for ${username}: ` +
-                    `${completed}/${numAchievements} achievements`
-                );
+                console.log(`[RA API] Fetched progress for ${username}: ${completed}/${numAchievements} achievements`);
             } catch (error) {
                 console.error(`[RA API] Error fetching data for ${username}:`, error);
                 usersProgress.push({
@@ -176,27 +185,22 @@ async function fetchLeaderboardData() {
                     completedAchievements: 0,
                     totalAchievements: 0,
                     completionPercentage: 0,
-                    hasCompletion: false,
+                    hasBeatenGame: false,
                     achievements: []
                 });
             }
         }
 
         const leaderboardData = {
-            leaderboard: usersProgress.sort(
-                (a, b) => b.completionPercentage - a.completionPercentage
-            ),
+            leaderboard: usersProgress.sort((a, b) => b.completionPercentage - a.completionPercentage),
             gameInfo: challenge,
             lastUpdated: new Date().toISOString()
         };
 
-        // Update cache
         cache.leaderboardData = leaderboardData;
         cache.lastLeaderboardUpdate = Date.now();
 
-        console.log(
-            `[RA API] Leaderboard data updated with ${usersProgress.length} users`
-        );
+        console.log(`[RA API] Leaderboard data updated with ${usersProgress.length} users`);
         return leaderboardData;
     } catch (error) {
         console.error('[RA API] Error fetching leaderboard data:', error);
