@@ -184,8 +184,15 @@ class MobyAPI {
             release_day: day
         });
 
-        // Normalize and validate data
-        const validGames = data.filter(game =>
+        console.log('Raw API Response:', JSON.stringify(data, null, 2)); // Debug log
+
+        // Validate the response
+        if (!data || !Array.isArray(data.games)) {
+            throw new Error('API response does not contain a valid games array');
+        }
+
+        // Normalize and validate game data
+        const validGames = data.games.filter(game =>
             game.first_release_date && game.title && Array.isArray(game.platforms)
         ).map(game => ({
             first_release_date: game.first_release_date,
@@ -207,7 +214,6 @@ class MobyAPI {
         throw error;
     }
 }
-
     clearCache() {
         this.cache.games.clear();
         this.cache.platforms.clear();
