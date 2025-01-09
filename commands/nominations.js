@@ -59,18 +59,15 @@ const nominations = {
     },
 
     async showHelp(message) {
-        // Check if user has admin permissions
         const isAdmin = message.member && (
             message.member.permissions.has('Administrator') ||
             message.member.roles.cache.has(process.env.ADMIN_ROLE_ID)
         );
 
-        // Base commands that everyone can see
         const baseCommands = 
             '!nominations view - View current nominations\n' +
-            '!nominations add <platform> <game> - Submit a nomination';
+            '!nominations add <platform> <game> - Submit a nomination (max 3 per user)';
 
-        // Admin commands that only admins will see
         const adminCommands = 
             '\n!nominations open - Open nominations\n' +
             '!nominations close - Close nominations\n' +
@@ -83,7 +80,69 @@ const nominations = {
             .addTerminalField('AVAILABLE COMMANDS',
                 isAdmin ? baseCommands + adminCommands : baseCommands)
             .addTerminalField('VALID PLATFORMS', 
-                'NES, SNES, GB, GBC, GBA, PSX, N64')
+    'NES, MASTER SYSTEM, GENESIS, SNES, GB, GBC, GBA, GAME GEAR, NEO GEO, TURBOGRAFX-16, PSX, N64, SATURN')
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [embed] });
+    },
+
+    async handleAdd(message, args) {
+        if (args.length < 2) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !nominations add <platform> <game name>\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
+        const nominationStatus = await database.getNominationStatus();
+        if (!nominationStatus?.isOpen) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Nominations are closed, check event calendar for more details\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
+        // Check nomination count
+        const nominationCount = await database.getUserNominationCount(message.author.id);
+        const NOMINATION_LIMIT = 3;
+        const remainingNominations = NOMINATION_LIMIT - nominationCount;
+
+        if (remainingNominations <= 0) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] You have already used all your nominations (maximum 3)\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
+        const platform = args[0].toUpperCase();
+        const validPlatforms = [
+    'NES', 'MASTER SYSTEM', 'GENESIS', 'SNES', 
+    'GB', 'GBC', 'GBA', 'GAME GEAR', 
+    'NEO GEO', 'TURBOGRAFX-16', 'PSX', 'N64', 'SATURN'
+];
+        
+        if (!validPlatforms.includes(platform)) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid platform. Valid platforms: NES, MASTER SYSTEM, GENESIS, SNES, GB, GBC, GBA, GAME GEAR, NEO GEO, TURBOGRAFX-16, PSX, N64, SATURN\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
+        const gameName = args.slice(1).join(' ');
+        if (!gameName) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Please provide a game name\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
+        await database.addNomination({
+            game: gameName,
+            discordId: message.author.id,
+            discordUsername: message.author.username,
+            platform
+        });
+
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('NOMINATION SUBMITTED')
+            .setTerminalDescription('[SUBMISSION SUCCESSFUL]')
+            .addTerminalField('DETAILS',
+                `GAME: ${gameName}\n` +
+                `PLATFORM: ${platform}\n` +
+                `SUBMITTED BY: ${message.author.username}\n` +
+                `DATE: ${new Date().toLocaleDateString()}`)
+            .addTerminalField('REMAINING NOMINATIONS',
+                `You have ${remainingNominations - 1} nomination${remainingNominations - 1 !== 1 ? 's' : ''} remaining`)
             .setTerminalFooter();
 
         await message.channel.send({ embeds: [embed] });
@@ -130,58 +189,6 @@ const nominations = {
         if (shadowGame) {
             await shadowGame.tryShowError(message);
         }
-    },
-
-    async handleAdd(message, args) {
-        if (args.length < 2) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !nominations add <platform> <game name>\n[Ready for input]█\x1b[0m```');
-            return;
-        }
-
-        const nominationStatus = await database.getNominationStatus();
-        if (!nominationStatus?.isOpen) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Nominations are currently closed\n[Ready for input]█\x1b[0m```');
-            return;
-        }
-
-        const hasNominated = await database.hasUserNominated(message.author.id);
-        if (hasNominated) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] You have already submitted a nomination this period\n[Ready for input]█\x1b[0m```');
-            return;
-        }
-
-        const platform = args[0].toUpperCase();
-        const validPlatforms = ['NES', 'SNES', 'GB', 'GBC', 'GBA', 'PSX', 'N64'];
-        
-        if (!validPlatforms.includes(platform)) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid platform. Valid platforms: NES, SNES, GB, GBC, GBA, PSX, N64\n[Ready for input]█\x1b[0m```');
-            return;
-        }
-
-        const gameName = args.slice(1).join(' ');
-        if (!gameName) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Please provide a game name\n[Ready for input]█\x1b[0m```');
-            return;
-        }
-
-        await database.addNomination({
-            game: gameName,
-            discordId: message.author.id,
-            discordUsername: message.author.username,
-            platform
-        });
-
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('NOMINATION SUBMITTED')
-            .setTerminalDescription('[SUBMISSION SUCCESSFUL]')
-            .addTerminalField('DETAILS',
-                `GAME: ${gameName}\n` +
-                `PLATFORM: ${platform}\n` +
-                `SUBMITTED BY: ${message.author.username}\n` +
-                `DATE: ${new Date().toLocaleDateString()}`)
-            .setTerminalFooter();
-
-        await message.channel.send({ embeds: [embed] });
     },
 
     async handleRemove(message, args) {
@@ -244,20 +251,21 @@ const nominations = {
         let newName = newDetailsArr.slice(0, -1).join(' ') || newDetailsArr[0];
         let newPlatform = newDetailsArr[newDetailsArr.length - 1].toUpperCase();
 
-        // If the last word isn't a valid platform, assume it's part of the game name
-        const validPlatforms = ['NES', 'SNES', 'GB', 'GBC', 'GBA', 'PSX', 'N64'];
+        const validPlatforms = [
+    'NES', 'MASTER SYSTEM', 'GENESIS', 'SNES', 
+    'GB', 'GBC', 'GBA', 'GAME GEAR', 
+    'NEO GEO', 'TURBOGRAFX-16', 'PSX', 'N64', 'SATURN'
+];
         if (!validPlatforms.includes(newPlatform)) {
             newName = newDetails[0];
             newPlatform = nomination.platform;
         } else if (newDetailsArr.length === 1) {
-            // If only platform was provided, keep old name
             newName = nomination.game;
         }
 
         const collection = await database.getCollection('nominations');
         const period = new Date().toISOString().slice(0, 7);
 
-        // Update the nomination
         await collection.updateOne(
             { 
                 _id: 'nominations',
