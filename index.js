@@ -9,12 +9,15 @@ const createLeaderboardCache = require('./leaderboardCache');
 const ShadowGame = require('./shadowGame');
 const ErrorHandler = require('./utils/errorHandler');
 const AchievementFeed = require('./achievementFeed');
+const MobyAPI = require('./mobyAPI');
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
     'DISCORD_TOKEN',
     'ANNOUNCEMENT_CHANNEL_ID',
-    'ACHIEVEMENT_FEED_CHANNEL'
+    'ACHIEVEMENT_FEED_CHANNEL',
+    'MOBYGAMES_API_KEY',
+    'MOBYGAMES_API_URL'
 ];
 
 const client = new Client({
@@ -77,7 +80,8 @@ async function createCoreServices() {
             commandHandler,
             announcer,
             shadowGame,
-            achievementFeed
+            achievementFeed,
+            mobyAPI: MobyAPI
         };
     } catch (error) {
         ErrorHandler.logError(error, 'Creating Core Services');
@@ -93,7 +97,8 @@ async function initializeServices(coreServices) {
         commandHandler,
         shadowGame,
         leaderboardCache,
-        achievementFeed
+        achievementFeed,
+        mobyAPI        
     } = coreServices;
 
     try {
@@ -106,7 +111,8 @@ async function initializeServices(coreServices) {
             announcer.initialize().catch((e) => ErrorHandler.logError(e, 'Announcer Init')),
             commandHandler.loadCommands(coreServices).catch((e) => ErrorHandler.logError(e, 'Command Handler Init')),
             leaderboardCache.initialize().catch((e) => ErrorHandler.logError(e, 'Leaderboard Cache Init')),
-            achievementFeed.initialize().catch((e) => ErrorHandler.logError(e, 'Achievement Feed Init'))
+            achievementFeed.initialize().catch((e) => ErrorHandler.logError(e, 'Achievement Feed Init')),
+            Promise.resolve()  // Placeholder for mobyAPI since it doesn't need initialization
         ]);
 
         console.log('All services initialized successfully');
