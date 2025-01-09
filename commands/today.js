@@ -31,34 +31,47 @@ module.exports = {
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING HISTORICAL RELEASES]');
 
             // Group games by decade for better organization
-            const gamesByDecade = sortedGames.reduce((acc, game) => {
+            const gamesByDecade = {};
+            for (const game of sortedGames) {
                 const year = new Date(game.first_release_date).getFullYear();
                 const decade = Math.floor(year / 10) * 10;
-                if (!acc[decade]) acc[decade] = [];
-                acc[decade].push(game);
-                return acc;
-            }, {});
+                if (!gamesByDecade[decade]) {
+                    gamesByDecade[decade] = [];
+                }
+                gamesByDecade[decade].push(game);
+            }
 
             // Add each decade's games to the embed
-            Object.entries(gamesByDecade)
-                .sort(([decadeA], [decadeB]) => decadeB - decadeA) // Sort decades newest to oldest
-                .forEach(([decade, games]) => {
+            Object.keys(gamesByDecade)
+                .sort((a, b) => b - a) // Sort decades newest to oldest
+                .forEach(decade => {
+                    const games = gamesByDecade[decade];
                     const gameList = games
                         .map(game => {
                             const year = new Date(game.first_release_date).getFullYear();
-                            return `${year} - ${game.title} (${game.platforms.map(p => p.platform_name).join(', ')})`;
+                            const platforms = Array.isArray(game.platforms) 
+                                ? game.platforms.map(p => p.platform_name).join(', ')
+                                : 'Unknown Platform';
+                            return `${year} - ${game.title} (${platforms})`;
                         })
                         .join('\n');
 
-                    embed.addTerminalField(`${decade}s`, gameList);
+                    if (gameList) {
+                        embed.addTerminalField(`${decade}s`, gameList);
+                    }
                 });
 
-            embed.setTerminalFooter();
-            await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Historical data retrieved successfully\n[Ready for input]█\x1b[0m```');
+            // Add footer if we have data
+            if (Object.keys(gamesByDecade).length > 0) {
+                embed.setTerminalFooter();
+                await message.channel.send({ embeds: [embed] });
+                await message.channel.send('```ansi\n\x1b[32m> Historical data retrieved successfully\n[Ready for input]█\x1b[0m```');
+            } else {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] No historical data found for today\n[Ready for input]█\x1b[0m```');
+            }
 
         } catch (error) {
-            ErrorHandler.logError(error, 'Today in Gaming Command');
+            console.error('Today in Gaming Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve historical data\n[Ready for input]█\x1b[0m```');
         }
     }
