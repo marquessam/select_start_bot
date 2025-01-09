@@ -496,6 +496,24 @@ class Database {
         );
     }
 
+    async getUserNominationCount(discordId) {
+    try {
+        const collection = await this.getCollection('nominations');
+        const period = new Date().toISOString().slice(0, 7);
+        const nominations = await collection.findOne({ _id: 'nominations' });
+        
+        // Count nominations for this user in current period
+        const userNominations = nominations?.nominations?.[period]?.filter(nom => 
+            nom.discordId === discordId
+        ) || [];
+        
+        return userNominations.length;
+    } catch (error) {
+        ErrorHandler.logError(error, 'Get User Nomination Count');
+        return 0;
+    }
+}
+    
     // ===================
     // Shadow Game Methods
     // ===================
