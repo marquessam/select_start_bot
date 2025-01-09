@@ -164,37 +164,49 @@ class MobyAPI {
     }
 
     async getThisDay() {
-        try {
-            const today = new Date();
-            const month = today.getMonth() + 1;
-            const day = today.getDate();
+    try {
+        const today = new Date();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
 
-            // Check cache for today's historical events
-            const cacheKey = `thisday:${month}-${day}`;
-            if (this.cache.games.has(cacheKey)) {
-                const cached = this.cache.games.get(cacheKey);
-                if (Date.now() - cached.timestamp < this.cache.updateInterval) {
-                    return cached.data;
-                }
+        // Check cache
+        const cacheKey = `thisday:${month}-${day}`;
+        if (this.cache.games.has(cacheKey)) {
+            const cached = this.cache.games.get(cacheKey);
+            if (Date.now() - cached.timestamp < this.cache.updateInterval) {
+                return cached.data;
             }
-
-            const data = await this._makeRequest('/games', {
-                release_month: month,
-                release_day: day
-            });
-
-            // Cache the results
-            this.cache.games.set(cacheKey, {
-                data: data,
-                timestamp: Date.now()
-            });
-
-            return data;
-        } catch (error) {
-            ErrorHandler.logError(error, 'This Day in Gaming');
-            throw error;
         }
+
+        // Fetch data from API
+        const data = await this._makeRequest('/games', {
+            release_month: month,
+            release_day: day
+        });
+
+        // Normalize and validate data
+        const validGames = data.filter(game =>
+            game.first_release_date && game.title && Array.isArray(game.platforms)
+        ).map(game => ({
+            first_release_date: game.first_release_date,
+            title: game.title,
+            platforms: game.platforms || [{ platform_name: 'Unknown Platform' }]
+        }));
+
+        const result = { games: validGames };
+
+        // Cache the results
+        this.cache.games.set(cacheKey, {
+            data: result,
+            timestamp: Date.now()
+        });
+
+        return result;
+    } catch (error) {
+        ErrorHandler.logError(error, 'This Day in Gaming');
+        throw error;
     }
+}
 
     clearCache() {
         this.cache.games.clear();
