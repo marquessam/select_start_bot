@@ -125,7 +125,16 @@ const nominations = {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Please provide a game name\n[Ready for input]█\x1b[0m```');
             return;
         }
+            // Check if game is already nominated
+            const existingNominations = await database.getNominations();
+            const isDuplicate = existingNominations.some(nom => 
+            nom.game.toLowerCase() === gameName.toLowerCase()
+    );
 
+if (isDuplicate) {
+    await message.channel.send('```ansi\n\x1b[32m[ERROR] This game has already been nominated\n[Ready for input]█\x1b[0m```');
+    return;
+}
         await database.addNomination({
             game: gameName,
             discordId: message.author.id,
