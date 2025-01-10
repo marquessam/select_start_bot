@@ -1,6 +1,6 @@
 // services/dataService.js
 import database from '../database.js';
-import raAPI from '../raAPI.js';
+import * as raAPI from '../raAPI.js';
 
 class DataService {
     // New code
