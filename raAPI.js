@@ -212,6 +212,3 @@ module.exports = {
     fetchUserProfile,
     fetchLeaderboardData
 };
-}
-
-export { fetchUserProfile, fetchLeaderboardData };
