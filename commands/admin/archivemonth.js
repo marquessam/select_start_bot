@@ -1,7 +1,7 @@
 // archivemonth.js
-import TerminalEmbed = require('../../utils/embedBuilder.js');
-import { fetchLeaderboardData } = require('../../raAPI.js');
-import database = require('../../database.js');
+import TerminalEmbed from '../utils/embedBuilder.js';
+import { fetchLeaderboardData }from '../../raAPI.js';
+import database from '../../database.js';
 
 export default {
     name: 'archivemonth',
