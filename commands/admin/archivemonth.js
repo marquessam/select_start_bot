@@ -3,7 +3,7 @@ import TerminalEmbed = require('../../utils/embedBuilder.js');
 import { fetchLeaderboardData } = require('../../raAPI.js');
 import database = require('../../database.js');
 
-export default = {
+export default {
     name: 'archivemonth',
     description: 'Archives current leaderboard standings',
     async execute(message, args, { userStats }) {
