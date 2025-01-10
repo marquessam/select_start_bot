@@ -1,5 +1,6 @@
 import TerminalEmbed from '../utils/embedBuilder.js';
-import DataService from '../services/dataService.js';
+import * as DataService from '../services/dataService.js';
+
 
 function calculateRank(username, leaderboard, rankMetric) {
     const user = leaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
