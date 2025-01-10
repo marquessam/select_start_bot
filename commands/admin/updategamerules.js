@@ -1,6 +1,6 @@
-const database = require('../../database'); // Adjust the path as needed
+import database = require('../../database.js'); // Adjust the path as needed
 
-module.exports = {
+export default {
     name: 'updategamerules',
     description: 'Update game rules in the arcade challenge.',
     async execute(message) {
