@@ -1,15 +1,16 @@
-import TerminalEmbed from '../utils/embedBuilder.js';
-import * as DataService from '../services/dataService.js';
-
+const TerminalEmbed = require('../utils/embedBuilder');
+const DataService = require('../services/dataService');
 
 function calculateRank(username, leaderboard, rankMetric) {
+    // First, find the user's value
     const user = leaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
     if (!user || rankMetric(user) === 0) {
         return 'No Rank';
     }
 
+    // Sort and calculate rank only for users with non-zero values
     const sortedLeaderboard = [...leaderboard]
-        .filter(u => rankMetric(u) > 0)
+        .filter(u => rankMetric(u) > 0)  // Only include users with values greater than 0
         .sort((a, b) => rankMetric(b) - rankMetric(a));
 
     let rank = 1;
@@ -26,7 +27,7 @@ function calculateRank(username, leaderboard, rankMetric) {
         }
     }
 
-    return 'No Rank';
+    return 'No Rank';  // This should never be reached if we found the user above
 }
 
 async function getInitialUserData(username, userStats) {
@@ -37,6 +38,7 @@ async function getInitialUserData(username, userStats) {
         return null;
     }
 
+    // Ensure user stats are initialized
     if (userStats) {
         await userStats.initializeUserIfNeeded(cleanUsername);
     }
@@ -58,12 +60,14 @@ module.exports = {
             const username = args[0];
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
+            // Initialize and validate user
             const validatedUser = await getInitialUserData(username, userStats);
             if (!validatedUser) {
                 await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" is not a registered participant\n[Ready for input]█\x1b[0m\`\`\``);
                 return;
             }
 
+            // Fetch all necessary data
             const [
                 userStatsData,
                 userProgress,
@@ -84,15 +88,17 @@ module.exports = {
 
             const currentYear = new Date().getFullYear().toString();
 
+            // Get yearly data with defaults
             const yearlyData = yearlyLeaderboard.find(user => 
                 user.username.toLowerCase() === validatedUser
             ) || {
                 points: 0,
-                gamesBeaten: 0,
+                gamesCompleted: 0,
                 achievementsUnlocked: 0,
                 monthlyParticipations: 0
             };
 
+            // Process bonus points
             const bonusPoints = userStatsData?.bonusPoints?.filter(bonus => 
                 bonus.year === currentYear
             ) || [];
@@ -101,6 +107,7 @@ module.exports = {
                 ? bonusPoints.map(bonus => `${bonus.reason}: ${bonus.points} pts`).join('\n')
                 : 'No bonus points';
 
+            // Calculate ranks
             const yearlyRankText = calculateRank(validatedUser, yearlyLeaderboard, 
                 user => user.points || 0
             );
@@ -109,6 +116,7 @@ module.exports = {
                 user => user.completionPercentage || 0
             );
 
+            // Create embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
@@ -120,7 +128,7 @@ module.exports = {
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
                 .addTerminalField(`${currentYear} STATISTICS`,
-                    `GAMES BEATEN: ${yearlyData.gamesBeaten || 0}\n` +
+                    `GAMES COMPLETED: ${yearlyData.gamesCompleted || 0}\n` +
                     `ACHIEVEMENTS UNLOCKED: ${yearlyData.achievementsUnlocked || userProgress.completedAchievements || 0}\n` +
                     `MONTHLY PARTICIPATIONS: ${yearlyData.monthlyParticipations || 0}`)
                 .addTerminalField('POINT BREAKDOWN', recentBonusPoints)
