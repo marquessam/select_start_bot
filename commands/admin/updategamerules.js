@@ -1,4 +1,4 @@
-import database = require('../../database.js'); // Adjust the path as needed
+import database from '../../database.js'; // Adjust the path as needed
 
 export default {
     name: 'updategamerules',
