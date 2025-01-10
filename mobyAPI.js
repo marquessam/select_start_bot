@@ -1,4 +1,5 @@
-import { fetch } from 'node-fetch';
+import pkg from 'node-fetch';
+const fetch = pkg.default;
 import ErrorHandler from './utils/errorHandler.js';
 
 class MobyAPI {
