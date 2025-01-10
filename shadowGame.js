@@ -1,5 +1,5 @@
-const { EmbedBuilder } = require('discord.js');
-const database = require('./database');
+import { EmbedBuilder } from 'discord.js';
+import database from '../database.js';
 
 class ShadowGame {
     constructor() {
@@ -231,4 +231,4 @@ class ShadowGame {
     }
 }
 
-module.exports = ShadowGame;
+export default ShadowGame;
