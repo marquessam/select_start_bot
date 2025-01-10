@@ -1,7 +1,7 @@
-const TerminalEmbed = require('../../utils/embedBuilder');
-const database = require('../../database');
+import TerminalEmbed = require('../../utils/embedBuilder.js');
+import database = require('../../database.js');
 
-module.exports = {
+export default {
     name: 'usermanage',
     description: 'Manage user registration and accounts',
     async execute(message, args, { userTracker }) {
