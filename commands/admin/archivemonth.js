@@ -1,9 +1,9 @@
 // archivemonth.js
-const TerminalEmbed = require('../../utils/embedBuilder');
+const TerminalEmbed = require('../../utils/embedBuilder.js');
 const { fetchLeaderboardData } = require('../../raAPI.js');
-const database = require('../../database');
+const database = require('../../database.js');
 
-module.exports = {
+export default = {
     name: 'archivemonth',
     description: 'Archives current leaderboard standings',
     async execute(message, args, { userStats }) {
