@@ -1,7 +1,7 @@
-const TerminalEmbed = require('../utils/embedBuilder');
+const TerminalEmbed = require('../utils/embedBuilder.js');
 const database = require('../database');
 
-module.exports = {
+export default = {
     name: 'challenge',
     description: 'Displays current monthly challenge',
     async execute(message, args, { shadowGame }) {
