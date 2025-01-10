@@ -1,5 +1,5 @@
 import TerminalEmbed from '../utils/embedBuilder.js';
-import DataService from '../services/dataService.js';
+import * as DataService from '../services/dataService.js';
 
 export default {
     name: 'leaderboard',
