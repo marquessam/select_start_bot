@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import ErrorHandler from './utils/errorHandler.js';
-import { fetch } from 'node-fetch';
+import fetch from 'node-fetch';  // Updated import for fetch
 
 // Setup __dirname equivalent for ESM
 const __filename = fileURLToPath(import.meta.url);
