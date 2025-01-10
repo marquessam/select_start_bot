@@ -1,6 +1,6 @@
-const { MongoClient } = require('mongodb');
-const ErrorHandler = require('./utils/errorHandler');
-const { fetchData } = require('./utils/dataFetcher');
+import { MongoClient } from 'mongodb';
+import ErrorHandler from './utils/errorHandler.js';
+import { fetchData } from './utils/dataFetcher.js';
 
 class Database {
     constructor() {
@@ -748,5 +748,4 @@ class Database {
     }
 }
 
-module.exports = new Database();
-
+export default new Database();
