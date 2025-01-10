@@ -1,5 +1,5 @@
-const { EmbedBuilder, PermissionsBitField } = require('discord.js');
-const { fetchLeaderboardData } = require('./raAPI');
+import { EmbedBuilder, PermissionsBitField } from 'discord.js';
+import { fetchLeaderboardData } from './raAPI.js';
 
 class AchievementFeed {
     constructor(client, database) {
@@ -15,7 +15,6 @@ class AchievementFeed {
         this.intervalHandle = null;
 
         // === RATE LIMITING SETTINGS ===
-        // e.g., max 5 announcements per 60 seconds
         this.MAX_ANNOUNCEMENTS = 5; 
         this.TIME_WINDOW_MS = 60 * 1000; 
 
@@ -82,59 +81,49 @@ class AchievementFeed {
     }
 
     async checkNewAchievements() {
-    // Ensure we still have a valid channel
-    if (!this.channel) {
-        console.error('AchievementFeed: No valid channel to post in');
-        return;
-    }
+        if (!this.channel) {
+            console.error('AchievementFeed: No valid channel to post in');
+            return;
+        }
 
-    try {
-        const data = await fetchLeaderboardData();
-        if (!data?.leaderboard) return;
+        try {
+            const data = await fetchLeaderboardData();
+            if (!data?.leaderboard) return;
 
-        // Process each user's achievements with built-in delay to avoid race conditions
-        for (const user of data.leaderboard) {
-            if (!user.achievements) continue;
+            for (const user of data.leaderboard) {
+                if (!user.achievements) continue;
 
-            const userKey = user.username.toLowerCase();
-            const previouslyEarned = this.lastAchievements.get(userKey) || new Set();
-            const currentEarned = new Set();
+                const userKey = user.username.toLowerCase();
+                const previouslyEarned = this.lastAchievements.get(userKey) || new Set();
+                const currentEarned = new Set();
 
-            // Track current achievements and check for new ones
-            for (const ach of user.achievements) {
-                const earnedDate = parseInt(ach.DateEarned, 10);
-                
-                // If achievement is earned
-                if (earnedDate > 0) {
-                    currentEarned.add(ach.ID);
+                for (const ach of user.achievements) {
+                    const earnedDate = parseInt(ach.DateEarned, 10);
 
-                    // Check if it's newly earned since our last check
-                    if (!previouslyEarned.has(ach.ID)) {
-                        try {
-                            // Add small delay between announcements to prevent rate limiting
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                            await this.announceAchievement(user.username, ach);
-                        } catch (err) {
-                            console.error(
-                                `AchievementFeed: Failed to announce achievement for ${user.username}:`,
-                                err
-                            );
+                    if (earnedDate > 0) {
+                        currentEarned.add(ach.ID);
+
+                        if (!previouslyEarned.has(ach.ID)) {
+                            try {
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                                await this.announceAchievement(user.username, ach);
+                            } catch (err) {
+                                console.error(
+                                    `AchievementFeed: Failed to announce achievement for ${user.username}:`,
+                                    err
+                                );
+                            }
                         }
                     }
                 }
+
+                this.lastAchievements.set(userKey, currentEarned);
             }
-
-            // Update stored achievements for this user
-            this.lastAchievements.set(userKey, currentEarned);
+        } catch (error) {
+            console.error('AchievementFeed: Error checking achievements:', error);
         }
-    } catch (error) {
-        console.error('AchievementFeed: Error checking achievements:', error);
     }
-}
 
-    /**
-     * Main announcement method, includes rate-limiting check.
-     */
     async announceAchievement(username, achievement) {
         if (!this.channel) {
             throw new Error('AchievementFeed: Channel not available');
@@ -143,33 +132,24 @@ class AchievementFeed {
             throw new Error('AchievementFeed: Missing user or achievement data');
         }
 
-        // ====================
-        // Rate Limiting Logic
-        // ====================
         const now = Date.now();
-
-        // Remove timestamps older than TIME_WINDOW_MS
         this.announcementTimestamps = this.announcementTimestamps.filter(
             (timestamp) => now - timestamp < this.TIME_WINDOW_MS
         );
 
-        // If we're at max announcements in this window, skip to avoid spam
         if (this.announcementTimestamps.length >= this.MAX_ANNOUNCEMENTS) {
             console.warn(`AchievementFeed: Rate limit hit - skipping announcement for ${username}`);
             return;
         }
 
-        // Otherwise, record this announcement
         this.announcementTimestamps.push(now);
 
-        // Build URLs
         const badgeUrl = achievement.BadgeName
             ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
             : 'https://media.retroachievements.org/Badge/00000.png';
 
         const userIconUrl = `https://retroachievements.org/UserPic/${username}.png`;
 
-        // Construct the embed
         const embed = new EmbedBuilder()
             .setColor('#00FF00')
             .setTitle('Achievement Unlocked! 🏆')
@@ -184,12 +164,10 @@ class AchievementFeed {
             })
             .setTimestamp();
 
-        // Attempt to send
         try {
             await this.channel.send({ embeds: [embed] });
         } catch (sendError) {
             if (sendError.code === 50013) {
-                // Missing Permissions
                 console.error('AchievementFeed: Bot lacks permissions to send messages in feed channel');
             } else {
                 throw sendError;
@@ -197,10 +175,6 @@ class AchievementFeed {
         }
     }
 
-    /**
-     * Optional: If you need to stop checking for achievements (e.g., shutdown),
-     * call this to clear the interval.
-     */
     stopFeed() {
         if (this.intervalHandle) {
             clearInterval(this.intervalHandle);
@@ -210,4 +184,4 @@ class AchievementFeed {
     }
 }
 
-module.exports = AchievementFeed;
+export default AchievementFeed;
