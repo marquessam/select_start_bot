@@ -1,5 +1,5 @@
 // archivemonth.js
-import TerminalEmbed from '../utils/embedBuilder.js';
+import TerminalEmbed from '../../utils/embedBuilder.js';
 import { fetchLeaderboardData }from '../../raAPI.js';
 import database from '../../database.js';
 
