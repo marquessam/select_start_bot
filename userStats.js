@@ -1,17 +1,8 @@
-import { createRequire } from 'module';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import ErrorHandler from './utils/errorHandler.js';
-import fetch from 'node-fetch';  // Updated import for fetch
-
-// Setup __dirname equivalent for ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Read and parse the JSON file without using import assertions
-const raGameRulesPath = path.join(__dirname, 'raGameRules.json');
-const raGameRules = JSON.parse(fs.readFileSync(raGameRulesPath, 'utf-8'));
+// userStats.js
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+const ErrorHandler = require('./utils/errorHandler');
+const path = require('path');
+const raGameRules = require(path.join(__dirname, 'raGameRules.json'));
 
 class UserStats {
     constructor(database) {
@@ -21,6 +12,7 @@ class UserStats {
                 users: {},
                 yearlyStats: {},
                 monthlyStats: {},
+                gamesBeaten: {}, // Changed from gameCompletions
                 achievementStats: {},
                 communityRecords: {}
             },
@@ -42,17 +34,17 @@ class UserStats {
         try {
             const dbStats = await this.database.getUserStats();
 
-            // Initialize or merge stats
+            // Merge or default to empty objects
             this.cache.stats = {
                 users: dbStats.users || {},
                 yearlyStats: dbStats.yearlyStats || {},
                 monthlyStats: dbStats.monthlyStats || {},
+                gamesBeaten: dbStats.gamesBeaten || dbStats.gameCompletions || {},
                 achievementStats: dbStats.achievementStats || {},
                 communityRecords: dbStats.communityRecords || {}
             };
 
             const users = await userTracker.getValidUsers();
-            console.log('Found users:', users);
             this.cache.validUsers = new Set(users.map(u => u.toLowerCase()));
 
             // Initialize missing user entries
@@ -64,7 +56,6 @@ class UserStats {
 
             await this.saveStats();
             this.cache.lastUpdate = Date.now();
-            console.log('Stats loaded and synchronized with UserTracker');
         } catch (error) {
             ErrorHandler.logError(error, 'Loading Stats');
             throw error;
@@ -89,8 +80,10 @@ class UserStats {
     }
 
     shouldRefreshCache() {
-        return !this.cache.lastUpdate || 
-               (Date.now() - this.cache.lastUpdate) > this.cache.updateInterval;
+        return (
+            !this.cache.lastUpdate ||
+            Date.now() - this.cache.lastUpdate > this.cache.updateInterval
+        );
     }
 
     async refreshCache() {
@@ -122,15 +115,14 @@ class UserStats {
                 monthlyAchievements: {},
                 yearlyStats: {},
                 participationMonths: [],
-                beatenMonths: [],
+                completionMonths: [],
                 masteryMonths: [],
                 bonusPoints: []
             };
 
             const currentYear = this.currentYear.toString();
             this.cache.stats.users[cleanUsername].yearlyPoints[currentYear] = 0;
-            
-            const yearStats = {
+            this.cache.stats.users[cleanUsername].yearlyStats[currentYear] = {
                 monthlyParticipations: 0,
                 totalAchievementsUnlocked: 0,
                 gamesBeaten: 0,
@@ -152,13 +144,6 @@ class UserStats {
                 achievementsPerMonth: {},
                 dailyActivity: {}
             };
-
-            this.cache.stats.users[cleanUsername].yearlyStats[currentYear] = yearStats;
-            
-            console.log('Debug - Initialized user stats:', {
-                username: cleanUsername,
-                yearStats
-            });
 
             this.cache.pendingUpdates.add(cleanUsername);
 
@@ -186,7 +171,6 @@ class UserStats {
                 this.cache.validUsers.delete(cleanUsername);
                 this.cache.pendingUpdates.add(cleanUsername);
                 await this.saveStats();
-                console.log(`User "${username}" removed successfully.`);
             }
         } catch (error) {
             ErrorHandler.logError(error, 'Removing User');
@@ -316,7 +300,6 @@ class UserStats {
                     const userStats = this.cache.stats.users[username];
                     if (!userStats) return;
 
-                    // Initialize yearly stats if needed
                     if (!userStats.yearlyStats[currentYear]) {
                         userStats.yearlyStats[currentYear] = {
                             monthlyParticipations: 0,
@@ -381,6 +364,9 @@ class UserStats {
         }
     }
 
+    /**
+     * Unified method for handling "beaten game" logic and "mastery" logic.
+     */
     async _handleBeatenAndMastery(
         user,
         username,
@@ -391,131 +377,86 @@ class UserStats {
         const userStats = this.cache.stats.users[username];
         if (!userStats) return;
 
-        // Initialize yearlyStats if needed
-        if (!userStats.yearlyStats[currentYear]) {
-            userStats.yearlyStats[currentYear] = {
-                gamesBeaten: 0,
-                monthlyParticipations: 0,
-                totalAchievementsUnlocked: 0
-            };
+      // -----------------------------
+    // Handle "Beaten" Achievement
+  // -----------------------------
+// First, see if we have special rules for this game ID
+const ruleSet = raGameRules[currentChallenge.gameId];
+
+if (ruleSet) {
+    // 1) Check progression achievements
+    const hasAllProgression = ruleSet.progression.every((achId) =>
+        user.achievements.some(
+            (a) => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
+        )
+    );
+
+    // 2) Check win condition achievements
+    const hasAnyWinCondition = ruleSet.winCondition.some((achId) =>
+        user.achievements.some(
+            (a) => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
+        )
+    );
+
+    if (hasAllProgression && hasAnyWinCondition) {
+        // Mark "beaten" if not already done this month
+        const beatenKey = `beaten-${currentYear}-${currentMonth}`;
+        if (!userStats.beatenMonths) {
+            userStats.beatenMonths = [];
         }
 
-        console.log('Debug - Starting beat check for:', {
-            username,
-            currentYear,
-            currentMonth,
-            currentBeaten: userStats.yearlyStats[currentYear].gamesBeaten || 0
-        });
+        if (!userStats.beatenMonths.includes(beatenKey)) {
+            userStats.beatenMonths.push(beatenKey);
 
-        // Handle "Beaten" Achievement
-        const ruleSet = raGameRules[currentChallenge.gameId];
-
-        if (ruleSet) {
-            // Check progression and win conditions
-            const hasAllProgression = ruleSet.progression.every((achId) =>
-                user.achievements.some(
-                    (a) => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
-                )
-            );
-
-            const hasAnyWinCondition = ruleSet.winCondition.some((achId) =>
-                user.achievements.some(
-                    (a) => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
-                )
-            );
-
-            console.log('Debug - Rule set check:', {
-                username,
-                hasAllProgression,
-                hasAnyWinCondition,
-                gameId: currentChallenge.gameId
-            });
-
-            if (hasAllProgression && hasAnyWinCondition) {
-                const beatenKey = `beaten-${currentYear}-${currentMonth}`;
-                if (!userStats.beatenMonths) {
-                    userStats.beatenMonths = [];
-                }
-
-                if (!userStats.beatenMonths.includes(beatenKey)) {
-                    console.log('Debug - Before incrementing gamesBeaten:', {
-                        username,
-                        currentBeaten: userStats.yearlyStats[currentYear].gamesBeaten || 0,
-                        yearStats: userStats.yearlyStats[currentYear]
-                    });
-
-                    userStats.beatenMonths.push(beatenKey);
-                    userStats.yearlyStats[currentYear].gamesBeaten = 
-                        (userStats.yearlyStats[currentYear].gamesBeaten || 0) + 1;
-
-                    console.log('Debug - After incrementing gamesBeaten:', {
-                        username,
-                        newBeaten: userStats.yearlyStats[currentYear].gamesBeaten,
-                        yearStats: userStats.yearlyStats[currentYear]
-                    });
-
-                    await this.addBonusPoints(
-                        username,
-                        1,
-                        `${currentChallenge.gameName} - beaten`
-                    );
-
-                    this.cache.pendingUpdates.add(username);
-                    await this.saveStats();  // Force immediate save
-                }
+            if (!userStats.yearlyStats[currentYear].gamesBeaten) {
+                userStats.yearlyStats[currentYear].gamesBeaten = 0;
             }
-        } else {
-            // Fallback: Check for beat flag
-            const beatAchievement = user.achievements.find(
-                (ach) =>
-                    (ach.Flags & 2) === 2 &&
-                    parseInt(ach.DateEarned) > 0 &&
-                    currentChallenge &&
-                    ach.GameID === currentChallenge.gameId
-            );
+            userStats.yearlyStats[currentYear].gamesBeaten += 1;
 
-            console.log('Debug - Fallback beat check:', {
+            await this.addBonusPoints(
                 username,
-                hasBeatAchievement: !!beatAchievement,
-                gameId: currentChallenge.gameId
-            });
+                1,
+                `${currentChallenge.gameName} - beaten`
+            );
+        }
+    }
+} else {
+    // Fallback: If no special rules, do your old bit-check logic
+    const beatAchievement = user.achievements.find(
+        (ach) =>
+            (ach.Flags & 2) === 2 && // "beat the game" bit
+            parseInt(ach.DateEarned) > 0 && // earned
+            currentChallenge &&
+            ach.GameID === currentChallenge.gameId
+    );
 
-            if (beatAchievement) {
-                const beatenKey = `beaten-${currentYear}-${currentMonth}`;
-                if (!userStats.beatenMonths) {
-                    userStats.beatenMonths = [];
-                }
-
-                if (!userStats.beatenMonths.includes(beatenKey)) {
-                    console.log('Debug - Before incrementing gamesBeaten:', {
-                        username,
-                        currentBeaten: userStats.yearlyStats[currentYear].gamesBeaten || 0,
-                        yearStats: userStats.yearlyStats[currentYear]
-                    });
-
-                    userStats.beatenMonths.push(beatenKey);
-                    userStats.yearlyStats[currentYear].gamesBeaten = 
-                        (userStats.yearlyStats[currentYear].gamesBeaten || 0) + 1;
-
-                    console.log('Debug - After incrementing gamesBeaten:', {
-                        username,
-                        newBeaten: userStats.yearlyStats[currentYear].gamesBeaten,
-                        yearStats: userStats.yearlyStats[currentYear]
-                    });
-
-                    await this.addBonusPoints(
-                        username,
-                        1,
-                        `${currentChallenge.gameName} - beaten`
-                    );
-
-                    this.cache.pendingUpdates.add(username);
-                    await this.saveStats();  // Force immediate save
-                }
-            }
+    if (beatAchievement) {
+        const beatenKey = `beaten-${currentYear}-${currentMonth}`;
+        if (!userStats.beatenMonths) {
+            userStats.beatenMonths = [];
         }
 
+        if (!userStats.beatenMonths.includes(beatenKey)) {
+            userStats.beatenMonths.push(beatenKey);
+
+            if (!userStats.yearlyStats[currentYear].gamesBeaten) {
+                userStats.yearlyStats[currentYear].gamesBeaten = 0;
+            }
+            userStats.yearlyStats[currentYear].gamesBeaten += 1;
+
+            await this.addBonusPoints(
+                username,
+                1,
+                `${currentChallenge.gameName} - beaten`
+            );
+        }
+    }
+}
+
+
+        // -----------------------------
         // Handle "Mastery"
+        // -----------------------------
         if (
             user.completedAchievements === user.totalAchievements &&
             user.totalAchievements > 0
@@ -527,6 +468,7 @@ class UserStats {
 
             if (!userStats.masteryMonths.includes(masteryKey)) {
                 userStats.masteryMonths.push(masteryKey);
+
                 await this.addBonusPoints(
                     username,
                     5,
@@ -556,4 +498,4 @@ class UserStats {
     }
 }
 
-export default UserStats;
+module.exports = UserStats;
