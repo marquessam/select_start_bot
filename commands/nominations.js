@@ -1,6 +1,6 @@
 // commands/nominations.js
-const TerminalEmbed = require('../utils/embedBuilder');
-const database = require('../database');
+const TerminalEmbed = require('../utils/embedBuilder.js');
+const database = require('../database.js');
 
 const nominations = {
     name: 'nominations',
