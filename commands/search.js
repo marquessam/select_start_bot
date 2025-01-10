@@ -34,25 +34,24 @@ module.exports = {
         );
       }
 
-      // 5) For simplicity, take the *first* matching game
+      // 5) Take the *first* matching game
       const game = result.games[0];
 
       // 6) Build an embed (terminal-style) with data from the first game
       const embed = new TerminalEmbed()
-        .setTerminalTitle(`MobyGames: ${game.title}`)
+        .setTerminalTitle(game.title) // Removed "MobyGames:" prefix
         .setTerminalDescription(
           game.description
             ? game.description.slice(0, 500) // limit to ~500 chars
             : 'No description available.'
         );
 
-      // 7) Add cover art if it exists
-      if (game.sample_cover && game.sample_cover.thumbnail_image) {
-        embed.setThumbnail(game.sample_cover.thumbnail_image);
+      // 7) Add a large image if it exists (instead of a thumbnail)
+      if (game.sample_cover && game.sample_cover.image) {
+        embed.setImage(game.sample_cover.image);
       }
 
       // 8) Show some extra details (platforms, genres, rating, etc.)
-      //    Add multiple fields if you like. For example:
       if (Array.isArray(game.platforms) && game.platforms.length > 0) {
         const platformList = game.platforms
           .map((p) => `${p.platform_name} (${p.first_release_date || 'N/A'})`)
@@ -69,11 +68,13 @@ module.exports = {
         embed.addTerminalField('Moby Score', String(game.moby_score));
       }
 
-      // 9) Send the embed to the channel
-      embed.setTerminalFooter();
+      // 9) Add attribution footer instead of "MobyGames:" in the title
+      embed.setTerminalFooter('Data courtesy of MobyGames');
+
+      // 10) Send the embed to the channel
       await message.channel.send({ embeds: [embed] });
 
-      // 10) Done
+      // 11) Done
       await message.channel.send(
         '```ansi\n\x1b[32m> Search complete\n[Ready for input]█\x1b[0m```'
       );
