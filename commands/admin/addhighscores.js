@@ -1,7 +1,7 @@
 import TerminalEmbed = require('../../utils/embedBuilder.js');
 import database = require('../../database.js');
 
-export default = {
+export default {
     name: 'addhighscore',
     description: 'Add or update high scores',
     async execute(message, args) {
