@@ -1,7 +1,7 @@
 // commands/help.js
-const TerminalEmbed = require('../utils/embedBuilder.js');
+import TerminalEmbed = require('../utils/embedBuilder.js');
 
-export default = {
+export default {
     name: 'help',
     description: 'Shows all available commands',
     async execute(message, args, { shadowGame }) {
