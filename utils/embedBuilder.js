@@ -1,4 +1,4 @@
-import { EmbedBuilder } from 'discord.js';
+const { EmbedBuilder } = require('discord.js');
 
 class TerminalEmbed extends EmbedBuilder {
     constructor() {
@@ -28,4 +28,4 @@ class TerminalEmbed extends EmbedBuilder {
     }
 }
 
-export default TerminalEmbed;
+module.exports = TerminalEmbed;
