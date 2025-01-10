@@ -1,5 +1,5 @@
 import TerminalEmbed from '../utils/embedBuilder.js';
-import database from '../database';
+import database from '../database.js';
 
 export default {
     name: 'challenge',
