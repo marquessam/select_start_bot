@@ -1,11 +1,5 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-// Create __dirname equivalent in ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const fs = require('fs');
+const path = require('path');
 
 class ErrorHandler {
     static logError(error, context) {
@@ -18,4 +12,4 @@ class ErrorHandler {
     }
 }
 
-export default ErrorHandler;
+module.exports = ErrorHandler;
