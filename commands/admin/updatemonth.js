@@ -1,13 +1,15 @@
-const TerminalEmbed = require('../../utils/embedBuilder');
-const database = require('../../database');
+import TerminalEmbed from '../../utils/embedBuilder.js';
+import database from '../../database.js';
 
-module.exports = {
+export default {
     name: 'updatemonth',
     description: 'Updates monthly rankings and points',
     async execute(message, args, { userStats }) {
         try {
             if (args.length !== 4) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !updatemonth <month> <first> <second> <third>\n[Ready for input]█\x1b[0m```');
+                await message.channel.send(
+                    '```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !updatemonth <month> <first> <second> <third>\n[Ready for input]█\x1b[0m```'
+                );
                 return;
             }
 
@@ -23,7 +25,9 @@ module.exports = {
             const invalidUsers = usersToCheck.filter(user => !validUsers.includes(user.toLowerCase()));
             
             if (invalidUsers.length > 0) {
-                await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] Invalid users: ${invalidUsers.join(', ')}\n[Ready for input]█\x1b[0m\`\`\``);
+                await message.channel.send(
+                    `\`\`\`ansi\n\x1b[32m[ERROR] Invalid users: ${invalidUsers.join(', ')}\n[Ready for input]█\x1b[0m\`\`\``
+                );
                 return;
             }
 
