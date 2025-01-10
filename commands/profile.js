@@ -1,5 +1,5 @@
-const TerminalEmbed = require('../utils/embedBuilder');
-const DataService = require('../services/dataService');
+const TerminalEmbed = require('../utils/embedBuilder.js');
+const DataService = require('../services/dataService.js');
 
 function calculateRank(username, leaderboard, rankMetric) {
     const user = leaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
