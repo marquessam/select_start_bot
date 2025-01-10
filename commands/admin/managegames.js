@@ -1,5 +1,5 @@
 // commands/admin/managegames.js
-import TerminalEmbed = require('../../utils/embedBuilder.js');
+import TerminalEmbed from '../utils/embedBuilder.js';
 
 export default {
     name: 'managegames',
