@@ -81,6 +81,8 @@ class Database {
             await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
             await this.db.collection('reviews').createIndex({ _id: 1 });
             await this.db.collection('users').createIndex({ username: 1 });
+            // Create index for new leaderboardCache collection if required
+            await this.db.collection('leaderboardCache').createIndex({ _id: 1 });
             console.log('Indexes created successfully');
         } catch (error) {
             ErrorHandler.logError(error, 'Create Indexes');
@@ -222,7 +224,7 @@ class Database {
         }
     }
 
-   // =================
+    // =================
     // Arcade Methods
     // =================
     
@@ -497,22 +499,22 @@ class Database {
     }
 
     async getUserNominationCount(discordId) {
-    try {
-        const collection = await this.getCollection('nominations');
-        const period = new Date().toISOString().slice(0, 7);
-        const nominations = await collection.findOne({ _id: 'nominations' });
-        
-        // Count nominations for this user in current period
-        const userNominations = nominations?.nominations?.[period]?.filter(nom => 
-            nom.discordId === discordId
-        ) || [];
-        
-        return userNominations.length;
-    } catch (error) {
-        ErrorHandler.logError(error, 'Get User Nomination Count');
-        return 0;
+        try {
+            const collection = await this.getCollection('nominations');
+            const period = new Date().toISOString().slice(0, 7);
+            const nominations = await collection.findOne({ _id: 'nominations' });
+            
+            // Count nominations for this user in current period
+            const userNominations = nominations?.nominations?.[period]?.filter(nom => 
+                nom.discordId === discordId
+            ) || [];
+            
+            return userNominations.length;
+        } catch (error) {
+            ErrorHandler.logError(error, 'Get User Nomination Count');
+            return 0;
+        }
     }
-}
     
     // ===================
     // Shadow Game Methods
@@ -547,7 +549,7 @@ class Database {
         }
     }
 
-  // ===================
+    // ===================
     // Stats Methods
     // ===================
     
@@ -714,6 +716,37 @@ class Database {
             throw error;
         }
     }
+
+    // =====================================
+    // Leaderboard Cache Methods (New)
+    // =====================================
+
+    async loadLeaderboardCache() {
+        try {
+            const collection = await this.getCollection('leaderboardCache');
+            // Assuming a single document with _id 'cache'
+            return await collection.findOne({ _id: 'cache' });
+        } catch (error) {
+            ErrorHandler.logError(error, 'Load Leaderboard Cache');
+            return null;
+        }
+    }
+
+    async saveLeaderboardCache(cacheRecord) {
+        try {
+            const collection = await this.getCollection('leaderboardCache');
+            // Upsert the leaderboard cache document with _id 'cache'
+            await collection.updateOne(
+                { _id: 'cache' },
+                { $set: cacheRecord },
+                { upsert: true }
+            );
+        } catch (error) {
+            ErrorHandler.logError(error, 'Save Leaderboard Cache');
+            throw error;
+        }
+    }
 }
 
 module.exports = new Database();
+
