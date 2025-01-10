@@ -1,6 +1,6 @@
-import TerminalEmbed from '../../utils/embedBuilder.js';
+const TerminalEmbed = require('../../utils/embedBuilder');
 
-export default {
+module.exports = {
     name: 'points',
     description: 'Manage user points system',
     async execute(message, args, { userStats }) {
