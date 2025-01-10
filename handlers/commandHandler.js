@@ -1,7 +1,10 @@
-const fs = require('fs');
-const path = require('path');
-const { Collection, PermissionFlagsBits } = require('discord.js');
-const ErrorHandler = require('../utils/errorHandler');
+import fs from 'fs';
+import path from 'path';
+import { Collection, PermissionFlagsBits } from 'discord.js';
+import ErrorHandler from '../utils/errorHandler.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 
 class CommandHandler {
     constructor() {
@@ -256,4 +259,4 @@ class CommandHandler {
     }
 }
 
-module.exports = CommandHandler;
+export default CommandHandler;
