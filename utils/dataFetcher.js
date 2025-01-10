@@ -1,6 +1,6 @@
-import ErrorHandler from './errorHandler.js';
+const ErrorHandler = require('./errorHandler');
 
-export async function fetchData(collection, filter = {}, defaultData = {}) {
+async function fetchData(collection, filter = {}, defaultData = {}) {
     try {
         const data = await collection.findOne(filter);
         return data || defaultData;
@@ -9,3 +9,5 @@ export async function fetchData(collection, filter = {}, defaultData = {}) {
         throw error;
     }
 }
+
+module.exports = { fetchData };
