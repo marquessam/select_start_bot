@@ -1,6 +1,6 @@
 // commands/admin/awardretropoints.js
-const TerminalEmbed = require('../../utils/embedBuilder.js');
-const database = require('../../database.js');
+import TerminalEmbed = require('../../utils/embedBuilder.js');
+import database = require('../../database.js');
 
 export default = {
     name: 'awardretropoints',
