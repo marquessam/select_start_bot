@@ -1,4 +1,4 @@
-const { fetchLeaderboardData } = require('./raAPI.js');
+import { fetchLeaderboardData } from './raAPI.js';
 
 class LeaderboardCache {
     constructor(database) {
@@ -175,4 +175,4 @@ function createLeaderboardCache(database) {
     return new LeaderboardCache(database);
 }
 
-module.exports = createLeaderboardCache;
+export default createLeaderboardCache;
