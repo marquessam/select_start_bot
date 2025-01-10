@@ -1,7 +1,7 @@
-const TerminalEmbed = require('../utils/embedBuilder.js');
-const database = require('../database');
+import TerminalEmbed = require('../utils/embedBuilder.js');
+import database = require('../database');
 
-export default = {
+export default {
     name: 'challenge',
     description: 'Displays current monthly challenge',
     async execute(message, args, { shadowGame }) {
