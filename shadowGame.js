@@ -1,5 +1,5 @@
 import { EmbedBuilder } from 'discord.js';
-import database from '../database.js';
+import database from './database.js';
 
 class ShadowGame {
     constructor() {
