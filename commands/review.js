@@ -1,7 +1,7 @@
-const TerminalEmbed = require('../utils/embedBuilder');
-const database = require('../database');
+import TerminalEmbed = require('../utils/embedBuilder.js');
+import database = require('../database.js');
 
-module.exports = {
+export default {
     name: 'review',
     description: 'Read or write game reviews',
     async execute(message, args, { shadowGame }) {
