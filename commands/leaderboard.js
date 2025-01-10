@@ -1,7 +1,7 @@
-const TerminalEmbed = require('../utils/embedBuilder');
-const DataService = require('../services/dataService');
+const TerminalEmbed = require('../utils/embedBuilder.js');
+const DataService = require('../services/dataService.js');
 
-module.exports = {
+export default = {
     name: 'leaderboard',
     description: 'Displays monthly, yearly, or high score leaderboards',
 
