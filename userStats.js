@@ -1,15 +1,17 @@
 import { createRequire } from 'module';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import ErrorHandler from './utils/errorHandler.js';
 import { fetch } from 'node-fetch';
 
-// Determine __dirname equivalent in ESM
+// Setup __dirname equivalent for ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Import JSON using assertions (Node.js supports this in ESM)
-import raGameRules from './raGameRules.json' assert { type: 'json' };
+// Read and parse the JSON file without using import assertions
+const raGameRulesPath = path.join(__dirname, 'raGameRules.json');
+const raGameRules = JSON.parse(fs.readFileSync(raGameRulesPath, 'utf-8'));
 
 class UserStats {
     constructor(database) {
