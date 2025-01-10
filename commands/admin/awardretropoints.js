@@ -2,7 +2,7 @@
 import TerminalEmbed = require('../../utils/embedBuilder.js');
 import database = require('../../database.js');
 
-export default = {
+export default {
     name: 'awardretropoints',
     description: 'Award retroactive participation points for a specific month',
     async execute(message, args, { userStats }) {
