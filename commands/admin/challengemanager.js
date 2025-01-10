@@ -1,7 +1,7 @@
-import TerminalEmbed from '../../utils/embedBuilder.js';
-import database from '../../database.js';
+const TerminalEmbed = require('../../utils/embedBuilder');
+const database = require('../../database');
 
-export default {
+module.exports = {
     name: 'challengemanager',
     description: 'Manage monthly challenges',
     async execute(message, args, { announcer }) {
