@@ -1,7 +1,7 @@
 // commands/admin/managegames.js
-const TerminalEmbed = require('../../utils/embedBuilder');
+import TerminalEmbed = require('../../utils/embedBuilder.js');
 
-module.exports = {
+export default = {
     name: 'managegames',
     description: 'Manage game requests and approvals',
     async execute(message, args) {
