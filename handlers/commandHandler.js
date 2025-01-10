@@ -1,10 +1,30 @@
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import fs from 'fs';
-import path from 'path';
 import { Collection, PermissionFlagsBits } from 'discord.js';
 import ErrorHandler from '../utils/errorHandler.js';
-import { createRequire } from 'module';
 
-const require = createRequire(import.meta.url);
+// Define __filename and __dirname for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+class CommandHandler {
+    constructor() {
+        // Separate collections for normal and admin commands
+        this.commands = new Collection();
+        this.adminCommands = new Collection();
+
+        // Cooldown map: key = `${userId}-${commandName}`, value = timestamp when cooldown ends
+        this.cooldowns = new Map();
+
+        // Configuration
+        this.config = {
+            defaultCooldown: 3000,   // 3 seconds for normal commands
+            adminCooldown: 1000,     // 1 second for admin commands
+            commandsPath: join(__dirname, '..', 'commands'),
+            adminCommandsPath: join(__dirname, '..', 'commands', 'admin')
+        };
+    }
 
 class CommandHandler {
     constructor() {
