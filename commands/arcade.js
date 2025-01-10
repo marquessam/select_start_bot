@@ -1,7 +1,7 @@
-const TerminalEmbed = require('../utils/embedBuilder');
-const database = require('../database');
+import TerminalEmbed from '../utils/embedBuilder.js';
+import database from '../database.js';
 
-module.exports = {
+export default {
     name: 'arcade',
     description: 'Manage arcade games and scores',
     async execute(message, args) {
@@ -129,7 +129,7 @@ async function handleReset(message, args) {
 
     const embed = new TerminalEmbed()
         .setTerminalTitle(`${gameName} - SCORES RESET`)
-        .setTerminalDescription('[UPDATE COMPLETE]')
+        .setTerminalDescription('[UPDATE COMPLETE]\n[DISPLAYING CHANGES]')
         .addTerminalField('ACTION TAKEN', 
             username ? `Removed score for user: ${username}` : 'Reset all scores for game');
 
@@ -181,7 +181,7 @@ async function handleRules(message) {
         return;
     }
 
-    const [gameName, gameData] = games[gameNum - 1];
+    const [gameName] = games[gameNum - 1];
 
     await message.channel.send('```ansi\n\x1b[32mEnter the new rules:\x1b[0m```');
 
