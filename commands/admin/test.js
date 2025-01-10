@@ -1,7 +1,7 @@
-import TerminalEmbed from '../../utils/embedBuilder.js';
-import database from '../../database.js';
+const TerminalEmbed = require('../../utils/embedBuilder');
+const database = require('../../database');
 
-export default {
+module.exports = {
     name: 'test',
     description: 'Test bot functionality',
     async execute(message, args, { announcer }) {
