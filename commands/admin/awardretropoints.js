@@ -1,8 +1,8 @@
 // commands/admin/awardretropoints.js
-import TerminalEmbed from '../../utils/embedBuilder.js';
-import database from '../../database.js';
+const TerminalEmbed = require('../../utils/embedBuilder');
+const database = require('../../database');
 
-export default {
+module.exports = {
     name: 'awardretropoints',
     description: 'Award retroactive participation points for a specific month',
     async execute(message, args, { userStats }) {
