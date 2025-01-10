@@ -3,20 +3,18 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const database = require('./database');
 
 // -----------------------------------------------------------------------------
-// Rate limiting with concurrency + backoff/retry
+// Rate limiting (SEQUENTIAL: concurrency=1) + backoff/retry for 429
 // -----------------------------------------------------------------------------
 const rateLimiter = {
-    // Tracks last request time per URL to enforce a minimum gap
+    // Records last request time for a given URL to enforce cooldown
     requests: new Map(),
-    // 1 second minimum gap per URL
-    cooldown: 1000,
-    // Reduce concurrency to 2 to lower chance of RA "Too Many Requests"
-    concurrentLimit: 2,
-    // Internal queue of requests to process
+    // 2-second gap per request
+    cooldown: 2000,
+    // We are making requests strictly one at a time
+    concurrentLimit: 1,
+
     queue: [],
-    // Tracks how many requests are currently "in flight"
     activeRequests: 0,
-    // Flag for whether we’re actively processing the queue
     processing: false,
 
     async processQueue() {
@@ -24,21 +22,20 @@ const rateLimiter = {
         this.processing = true;
 
         while (this.queue.length > 0) {
-            // If we haven't hit concurrency limit, process the next request
+            // If we haven't hit concurrency limit, process next request
             if (this.activeRequests < this.concurrentLimit) {
                 const { url, resolve, reject } = this.queue.shift();
                 this.activeRequests++;
 
-                // Fire off the request
                 this.executeRequest(url)
                     .then(resolve)
                     .catch(reject)
                     .finally(() => {
                         this.activeRequests--;
-                        this.processQueue(); // keep processing until queue empty
+                        this.processQueue();
                     });
             } else {
-                // Wait briefly and re-check
+                // Wait a moment before re-checking if concurrency is reached
                 await new Promise(r => setTimeout(r, 100));
             }
         }
@@ -47,7 +44,7 @@ const rateLimiter = {
     },
 
     async executeRequest(url, attempt = 1) {
-        // Enforce a per-URL cooldown
+        // 1) Respect per-URL cooldown
         const now = Date.now();
         const lastRequestTime = this.requests.get(url) || 0;
         const waitTime = Math.max(0, lastRequestTime + this.cooldown - now);
@@ -62,28 +59,25 @@ const rateLimiter = {
             throw new Error(`Network error or fetch failed: ${err.message}`);
         }
 
-        // Track last request time for cooldown
+        // Update the timestamp for this URL
         this.requests.set(url, Date.now());
 
         if (!response.ok) {
-            // Check if it's a "Too Many Requests" scenario
+            // 2) Check if it's a 429 or "Too Many Requests"
             if (
                 response.status === 429 ||
                 response.statusText.toLowerCase().includes('too many requests')
             ) {
-                // If we haven't exceeded max retries, back off and retry
                 const MAX_RETRIES = 3;
                 const RETRY_DELAY = 5000; // 5 seconds
                 if (attempt < MAX_RETRIES) {
                     console.warn(
-                        `[RA API] 429 Too Many Requests. Backing off for ${RETRY_DELAY /
-                            1000} seconds. Attempt #${attempt + 1}...`
+                        `[RA API] 429 Too Many Requests. Backing off for ${RETRY_DELAY / 1000} seconds. Attempt #${attempt + 1}...`
                     );
                     await new Promise(r => setTimeout(r, RETRY_DELAY));
                     return this.executeRequest(url, attempt + 1);
                 }
             }
-
             throw new Error(`Failed to fetch: ${response.statusText}`);
         }
 
@@ -99,7 +93,7 @@ const rateLimiter = {
 };
 
 // -----------------------------------------------------------------------------
-// Cache setup
+// Cache
 // -----------------------------------------------------------------------------
 const cache = {
     userProfiles: new Map(),
@@ -110,17 +104,17 @@ const cache = {
 };
 
 // -----------------------------------------------------------------------------
-// Fetch user profile (with caching)
+// Fetch user profile
 // -----------------------------------------------------------------------------
 async function fetchUserProfile(username) {
     try {
-        // 1. Check cache
+        // 1) Check cache
         const cachedProfile = cache.userProfiles.get(username);
         if (cachedProfile && (Date.now() - cachedProfile.timestamp < cache.profileTTL)) {
             return cachedProfile.data;
         }
 
-        // 2. Build URL
+        // 2) Build URL
         const params = new URLSearchParams({
             z: process.env.RA_USERNAME,
             y: process.env.RA_API_KEY,
@@ -128,17 +122,17 @@ async function fetchUserProfile(username) {
         });
         const url = `https://retroachievements.org/API/API_GetUserSummary.php?${params}`;
 
-        // 3. Request with rateLimiter
+        // 3) Request
         const data = await rateLimiter.makeRequest(url);
 
-        // 4. Build profile object
+        // 4) Construct user profile
         const profile = {
             username: data.Username,
             profileImage: `https://retroachievements.org${data.UserPic}`,
             profileUrl: `https://retroachievements.org/user/${data.Username}`
         };
 
-        // 5. Cache it
+        // 5) Store in cache
         cache.userProfiles.set(username, {
             data: profile,
             timestamp: Date.now()
@@ -147,7 +141,7 @@ async function fetchUserProfile(username) {
         return profile;
     } catch (error) {
         console.error(`[RA API] Error fetching user profile for ${username}:`, error);
-        // Return default / fallback
+        // Fallback
         return {
             username,
             profileImage: `https://retroachievements.org/UserPic/${username}.png`,
@@ -157,11 +151,11 @@ async function fetchUserProfile(username) {
 }
 
 // -----------------------------------------------------------------------------
-// Helper: fetch user's challenge progress + profile + recent achievements
+// Fetch all needed user data for challenge
 // -----------------------------------------------------------------------------
 async function fetchUserChallengeData(username, gameId) {
     try {
-        // 1. Build query params
+        // 1) Build query params
         const challengeParams = new URLSearchParams({
             z: process.env.RA_USERNAME,
             y: process.env.RA_API_KEY,
@@ -172,36 +166,36 @@ async function fetchUserChallengeData(username, gameId) {
             z: process.env.RA_USERNAME,
             y: process.env.RA_API_KEY,
             u: username,
-            c: 50 // last 50 achievements
+            c: 50  // last 50 achievements
         });
 
-        // 2. Fetch in parallel
-        const [challengeData, profile, recentAchievements] = await Promise.all([
-            rateLimiter.makeRequest(`https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${challengeParams}`),
-            fetchUserProfile(username),
-            rateLimiter.makeRequest(`https://retroachievements.org/API/API_GetUserRecentAchievements.php?${recentParams}`)
-        ]);
+        // 2) Fetch each piece sequentially (since we’re already limiting concurrency = 1)
+        //    But you can still do `Promise.all` if you want them in parallel for a single user
+        //    RA might still handle it okay for a single user. If you want to be super safe, do them in sequence.
+        const challengeData = await rateLimiter.makeRequest(`https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${challengeParams}`);
+        const profile       = await fetchUserProfile(username);
+        const recentAchievements = await rateLimiter.makeRequest(`https://retroachievements.org/API/API_GetUserRecentAchievements.php?${recentParams}`);
 
-        // 3. Process challenge achievements
+        // 3) Process challenge achievements
         const challengeAchievements = challengeData.Achievements ? Object.values(challengeData.Achievements) : [];
         const numAchievements = challengeAchievements.length;
         const completed = challengeAchievements.filter(ach => parseInt(ach.DateEarned) > 0).length;
 
-        // 4. Check for "beaten game" condition
+        // 4) Check "beaten game" condition
         const hasBeatenGame = challengeAchievements.some(ach => {
-            // "Beaten game" is indicated by the achievement's "Flags & 2"
+            // "Beaten" => (ach.Flags & 2) === 2
             const isWinCondition = (ach.Flags & 2) === 2;
             const isEarned = parseInt(ach.DateEarned) > 0;
             return isWinCondition && isEarned;
         });
 
-        // 5. Combine achievements for feed
+        // 5) Combine achievements
         const allAchievements = [
             ...challengeAchievements,
             ...(recentAchievements || [])
         ];
 
-        // 6. Build user progress object
+        // 6) Return user stats
         return {
             username,
             profileImage: profile.profileImage,
@@ -232,7 +226,7 @@ async function fetchUserChallengeData(username, gameId) {
 // -----------------------------------------------------------------------------
 async function fetchLeaderboardData() {
     try {
-        // 1. Check cache
+        // 1) Check if valid cache exists
         if (cache.leaderboardData && (Date.now() - cache.lastLeaderboardUpdate < cache.leaderboardTTL)) {
             console.log('[RA API] Returning cached leaderboard data');
             return cache.leaderboardData;
@@ -240,32 +234,31 @@ async function fetchLeaderboardData() {
 
         console.log('[RA API] Fetching fresh leaderboard data');
 
-        // 2. Get active challenge
+        // 2) Get current challenge
         const challenge = await database.getCurrentChallenge();
         if (!challenge || !challenge.gameId) {
             throw new Error('No active challenge found in database');
         }
 
-        // 3. Gather valid users
+        // 3) Get valid users
         const validUsers = await database.getValidUsers();
         console.log(`[RA API] Fetching data for ${validUsers.length} users`);
 
-        // 4. Fetch progress for each user in parallel
-        //    (rateLimiter will manage concurrency and cooldowns)
-        const usersProgressPromises = validUsers.map(username =>
-            fetchUserChallengeData(username, challenge.gameId)
-        );
+        // 4) Fetch each user’s data (sequential concurrency = 1 enforced by rateLimiter)
+        const usersProgress = [];
+        for (const username of validUsers) {
+            const userData = await fetchUserChallengeData(username, challenge.gameId);
+            usersProgress.push(userData);
+        }
 
-        const usersProgress = await Promise.all(usersProgressPromises);
-
-        // 5. Sort leaderboard by completion desc
+        // 5) Sort by completion percentage desc
         const leaderboardData = {
             leaderboard: usersProgress.sort((a, b) => b.completionPercentage - a.completionPercentage),
             gameInfo: challenge,
             lastUpdated: new Date().toISOString()
         };
 
-        // 6. Cache the result
+        // 6) Cache
         cache.leaderboardData = leaderboardData;
         cache.lastLeaderboardUpdate = Date.now();
 
