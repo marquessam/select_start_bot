@@ -1,6 +1,6 @@
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-const pLimit = require('p-limit');
-const database = require('./database');
+import fetch from 'node-fetch';
+import pLimit from 'p-limit';
+import database from './database.js';
 
 // Rate limiting setup
 const rateLimiter = {
@@ -222,7 +222,4 @@ async function fetchLeaderboardData() {
     }
 }
 
-module.exports = {
-    fetchUserProfile,
-    fetchLeaderboardData
-};
+export { fetchUserProfile, fetchLeaderboardData };
