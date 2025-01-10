@@ -350,7 +350,7 @@ const nominations = {
             // Step 3: Ask if they want to change the platform
             await message.channel.send(`\`\`\`ansi\n\x1b[32mCurrent platform is ${nomination.platform}. Would you like to change it? (yes/no)\x1b[0m\`\`\``);
             
-           response = await message.channel.awaitMessages({
+            response = await message.channel.awaitMessages({
                 filter: m => m.author.id === message.author.id && ['yes', 'no', 'y', 'n'].includes(m.content.toLowerCase()),
                 max: 1,
                 time: timeout,
@@ -480,4 +480,4 @@ const nominations = {
     }
 };
 
-module.exports = nominations;
+export default nominations;
