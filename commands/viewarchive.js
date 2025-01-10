@@ -1,6 +1,6 @@
 // viewarchive.js
-import TerminalEmbed = require('../utils/embedBuilder.js');
-import database = require('../database.js');
+import TerminalEmbed from '../utils/embedBuilder.js';
+import database from '../database.js';
 
 export default {
     name: 'viewarchive',
