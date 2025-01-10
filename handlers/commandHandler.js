@@ -3,10 +3,12 @@ import { dirname, join } from 'path';
 import fs from 'fs';
 import { Collection, PermissionFlagsBits } from 'discord.js';
 import ErrorHandler from '../utils/errorHandler.js';
+import { createRequire } from 'module';
 
 // Define __filename and __dirname for ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const require = createRequire(import.meta.url);
 
 class CommandHandler {
     constructor() {
@@ -23,24 +25,6 @@ class CommandHandler {
             adminCooldown: 1000,     // 1 second for admin commands
             commandsPath: join(__dirname, '..', 'commands'),
             adminCommandsPath: join(__dirname, '..', 'commands', 'admin')
-        };
-    }
-
-class CommandHandler {
-    constructor() {
-        // Separate collections for normal and admin commands
-        this.commands = new Collection();
-        this.adminCommands = new Collection();
-
-        // Cooldown map: key = `${userId}-${commandName}`, value = timestamp when cooldown ends
-        this.cooldowns = new Map();
-
-        // Configuration
-        this.config = {
-            defaultCooldown: 3000,   // 3 seconds for normal commands
-            adminCooldown: 1000,     // 1 second for admin commands
-            commandsPath: path.join(__dirname, '..', 'commands'),
-            adminCommandsPath: path.join(__dirname, '..', 'commands', 'admin')
         };
     }
 
@@ -93,7 +77,7 @@ class CommandHandler {
             .filter((file) => file.endsWith('.js'));
 
         for (const file of commandFiles) {
-            const filePath = path.join(dirPath, file);
+            const filePath = join(dirPath, file);
             try {
                 // Clear the require cache so reloading is possible
                 delete require.cache[require.resolve(filePath)];
@@ -252,7 +236,7 @@ class CommandHandler {
             this.adminCommands.delete(nameLower);
 
             // Attempt reload from normal commands
-            const regularPath = path.join(this.config.commandsPath, `${nameLower}.js`);
+            const regularPath = join(this.config.commandsPath, `${nameLower}.js`);
             if (fs.existsSync(regularPath)) {
                 delete require.cache[require.resolve(regularPath)];
                 const cmd = require(regularPath);
@@ -262,7 +246,7 @@ class CommandHandler {
             }
 
             // Attempt reload from admin commands
-            const adminPath = path.join(this.config.adminCommandsPath, `${nameLower}.js`);
+            const adminPath = join(this.config.adminCommandsPath, `${nameLower}.js`);
             if (fs.existsSync(adminPath)) {
                 delete require.cache[require.resolve(adminPath)];
                 const cmd = require(adminPath);
