@@ -1,8 +1,8 @@
 // viewarchive.js
-import TerminalEmbed from '../utils/embedBuilder.js';
-import database from '../database.js';
+const TerminalEmbed = require('../utils/embedBuilder');
+const database = require('../database');
 
-export default {
+module.exports = {
     name: 'viewarchive',
     description: 'View archived leaderboard data',
     async execute(message, args, { userStats }) {
