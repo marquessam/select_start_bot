@@ -1,6 +1,3 @@
-import path from 'path';
-import ErrorHandler from './utils/errorHandler.js';
-
 class UserTracker {
     constructor(database, userStats) {
         this.database = database;
@@ -192,4 +189,4 @@ class UserTracker {
     }
 }
 
-export default UserTracker;
+module.exports = UserTracker;
