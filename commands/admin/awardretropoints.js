@@ -1,5 +1,5 @@
 // commands/admin/awardretropoints.js
-import TerminalEmbed from '../utils/embedBuilder.js';
+import TerminalEmbed from '../../utils/embedBuilder.js';
 import database from '../../database.js';
 
 export default {
