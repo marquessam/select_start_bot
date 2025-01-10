@@ -1,7 +1,7 @@
 // commands/admin/adminhelp.js
 import TerminalEmbed = require('../../utils/embedBuilder.js');
 
-export default = {
+export default {
     name: 'adminhelp',
     description: 'Shows all available admin commands',
     async execute(message, args, { shadowGame }) {
