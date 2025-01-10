@@ -1,7 +1,7 @@
-import TerminalEmbed from '../utils/embedBuilder.js';
-import * as DataService from '../services/dataService.js';
+const TerminalEmbed = require('../utils/embedBuilder');
+const DataService = require('../services/dataService');
 
-export default {
+module.exports = {
     name: 'leaderboard',
     description: 'Displays monthly, yearly, or high score leaderboards',
 
@@ -207,4 +207,3 @@ export default {
         }
     },
 };
-
