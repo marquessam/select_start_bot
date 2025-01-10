@@ -1,15 +1,15 @@
-import 'dotenv/config';  // Automatically load environment variables
-import { Client, GatewayIntentBits } from 'discord.js';
-import database from './database.js';
-import UserStats from './userStats.js';
-import CommandHandler from './handlers/commandHandler.js';
-import UserTracker from './userTracker.js';
-import Announcer from './utils/announcer.js';
-import createLeaderboardCache from './leaderboardCache.js';
-import ShadowGame from './shadowGame.js';
-import ErrorHandler from './utils/errorHandler.js';
-import AchievementFeed from './achievementFeed.js';
-import MobyAPI from './mobyAPI.js';
+require('dotenv').config();
+const { Client, GatewayIntentBits } = require('discord.js');
+const database = require('./database');
+const UserStats = require('./userStats');
+const CommandHandler = require('./handlers/commandHandler');
+const UserTracker = require('./userTracker');
+const Announcer = require('./utils/announcer');
+const createLeaderboardCache = require('./leaderboardCache');
+const ShadowGame = require('./shadowGame');
+const ErrorHandler = require('./utils/errorHandler');
+const AchievementFeed = require('./achievementFeed');
+const MobyAPI = require('./mobyAPI');
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
