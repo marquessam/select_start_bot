@@ -1,7 +1,7 @@
-const TerminalEmbed = require('./embedBuilder');
-const { fetchLeaderboardData } = require('../raAPI.js');
-const cron = require('node-cron');
-const database = require('../database');
+import TerminalEmbed from './embedBuilder.js';
+import { fetchLeaderboardData } from '../raAPI.js';
+import cron from 'node-cron';
+import database from '../database.js';
 
 class Announcer {
     constructor(client, userStats, channelId) {
@@ -177,4 +177,4 @@ class Announcer {
     }
 }
 
-module.exports = Announcer;
+export default Announcer;
