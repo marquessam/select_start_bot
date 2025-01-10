@@ -1,7 +1,7 @@
-const TerminalEmbed = require('../utils/embedBuilder');
-const database = require('../database');
+import TerminalEmbed = require('../utils/embedBuilder.js');
+import database = require('../database.js');
 
-module.exports = {
+export default {
     name: 'view',
     description: 'View various system information and archives',
     async execute(message, args, { shadowGame }) {
