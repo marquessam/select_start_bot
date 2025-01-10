@@ -1,46 +1,45 @@
-// dataService.js
-const database = require('../database');
-const raAPI = require('../raAPI');
+import database from '../database.js';
+import raAPI from '../raAPI.js';
 
 class DataService {
     // New code
-static async getUserStats(username) {
-    const stats = await database.getUserStats();
-    const currentYear = new Date().getFullYear().toString();
-    const userStats = stats.users[username.toLowerCase()];
-    console.log('Debug - User Stats:', {
-        username,
-        yearlyStats: userStats?.yearlyStats?.[currentYear],
-        gamesBeaten: userStats?.yearlyStats?.[currentYear]?.gamesBeaten || 0
-    });
-    return userStats || {
-        yearlyPoints: {},
-        yearlyStats: {
-            [currentYear]: {
-                gamesBeaten: 0,
-                monthlyParticipations: 0,
-                totalAchievementsUnlocked: 0,
-                hardcoreCompletions: 0,
-                softcoreCompletions: 0,
-                perfectMonths: 0,
-                averageCompletion: 0,
-                longestStreak: 0,
-                currentStreak: 0,
-                highestSingleDay: 0,
-                mastery100Count: 0,
-                participationRate: 0,
-                rareAchievements: 0,
-                personalBests: {
-                    fastestCompletion: null,
-                    highestPoints: 0,
-                    bestRank: 0
+    static async getUserStats(username) {
+        const stats = await database.getUserStats();
+        const currentYear = new Date().getFullYear().toString();
+        const userStats = stats.users[username.toLowerCase()];
+        console.log('Debug - User Stats:', {
+            username,
+            yearlyStats: userStats?.yearlyStats?.[currentYear],
+            gamesBeaten: userStats?.yearlyStats?.[currentYear]?.gamesBeaten || 0
+        });
+        return userStats || {
+            yearlyPoints: {},
+            yearlyStats: {
+                [currentYear]: {
+                    gamesBeaten: 0,
+                    monthlyParticipations: 0,
+                    totalAchievementsUnlocked: 0,
+                    hardcoreCompletions: 0,
+                    softcoreCompletions: 0,
+                    perfectMonths: 0,
+                    averageCompletion: 0,
+                    longestStreak: 0,
+                    currentStreak: 0,
+                    highestSingleDay: 0,
+                    mastery100Count: 0,
+                    participationRate: 0,
+                    rareAchievements: 0,
+                    personalBests: {
+                        fastestCompletion: null,
+                        highestPoints: 0,
+                        bestRank: 0
+                    }
                 }
-            }
-        },
-        monthlyAchievements: {},
-        bonusPoints: []
-    };
-}
+            },
+            monthlyAchievements: {},
+            bonusPoints: []
+        };
+    }
 
     static async getValidUsers() {
         return database.getValidUsers();
@@ -185,4 +184,4 @@ static async getUserStats(username) {
     }
 }
 
-module.exports = DataService;
+export default DataService;
