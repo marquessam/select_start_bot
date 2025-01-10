@@ -1,7 +1,7 @@
 // commands/today.js
-import TerminalEmbed from '../utils/embedBuilder.js';
+const TerminalEmbed = require('../utils/embedBuilder');
 
-export default {
+module.exports = {
     name: 'today',
     description: 'Shows games released on this day in gaming history',
     
