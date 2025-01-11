@@ -507,6 +507,27 @@ async verifyArcadeScore(game, username) {
         }
     }
 
+    async getReviewsForGame(gameName) {
+    try {
+        // Get the collection for reviews
+        const collection = await this.getCollection('reviews');
+
+        // Fetch reviews for the specified game
+        const result = await collection.findOne({ _id: 'reviews' });
+
+        if (!result || !result.games || !result.games[gameName]) {
+            // If no reviews exist for the game, return an empty array
+            return [];
+        }
+
+        // Return the reviews array for the game
+        return result.games[gameName].reviews || [];
+    } catch (error) {
+        ErrorHandler.logError(error, `Fetching reviews for game: ${gameName}`);
+        throw new Error('Failed to retrieve reviews for the specified game.');
+    }
+}
+
     // ===================
     // Nomination Methods
     // ===================
