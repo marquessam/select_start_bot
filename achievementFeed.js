@@ -1,5 +1,5 @@
 const { EmbedBuilder, PermissionsBitField } = require('discord.js');
-const { fetchLeaderboardData } = require('./raAPI');
+const { fetchLeaderboardData, api: raAPI } = require('./raAPI');
 const { ErrorHandler, BotError } = require('./utils/errorHandler');
 const { withTransaction } = require('./utils/transactions');
 const commonValidators = require('./utils/validators');
