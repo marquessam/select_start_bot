@@ -1,5 +1,7 @@
+// achievementfeed.js
+
 const { EmbedBuilder, PermissionsBitField } = require('discord.js');
-const { fetchLeaderboardData } = require('./raAPI');
+const { fetchLeaderboardData, fetchAllRecentAchievements } = require('./raAPI');
 const { ErrorHandler, BotError } = require('./utils/errorHandler');
 const { withTransaction } = require('./utils/transactions');
 const commonValidators = require('./utils/validators');
@@ -29,7 +31,7 @@ class AchievementFeed {
             lastAnnouncement: null  // Track last announcement time
         };
 
-        // Add error tracking
+        // Error tracking
         this.errorCount = 0;
         this.lastError = null;
         this.maxErrors = 5; // Max errors before temporary shutdown
@@ -53,6 +55,7 @@ class AchievementFeed {
             }
 
             this.channel = channel;
+            // Load initial achievements from challenge data + recent achievements
             await this.loadInitialAchievements();
 
             this.intervalHandle = setInterval(() => {
@@ -69,12 +72,23 @@ class AchievementFeed {
         }
     }
 
+    /**
+     * loadInitialAchievements()
+     * Grabs both challenge-based data and recent achievements
+     * to populate the initial "lastAchievements" sets.
+     */
     async loadInitialAchievements() {
         try {
-            const data = await fetchLeaderboardData();
-            if (!data?.leaderboard) return;
+            // 1. Fetch the challenge-based data
+            const challengeData = await fetchLeaderboardData();
+            // 2. Fetch recent achievements from all games
+            const recentData = await fetchAllRecentAchievements();
 
-            for (const user of data.leaderboard) {
+            // Combine the two sets of achievements
+            const combinedUsers = this.mergeChallengeAndRecent(challengeData, recentData);
+
+            // Initialize lastAchievements with earned achievements
+            for (const user of combinedUsers) {
                 if (!user.achievements) continue;
 
                 const earnedAchievementIds = user.achievements
@@ -91,18 +105,31 @@ class AchievementFeed {
         }
     }
 
+    /**
+     * checkNewAchievements()
+     * Periodically checks for newly earned achievements from both
+     * challenge-based data and recent achievements across all games.
+     */
     async checkNewAchievements() {
         if (!this.channel) {
             throw new BotError('No valid channel to post in', ErrorHandler.ERROR_TYPES.VALIDATION, 'Achievement Feed Channel');
         }
 
         try {
-            const data = await fetchLeaderboardData();
-            if (!data?.leaderboard) {
+            // 1. Fetch challenge data
+            const challengeData = await fetchLeaderboardData();
+            // 2. Fetch all recent achievements
+            const recentData = await fetchAllRecentAchievements();
+
+            if (!challengeData?.leaderboard) {
                 throw new BotError('Invalid leaderboard data received', ErrorHandler.ERROR_TYPES.API, 'Fetch Leaderboard');
             }
 
-            for (const user of data.leaderboard) {
+            // 3. Merge user achievements
+            const combinedUsers = this.mergeChallengeAndRecent(challengeData, recentData);
+
+            // 4. Loop through each user to detect newly earned achievements
+            for (const user of combinedUsers) {
                 if (!user.achievements) continue;
 
                 const userKey = user.username.toLowerCase();
@@ -125,11 +152,12 @@ class AchievementFeed {
                             currentEarned.add(ach.ID);
 
                             if (!previouslyEarned.has(ach.ID)) {
+                                // Brief delay to avoid spamming
                                 await new Promise(resolve => setTimeout(resolve, 1000));
                                 
                                 await withTransaction(this.database, async (session) => {
                                     await this.announceAchievement(user.username, ach);
-                                    
+
                                     await this.database.db.collection('achievement_announcements')
                                         .insertOne({
                                             username: user.username,
@@ -161,6 +189,52 @@ class AchievementFeed {
 
             await this.handleError(error, 'Check Achievements');
         }
+    }
+
+    /**
+     * Merges challenge-based data with all-recent data.
+     * Returns an array of user objects with a single 'achievements' array.
+     */
+    mergeChallengeAndRecent(challengeData, recentData) {
+        // Format: challengeData.leaderboard => [{ username, achievements: [...] }, ...]
+        // recentData => [{ username, achievements: [...] }, ...]
+
+        // Create a map from username to user object
+        const userMap = new Map();
+
+        // 1. Populate from challenge data
+        for (const userObj of challengeData.leaderboard || []) {
+            userMap.set(userObj.username.toLowerCase(), {
+                username: userObj.username,
+                achievements: userObj.achievements || []
+            });
+        }
+
+        // 2. Merge in recent achievements
+        for (const recentUser of recentData) {
+            const key = recentUser.username.toLowerCase();
+            if (!userMap.has(key)) {
+                // If user wasn't in challenge data, add a new entry
+                userMap.set(key, {
+                    username: recentUser.username,
+                    achievements: recentUser.achievements
+                });
+            } else {
+                // Merge achievements with existing
+                const existingData = userMap.get(key);
+                const mergedAchievements = [
+                    ...(existingData.achievements || []),
+                    ...(recentUser.achievements || [])
+                ];
+                userMap.set(key, {
+                    username: recentUser.username,
+                    achievements: mergedAchievements
+                });
+            }
+        }
+
+        // Convert map back to an array
+        return Array.from(userMap.values());
     }
 
     async announceAchievement(username, achievement) {
