@@ -1,5 +1,6 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
+const logger = require('./utils/logger'); 
 
 module.exports = {
     name: 'leaderboard',
