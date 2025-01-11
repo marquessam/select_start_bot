@@ -4,6 +4,7 @@ const { Collection } = require('discord.js');
 const { ErrorHandler, BotError } = require('../utils/errorHandler');
 const PermissionsManager = require('../utils/permissions');
 const commonValidators = require('../utils/validators');
+const logger = require('../utils/logger');
 
 class CommandHandler {
     constructor() {
