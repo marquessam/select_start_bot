@@ -1,7 +1,7 @@
 const { MongoClient } = require('mongodb');
-const ErrorHandler = require('./utils/errorHandler');
+const { ErrorHandler } = require('./utils/errorHandler');
 const { fetchData } = require('./utils/dataFetcher');
-const commonValidators = require('./utils/validators');
+const { commonValidators } = require('./utils/validators');
 const { withTransaction } = require('./utils/transactions');
 
 class Database {
