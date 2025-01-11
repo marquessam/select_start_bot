@@ -1,17 +1,26 @@
 const { fetchLeaderboardData } = require('./raAPI.js');
+const CacheManager = require('./utils/cacheManager');
 
 class LeaderboardCache {
-    constructor(database) {
-        this.database = database;
-        this.userStats = null;
-        this.cache = {
-            validUsers: new Set(),
-            yearlyLeaderboard: [],
-            monthlyLeaderboard: [],
-            lastUpdated: null,
-            updateInterval: 15 * 60 * 1000  // 15 minutes
-        };
-    }
+   constructor(database) {
+    this.database = database;
+    this.userStats = null;
+    
+    // Initialize cache managers
+    this.userCache = new CacheManager({
+        defaultTTL: 15 * 60 * 1000,  // 15 minutes
+        maxSize: 500
+    });
+    
+    this.leaderboardCache = new CacheManager({
+        defaultTTL: 10 * 60 * 1000,  // 10 minutes
+        maxSize: 100
+    });
+
+    this.validUsers = new Set();
+    this.updateInterval = 15 * 60 * 1000;  // 15 minutes
+    this.lastUpdate = null;
+}
 
     setUserStats(userStatsInstance) {
         this.userStats = userStatsInstance;
@@ -146,13 +155,42 @@ class LeaderboardCache {
         }
     }
 
-    getYearlyLeaderboard() {
-        if (!this.cache.yearlyLeaderboard || !this.cache.yearlyLeaderboard.length) {
-            console.warn('[LEADERBOARD CACHE] Yearly leaderboard not initialized');
+   async getYearlyLeaderboard(year = null, allParticipants = []) {
+    const cacheKey = `yearly-${year || 'current'}-${allParticipants.length}`;
+    
+    return await this.leaderboardCache.getOrFetch(cacheKey, async () => {
+        try {
+            const targetYear = year || new Date().getFullYear().toString();
+            if (!this.userStats) return [];
+
+            const leaderboard = await Promise.all(
+                allParticipants
+                    .filter(username => this.validUsers.has(username.toLowerCase()))
+                    .map(async username => {
+                        const stats = await this.userCache.getOrFetch(
+                            `stats-${username}`,
+                            async () => this.userStats.getUserStats(username)
+                        );
+                        
+                        return {
+                            username,
+                            points: stats?.yearlyPoints?.[targetYear] || 0,
+                            gamesBeaten: stats?.yearlyStats?.[targetYear]?.gamesBeaten || 0,
+                            achievementsUnlocked: stats?.yearlyStats?.[targetYear]?.totalAchievementsUnlocked || 0,
+                            monthlyParticipations: stats?.yearlyStats?.[targetYear]?.monthlyParticipations || 0
+                        };
+                    })
+            );
+
+            return leaderboard.sort((a, b) => 
+                b.points - a.points || b.gamesBeaten - a.gamesBeaten
+            );
+        } catch (error) {
+            ErrorHandler.logError(error, 'Yearly Leaderboard Generation');
             return [];
         }
-        return this.cache.yearlyLeaderboard;
-    }
+    });
+}
 
     getMonthlyLeaderboard() {
         if (!this.cache.monthlyLeaderboard || !this.cache.monthlyLeaderboard.length) {
