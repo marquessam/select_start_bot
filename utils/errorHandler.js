@@ -1,4 +1,3 @@
-// utils/errorHandler.js
 const fs = require('fs');
 const path = require('path');
 
@@ -21,7 +20,7 @@ class ErrorHandler {
         PERMISSION: 'PERMISSION_ERROR',
         RATE_LIMIT: 'RATE_LIMIT_ERROR',
         CACHE: 'CACHE_ERROR',
-        UNKNOWN: 'UNKNOWN_ERROR'
+        UNKNOWN: 'UNKNOWN_ERROR',
     };
 
     static getErrorType(error) {
@@ -34,36 +33,38 @@ class ErrorHandler {
         if (error.name === 'ValidationError') {
             return this.ERROR_TYPES.VALIDATION;
         }
-        if (error.message?.includes('permission')) {
+        if (error.message?.toLowerCase().includes('permission')) {
             return this.ERROR_TYPES.PERMISSION;
         }
-        if (error.message?.includes('rate limit')) {
+        if (error.message?.toLowerCase().includes('rate limit')) {
             return this.ERROR_TYPES.RATE_LIMIT;
         }
         return this.ERROR_TYPES.UNKNOWN;
     }
 
-    static logError(error, context) {
+    static async logError(error, context) {
         const errorType = this.getErrorType(error);
         const timestamp = new Date().toISOString();
         const logDir = path.resolve(__dirname, '../logs');
         const logPath = path.join(logDir, 'error.log');
 
         // Ensure log directory exists
-        if (!fs.existsSync(logDir)) {
-            fs.mkdirSync(logDir, { recursive: true });
+        try {
+            await fs.promises.mkdir(logDir, { recursive: true });
+        } catch (mkdirError) {
+            console.error(`[LOG ERROR] Failed to create log directory: ${mkdirError.message}`);
         }
 
         const logMessage = `[${timestamp}] [${errorType}] [${context}] ${error.stack || error.message}\n`;
-        
+
         // Log to console
         console.error(logMessage);
 
         // Log to file
         try {
-            fs.appendFileSync(logPath, logMessage);
+            await fs.promises.appendFile(logPath, logMessage);
         } catch (writeError) {
-            console.error('Failed to write to error log:', writeError);
+            console.error(`[LOG ERROR] Failed to write to log file: ${writeError.message}`);
         }
 
         // Return formatted error for Discord messages
@@ -105,20 +106,20 @@ class ErrorHandler {
             const logDir = path.resolve(__dirname, '../logs');
             const files = await fs.promises.readdir(logDir);
             const now = Date.now();
-            
+
             for (const file of files) {
                 const filePath = path.join(logDir, file);
                 const stats = await fs.promises.stat(filePath);
                 const fileAge = (now - stats.mtime.getTime()) / (1000 * 60 * 60 * 24);
-                
+
                 if (fileAge > daysToKeep) {
                     await fs.promises.unlink(filePath);
                 }
             }
         } catch (error) {
-            console.error('Failed to cleanup old logs:', error);
+            console.error(`[LOG CLEANUP ERROR] Failed to cleanup logs: ${error.message}`);
         }
     }
 }
 
-module.exports = { ErrorHandler, BotError };
+module.exports = ErrorHandler;
