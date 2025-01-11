@@ -213,7 +213,7 @@ async function collectReviewDetails(message, gameTitle) {
                 return m.author.id === message.author.id && !isNaN(num) && num >= 1 && num <= 5;
             },
             max: 1,
-            time: 30000
+            time: 30000 // 30 seconds for each score
         });
 
         if (scoreCollected.size === 0) {
@@ -226,11 +226,13 @@ async function collectReviewDetails(message, gameTitle) {
         scores[category] = parseInt(scoreCollected.first().content);
     }
 
-    await message.channel.send('```ansi\n\x1b[32mAdd any comments about your experience:\x1b[0m```');
+    await message.channel.send(
+        '```ansi\n\x1b[32mAdd any comments about your experience (You have 3 minutes to respond):\x1b[0m```'
+    );
     const commentsCollected = await message.channel.awaitMessages({
         filter: (m) => m.author.id === message.author.id,
         max: 1,
-        time: 60000
+        time: 180000 // 3 minutes for comments
     });
 
     if (commentsCollected.size === 0) {
