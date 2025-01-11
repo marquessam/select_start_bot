@@ -1,6 +1,8 @@
 const { MongoClient } = require('mongodb');
 const ErrorHandler = require('./utils/errorHandler');
 const { fetchData } = require('./utils/dataFetcher');
+const commonValidators = require('./utils/validators');
+const { withTransaction } = require('./utils/transactions');
 
 class Database {
     constructor() {
@@ -260,39 +262,101 @@ class Database {
         });
     }
 
-    async saveArcadeScore(game, username, score) {
-        try {
-            const collection = await this.getCollection('arcadechallenge');
-            const scores = await this.getArcadeScores();
+   async saveArcadeScore(game, username, score, retryCount = 3) {
+    try {
+        const collection = await this.getCollection('arcadechallenge');
+        const scores = await this.getArcadeScores();
 
-            if (!scores.games[game]) {
-                throw new Error(`Invalid game name: ${game}`);
+        if (!scores.games[game]) {
+            throw new Error(`Invalid game name: ${game}`);
+        }
+
+        // Validate inputs
+        if (!commonValidators.username(username)) {
+            throw new Error('Invalid username format');
+        }
+        if (!commonValidators.score(score)) {
+            throw new Error('Invalid score value');
+        }
+
+        let success = false;
+        let attempt = 0;
+        let lastError = null;
+
+        while (!success && attempt < retryCount) {
+            try {
+                await withTransaction(this, async (session) => {
+                    let gameScores = scores.games[game].scores || [];
+                    gameScores = gameScores.filter(s => s.username.toLowerCase() !== username.toLowerCase());
+                    
+                    gameScores.push({
+                        username: username.toLowerCase(),
+                        score: score,
+                        date: new Date().toISOString(),
+                        verified: false  // New field for score verification
+                    });
+
+                    // Sort and limit to top 3
+                    gameScores.sort((a, b) => b.score - a.score);
+                    scores.games[game].scores = gameScores.slice(0, 3);
+
+                    await collection.updateOne(
+                        { _id: 'scores' },
+                        { $set: scores },
+                        { session, upsert: true }
+                    );
+                });
+                success = true;
+            } catch (error) {
+                lastError = error;
+                attempt++;
+                if (attempt < retryCount) {
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                }
             }
+        }
 
-            let gameScores = scores.games[game].scores || [];
-            gameScores = gameScores.filter(s => s.username.toLowerCase() !== username.toLowerCase());
-            gameScores.push({
-                username: username.toLowerCase(),
-                score: score,
-                date: new Date().toISOString(),
-            });
+        if (!success) {
+            throw lastError || new Error('Failed to save score after multiple attempts');
+        }
 
-            gameScores.sort((a, b) => b.score - a.score);
-            scores.games[game].scores = gameScores.slice(0, 3);
+        return scores.games[game].scores;
+    } catch (error) {
+        ErrorHandler.logError(error, 'Save Arcade Score');
+        throw error;
+    }
+}
+    
+async verifyArcadeScore(game, username) {
+    try {
+        const collection = await this.getCollection('arcadechallenge');
+        const scores = await this.getArcadeScores();
 
-            await collection.updateOne(
-                { _id: 'scores' },
-                { $set: scores },
-                { upsert: true }
+        if (!scores.games[game]?.scores) return false;
+
+        await withTransaction(this, async (session) => {
+            const scoreIndex = scores.games[game].scores.findIndex(
+                s => s.username.toLowerCase() === username.toLowerCase()
             );
 
-            return scores.games[game].scores;
-        } catch (error) {
-            ErrorHandler.logError(error, 'Save Arcade Score');
-            throw error;
-        }
-    }
+            if (scoreIndex !== -1) {
+                scores.games[game].scores[scoreIndex].verified = true;
+                scores.games[game].scores[scoreIndex].verifiedDate = new Date().toISOString();
 
+                await collection.updateOne(
+                    { _id: 'scores' },
+                    { $set: scores },
+                    { session }
+                );
+            }
+        });
+
+        return true;
+    } catch (error) {
+        ErrorHandler.logError(error, 'Verify Arcade Score');
+        return false;
+    }
+}
     async removeArcadeScore(gameName, username) {
         try {
             const collection = await this.getCollection('arcadechallenge');
