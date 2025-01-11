@@ -72,7 +72,7 @@ class AchievementFeed {
 
     async loadInitialAchievements() {
         try {
-            const data = await fetchLeaderboardData();
+            const data = await raAPI.fetchLeaderboardData();
             if (!data?.leaderboard) return;
 
             for (const user of data.leaderboard) {
