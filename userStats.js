@@ -3,6 +3,7 @@ const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fet
 const ErrorHandler = require('./utils/errorHandler');
 const path = require('path');
 const raGameRules = require(path.join(__dirname, 'raGameRules.json'));
+const { withTransaction } = require('./utils/transactions');
 
 class UserStats {
     constructor(database) {
@@ -182,38 +183,50 @@ class UserStats {
     //  Points Management
     // =======================
     async addBonusPoints(username, points, reason) {
-        try {
-            const cleanUsername = username.trim().toLowerCase();
-            const user = this.cache.stats.users[cleanUsername];
+    try {
+        const cleanUsername = username.trim().toLowerCase();
+        const user = this.cache.stats.users[cleanUsername];
 
-            if (!user) {
-                throw new Error(`User ${username} not found`);
-            }
+        if (!user) {
+            throw new Error(`User ${username} not found`);
+        }
 
-            const year = this.currentYear.toString();
+        const year = this.currentYear.toString();
 
-            if (!user.bonusPoints) user.bonusPoints = [];
-            if (!user.yearlyPoints) user.yearlyPoints = {};
+        if (!user.bonusPoints) user.bonusPoints = [];
+        if (!user.yearlyPoints) user.yearlyPoints = {};
 
+        // Use transaction for point allocation
+        await withTransaction(this.database, async (session) => {
+            // Add bonus points
             user.bonusPoints.push({
                 points,
                 reason,
                 year,
                 date: new Date().toISOString()
             });
+            
+            // Update yearly points
             user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
 
-            this.cache.pendingUpdates.add(cleanUsername);
-            await this.saveStats();
+            // Save within transaction
+            await this.database.db.collection('userstats').updateOne(
+                { _id: 'stats' },
+                { $set: { [`users.${cleanUsername}`]: user } },
+                { session }
+            );
+        });
 
-            if (global.leaderboardCache) {
-                await global.leaderboardCache.updateLeaderboards();
-            }
-        } catch (error) {
-            ErrorHandler.logError(error, 'Adding Bonus Points');
-            throw error;
+        // Update cache and notify leaderboard
+        this.cache.pendingUpdates.add(cleanUsername);
+        if (global.leaderboardCache) {
+            await global.leaderboardCache.updateLeaderboards();
         }
+    } catch (error) {
+        ErrorHandler.logError(error, 'Adding Bonus Points');
+        throw error;
     }
+}
 
     async resetUserPoints(username) {
         try {
