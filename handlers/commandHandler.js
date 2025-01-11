@@ -141,66 +141,98 @@ class CommandHandler {
         }
     }
 
-    async handleCommand(message, services) {
-        if (!message.content.startsWith('!')) return;
+   async handleCommand(message, services) {
+    if (!message.content.startsWith('!')) return;
 
-        const args = message.content.slice(1).trim().split(/\s+/);
-        const commandName = args.shift().toLowerCase();
+    const args = message.content.slice(1).trim().split(/\s+/);
+    const commandName = args.shift().toLowerCase();
+    const startTime = Date.now();
 
-        try {
-            const commandInfo = await this.validateAndGetCommand(message, commandName);
-            
-            if (!commandInfo) {
+    try {
+        const commandInfo = await this.validateAndGetCommand(message, commandName);
+        
+        if (!commandInfo) {
+            logger.debug('Command not found', {
+                command: commandName,
+                user: message.author.username
+            });
+            return;
+        }
+
+        const { command, isAdminCommand } = commandInfo;
+
+        // Check cooldown
+        if (this.isOnCooldown(message.author.id, commandName, isAdminCommand)) {
+            throw new BotError(
+                'Command is on cooldown',
+                ErrorHandler.ERROR_TYPES.RATE_LIMIT,
+                'Command Execution'
+            );
+        }
+
+        // Execute with retry logic
+        let lastError = null;
+        for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
+            try {
+                await command.execute(message, args, services);
+                
+                // Log successful command execution
+                await actionLogger.logCommand(message, command, true);
+                
+                logger.info('Command executed successfully', {
+                    command: commandName,
+                    user: message.author.username,
+                    duration: Date.now() - startTime
+                });
+                
                 return;
-            }
+            } catch (error) {
+                lastError = error;
+                
+                logger.warn(`Command failed (attempt ${attempt}/${this.config.maxRetries})`, {
+                    command: commandName,
+                    user: message.author.username,
+                    error: error.message
+                });
 
-            const { command, isAdminCommand } = commandInfo;
-
-            // Check cooldown
-            if (this.isOnCooldown(message.author.id, commandName, isAdminCommand)) {
-                throw new BotError(
-                    'Command is on cooldown',
-                    ErrorHandler.ERROR_TYPES.RATE_LIMIT,
-                    'Command Execution'
-                );
-            }
-
-            // Execute with retry logic
-            let lastError = null;
-            for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
-                try {
-                    await command.execute(message, args, services);
-                    return;
-                } catch (error) {
-                    lastError = error;
-                    if (attempt < this.config.maxRetries) {
-                        await new Promise(resolve => 
-                            setTimeout(resolve, this.config.retryDelay * attempt)
-                        );
-                    }
+                if (attempt < this.config.maxRetries) {
+                    await new Promise(resolve => 
+                        setTimeout(resolve, this.config.retryDelay * attempt)
+                    );
                 }
-            }
-
-            // If we get here, all retries failed
-            throw lastError;
-
-        } catch (error) {
-            // Handle different types of errors appropriately
-            if (error instanceof BotError) {
-                if (error.type === ErrorHandler.ERROR_TYPES.PERMISSION) {
-                    await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
-                } else if (error.type === ErrorHandler.ERROR_TYPES.RATE_LIMIT) {
-                    await message.channel.send('```ansi\n\x1b[32m[ERROR] Command on cooldown\n[Ready for input]█\x1b[0m```');
-                } else {
-                    await message.channel.send('```ansi\n\x1b[32m[ERROR] Command execution failed\n[Ready for input]█\x1b[0m```');
-                }
-            } else {
-                ErrorHandler.logError(error, `Command Execution: ${commandName}`);
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] An unexpected error occurred\n[Ready for input]█\x1b[0m```');
             }
         }
-    }
 
+        // If we get here, all retries failed
+        throw lastError;
+
+    } catch (error) {
+        // Log failed command
+        await actionLogger.logCommand(message, command, false, error);
+        
+        logger.error('Command failed', {
+            command: commandName,
+            user: message.author.username,
+            error: error.message,
+            duration: Date.now() - startTime
+        });
+
+        // Handle different types of errors appropriately
+        if (error instanceof BotError) {
+            if (error.type === ErrorHandler.ERROR_TYPES.PERMISSION) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
+            } else if (error.type === ErrorHandler.ERROR_TYPES.RATE_LIMIT) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Command on cooldown\n[Ready for input]█\x1b[0m```');
+            } else {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Command execution failed\n[Ready for input]█\x1b[0m```');
+            }
+        } else {
+            ErrorHandler.logError(error, `Command Execution: ${commandName}`);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] An unexpected error occurred\n[Ready for input]█\x1b[0m```');
+        }
+    }
+}
+    
     async reloadCommand(commandName) {
         try {
             const nameLower = commandName.toLowerCase();
