@@ -17,17 +17,29 @@ module.exports = {
       }
 
       // 2) Combine args into a single string
-      const query = args.join(' ');
+      const userQuery = args.join(' ');
 
       // 3) Let the user know we're searching
       await message.channel.send(
         '```ansi\n\x1b[32m> Searching MobyGames database...\x1b[0m\n```'
       );
 
-      // 4) Call our MobyAPI search
-      const result = await mobyAPI.searchGames(query);
+      // 4) Perform initial search
+      let result = await mobyAPI.searchGames(userQuery);
 
-      // 5) Validate result format
+      // 5) If no results, do a fallback replacement (e.g., pokemon -> pokémon), then search again
+      if (!result || !Array.isArray(result.games) || result.games.length === 0) {
+        // simple example: fix "pokemon" -> "pokémon" (case-insensitive)
+        const fallbackQuery = fixKnownTitles(userQuery);
+
+        // Only attempt if fallback changed something
+        if (fallbackQuery !== userQuery) {
+          console.log(`Fuzzy fallback: "${userQuery}" => "${fallbackQuery}"`);
+          result = await mobyAPI.searchGames(fallbackQuery);
+        }
+      }
+
+      // 6) Validate final result format
       if (!result || !Array.isArray(result.games) || result.games.length === 0) {
         return message.channel.send(
           '```ansi\n\x1b[32m[ERROR] No results found for that title.\n[Ready for input]█\x1b[0m```'
@@ -150,3 +162,14 @@ module.exports = {
     );
   },
 };
+
+/**
+ * fixKnownTitles(query)
+ * A simple helper that does naive replacements for known diacritical issues.
+ * You can add more replacements for other franchises as needed.
+ */
+function fixKnownTitles(query) {
+  // Example: fix "pokemon" -> "pokémon"
+  // The \b ensures we match "pokemon" as a whole word, ignoring case
+  return query.replace(/\bpokemon\b/i, 'pokémon');
+}
