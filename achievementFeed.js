@@ -1,5 +1,8 @@
 const { EmbedBuilder, PermissionsBitField } = require('discord.js');
 const { fetchLeaderboardData } = require('./raAPI');
+const { ErrorHandler, BotError } = require('./utils/errorHandler');
+const { withTransaction } = require('./utils/transactions');
+const commonValidators = require('./utils/validators');
 
 class AchievementFeed {
    constructor(client, database) {
@@ -91,46 +94,75 @@ class AchievementFeed {
         }
     }
 
-    async checkNewAchievements() {
+   async checkNewAchievements() {
     // Ensure we still have a valid channel
     if (!this.channel) {
-        console.error('AchievementFeed: No valid channel to post in');
-        return;
+        throw new BotError(
+            'No valid channel to post in',
+            ErrorHandler.ERROR_TYPES.VALIDATION,
+            'Achievement Feed Channel'
+        );
     }
 
     try {
         const data = await fetchLeaderboardData();
-        if (!data?.leaderboard) return;
+        if (!data?.leaderboard) {
+            throw new BotError(
+                'Invalid leaderboard data received',
+                ErrorHandler.ERROR_TYPES.API,
+                'Fetch Leaderboard'
+            );
+        }
 
         // Process each user's achievements with built-in delay to avoid race conditions
         for (const user of data.leaderboard) {
             if (!user.achievements) continue;
 
             const userKey = user.username.toLowerCase();
+            if (!commonValidators.username(userKey)) {
+                ErrorHandler.handleValidationError(
+                    new Error('Invalid username format'),
+                    { username: userKey }
+                );
+                continue;
+            }
+
             const previouslyEarned = this.lastAchievements.get(userKey) || new Set();
             const currentEarned = new Set();
 
             // Track current achievements and check for new ones
             for (const ach of user.achievements) {
-                const earnedDate = parseInt(ach.DateEarned, 10);
-                
-                // If achievement is earned
-                if (earnedDate > 0) {
-                    currentEarned.add(ach.ID);
+                try {
+                    const earnedDate = parseInt(ach.DateEarned, 10);
+                    
+                    // If achievement is earned
+                    if (earnedDate > 0) {
+                        currentEarned.add(ach.ID);
 
-                    // Check if it's newly earned since our last check
-                    if (!previouslyEarned.has(ach.ID)) {
-                        try {
+                        // Check if it's newly earned since our last check
+                        if (!previouslyEarned.has(ach.ID)) {
                             // Add small delay between announcements to prevent rate limiting
                             await new Promise(resolve => setTimeout(resolve, 1000));
-                            await this.announceAchievement(user.username, ach);
-                        } catch (err) {
-                            console.error(
-                                `AchievementFeed: Failed to announce achievement for ${user.username}:`,
-                                err
-                            );
+                            
+                            await withTransaction(this.database, async (session) => {
+                                await this.announceAchievement(user.username, ach);
+                                
+                                // Record the announcement in the database
+                                await this.database.db.collection('achievement_announcements')
+                                    .insertOne({
+                                        username: user.username,
+                                        achievementId: ach.ID,
+                                        timestamp: new Date(),
+                                        announced: true
+                                    }, { session });
+                            });
                         }
                     }
+                } catch (achievementError) {
+                    ErrorHandler.handleDatabaseError(
+                        achievementError,
+                        `Process Achievement: ${user.username} - ${ach.ID}`
+                    );
                 }
             }
 
@@ -138,10 +170,19 @@ class AchievementFeed {
             this.lastAchievements.set(userKey, currentEarned);
         }
     } catch (error) {
-        console.error('AchievementFeed: Error checking achievements:', error);
+        // Handle different types of errors appropriately
+        if (error instanceof BotError) {
+            ErrorHandler.logError(error, 'Achievement Feed Check');
+        } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED') {
+            ErrorHandler.handleAPIError(error, 'RetroAchievements API');
+        } else {
+            ErrorHandler.handleDatabaseError(error, 'Achievement Feed Check');
+        }
+
+        // Increment error count and potentially disable feed
+        await this.handleError(error, 'Check Achievements');
     }
 }
-
     /**
      * Main announcement method, includes rate-limiting check.
      */
