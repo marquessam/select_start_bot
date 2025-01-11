@@ -15,33 +15,41 @@ class Database {
     // =====================
     
     async connect() {
-        try {
-            if (!process.env.MONGODB_URI) {
-                throw new Error('MONGODB_URI environment variable is not defined');
-            }
-
-            if (!this.client) {
-                this.client = new MongoClient(process.env.MONGODB_URI, {
-                    maxPoolSize: 10,
-                    minPoolSize: 5,
-                });
-
-                await this.client.connect();
-                this.db = this.client.db(process.env.DB_NAME || 'selectstart');
-                console.log('Connected to MongoDB');
-
-                this.client.on('error', (error) => {
-                    ErrorHandler.logError(error, 'MongoDB Client');
-                    this.reconnect();
-                });
-
-                await this.createIndexes();
-            }
-        } catch (error) {
-            ErrorHandler.logError(error, 'Database Connect');
-            throw error;
+    try {
+        if (!process.env.MONGODB_URI) {
+            throw new BotError(
+                'MONGODB_URI environment variable is not defined',
+                ErrorHandler.ERROR_TYPES.DATABASE,
+                'Database Connection'
+            );
         }
+
+        if (!this.client) {
+            this.client = new MongoClient(process.env.MONGODB_URI, {
+                maxPoolSize: 10,
+                minPoolSize: 5,
+                retryWrites: true,
+                retryReads: true,
+                serverSelectionTimeoutMS: 5000,
+                connectTimeoutMS: 10000
+            });
+
+            await this.client.connect();
+            this.db = this.client.db(process.env.DB_NAME || 'selectstart');
+            console.log('Connected to MongoDB');
+
+            this.client.on('error', (error) => {
+                ErrorHandler.handleDatabaseError(error, 'MongoDB Client');
+                this.reconnect();
+            });
+
+            await this.createIndexes();
+        }
+    } catch (error) {
+        const errorMessage = ErrorHandler.handleDatabaseError(error, 'Database Connect');
+        throw new BotError(errorMessage, ErrorHandler.ERROR_TYPES.DATABASE, 'Database Connection', error);
     }
+}
 
     async reconnect() {
         console.log('Attempting to reconnect to MongoDB...');
