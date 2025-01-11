@@ -1,6 +1,7 @@
+// commands/leaderboard.js
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
-const logger = require('./utils/logger'); 
+const logger = require('../utils/logger');
 
 module.exports = {
     name: 'leaderboard',
@@ -38,7 +39,7 @@ module.exports = {
                 if (shadowGame) await shadowGame.tryShowError(message);
             }
         } catch (error) {
-            console.error('Leaderboard Command Error:', error);
+            logger.error('Leaderboard Command Error:', { error: error.message });
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to process leaderboard command\n[Ready for input]█\x1b[0m```');
         }
     },
@@ -88,7 +89,7 @@ module.exports = {
             await message.channel.send({ embeds: [embed] });
             if (shadowGame) await shadowGame.tryShowError(message);
         } catch (error) {
-            console.error('Monthly Leaderboard Error:', error);
+            logger.error('Monthly Leaderboard Error:', { error: error.message });
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
@@ -142,7 +143,7 @@ module.exports = {
             await message.channel.send({ embeds: [embed] });
             if (shadowGame) await shadowGame.tryShowError(message);
         } catch (error) {
-            console.error('Yearly Leaderboard Error:', error);
+            logger.error('Yearly Leaderboard Error:', { error: error.message });
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
@@ -203,7 +204,7 @@ module.exports = {
             await message.channel.send({ embeds: [embed] });
             if (shadowGame) await shadowGame.tryShowError(message);
         } catch (error) {
-            console.error('High Scores Error:', error);
+            logger.error('High Scores Error:', { error: error.message });
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve high scores\n[Ready for input]█\x1b[0m```');
         }
     },
