@@ -4,7 +4,7 @@ const database = require('../database');
 module.exports = {
     name: 'review',
     description: 'Read or write game reviews',
-    async execute(message, args, { shadowGame }) {
+    async execute(message, args, { shadowGame, mobyAPI }) {
         try {
             if (!args.length) {
                 return await showHelp(message);
@@ -12,19 +12,21 @@ module.exports = {
 
             const [subcommand] = args;
 
-            switch(subcommand) {
+            switch (subcommand.toLowerCase()) {
                 case 'read':
-                    await handleRead(message, shadowGame);
+                    await handleRead(message, shadowGame, mobyAPI);
                     break;
                 case 'write':
-                    await handleWrite(message);
+                    await handleWrite(message, args.slice(1), mobyAPI);
                     break;
                 default:
                     await showHelp(message);
             }
         } catch (error) {
             console.error('Review Command Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to process review command\n[Ready for input]█\x1b[0m```');
+            await message.channel.send(
+                '```ansi\n\x1b[32m[ERROR] Failed to process review command\n[Ready for input]█\x1b[0m```'
+            );
         }
     }
 };
@@ -33,30 +35,36 @@ async function showHelp(message) {
     const embed = new TerminalEmbed()
         .setTerminalTitle('REVIEW SYSTEM')
         .setTerminalDescription('[SELECT AN OPTION]')
-        .addTerminalField('COMMANDS',
+        .addTerminalField(
+            'COMMANDS',
             '!review read - Browse and read game reviews\n' +
-            '!review write - Submit a new review')
-        .addTerminalField('SCORING CATEGORIES',
+            '!review write <game title> - Submit a new review'
+        )
+        .addTerminalField(
+            'SCORING CATEGORIES',
             'Art/Graphics (1-5)\n' +
             'Story/Narrative (1-5)\n' +
             'Combat/Gameplay (1-5)\n' +
             'Music/Sound (1-5)\n' +
-            'Overall Experience (1-5)')
+            'Overall Experience (1-5)'
+        )
         .setTerminalFooter();
 
     await message.channel.send({ embeds: [embed] });
 }
 
-async function handleRead(message, shadowGame) {
+async function handleRead(message, shadowGame, mobyAPI) {
     const validGames = await database.getValidGamesList();
     const reviews = await database.getReviews();
 
-    const gamesWithReviews = validGames.filter(game => 
-        reviews.games[game]?.reviews?.length > 0
+    const gamesWithReviews = validGames.filter(
+        (game) => reviews.games[game]?.reviews?.length > 0
     );
 
     if (gamesWithReviews.length === 0) {
-        await message.channel.send('```ansi\n\x1b[32mNo reviews have been submitted yet.\n[Ready for input]█\x1b[0m```');
+        await message.channel.send(
+            '```ansi\n\x1b[32mNo reviews have been submitted yet.\n[Ready for input]█\x1b[0m```'
+        );
         return;
     }
 
@@ -73,7 +81,7 @@ async function handleRead(message, shadowGame) {
 
     await message.channel.send({ embeds: [embed] });
 
-    const filter = m => m.author.id === message.author.id && !isNaN(m.content);
+    const filter = (m) => m.author.id === message.author.id && !isNaN(m.content);
     const collected = await message.channel.awaitMessages({
         filter,
         max: 1,
@@ -81,93 +89,136 @@ async function handleRead(message, shadowGame) {
     });
 
     if (collected.size === 0) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```');
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```'
+        );
         return;
     }
 
     const choice = parseInt(collected.first().content);
     if (choice < 1 || choice > gamesWithReviews.length) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```'
+        );
         return;
     }
 
     const selectedGame = gamesWithReviews[choice - 1];
     const gameReviews = reviews.games[selectedGame];
 
+    // Fetch box art and game details from MobyAPI
+    let boxArtUrl = null;
+    let description = null;
+
+    try {
+        const result = await mobyAPI.searchGames(selectedGame);
+
+        if (result && result.games.length > 0) {
+            const game = result.games[0];
+            boxArtUrl = game.sample_cover?.image || null;
+            description = game.description?.replace(/<[^>]*>/g, '').trim() || null;
+        } else {
+            console.warn(`No results found for "${selectedGame}" in MobyAPI.`);
+        }
+    } catch (error) {
+        console.error(`Failed to fetch details for "${selectedGame}":`, error);
+    }
+
     const reviewEmbed = new TerminalEmbed()
         .setTerminalTitle(`${selectedGame} REVIEWS`)
-        .setTerminalDescription('[DATABASE ACCESS GRANTED]')
-        .addTerminalField('AVERAGE SCORES',
+        .addTerminalField(
+            'AVERAGE SCORES',
             `ART: ${gameReviews.averageScores.art}/5\n` +
             `STORY: ${gameReviews.averageScores.story}/5\n` +
             `COMBAT: ${gameReviews.averageScores.combat}/5\n` +
             `MUSIC: ${gameReviews.averageScores.music}/5\n` +
-            `OVERALL: ${gameReviews.averageScores.overall}/5`);
+            `OVERALL: ${gameReviews.averageScores.overall}/5`
+        );
 
-    gameReviews.reviews.forEach((review, index) => {
-        reviewEmbed.addTerminalField(`REVIEW BY ${review.username}`,
+    if (boxArtUrl) {
+        reviewEmbed.setImage(boxArtUrl);
+    }
+
+    gameReviews.reviews.forEach((review) => {
+        reviewEmbed.addTerminalField(
+            `REVIEW BY ${review.username}`,
             `ART: ${review.scores.art}/5 | ` +
             `STORY: ${review.scores.story}/5 | ` +
             `COMBAT: ${review.scores.combat}/5 | ` +
             `MUSIC: ${review.scores.music}/5 | ` +
             `OVERALL: ${review.scores.overall}/5\n\n` +
-            `COMMENTS: ${review.comments}`);
+            `COMMENTS: ${review.comments}`
+        );
     });
 
+    reviewEmbed.setTerminalFooter('Data provided by MobyGames');
+
     await message.channel.send({ embeds: [reviewEmbed] });
-    
+
+    await message.channel.send('```ansi\n\x1b[32m> Review data loaded successfully\n[Ready for input]█\x1b[0m```');
+
     if (shadowGame) {
         await shadowGame.tryShowError(message);
     }
 }
 
-async function handleWrite(message) {
-    const validGames = await database.getValidGamesList();
-
-    const gameList = validGames
-        .map((game, index) => `${index + 1}. ${game}`)
-        .join('\n');
-
-    const embed = new TerminalEmbed()
-        .setTerminalTitle('WRITE REVIEW')
-        .setTerminalDescription('[SELECT A GAME TO REVIEW]')
-        .addTerminalField('AVAILABLE GAMES', gameList)
-        .addTerminalField('USAGE', 'Enter the number of the game you want to review')
-        .setTerminalFooter();
-
-    await message.channel.send({ embeds: [embed] });
-
-    const filter = m => m.author.id === message.author.id;
-    const collected = await message.channel.awaitMessages({
-        filter,
-        max: 1,
-        time: 30000
-    });
-
-    if (collected.size === 0) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```');
+async function handleWrite(message, args, mobyAPI) {
+    if (args.length === 0) {
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] Please provide a game title to review. Example: !review write Super Metroid\n[Ready for input]█\x1b[0m```'
+        );
         return;
     }
 
-    const gameNumber = parseInt(collected.first().content);
-    if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > validGames.length) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
-        return;
+    const inputTitle = args.join(' ');
+
+    // Validate game title with MobyAPI
+    try {
+        const searchResults = await mobyAPI.searchGames(inputTitle);
+
+        if (!searchResults || !Array.isArray(searchResults.games) || searchResults.games.length === 0) {
+            await message.channel.send(
+                `\`\`\`ansi\n\x1b[32m[ERROR] No matching games found for "${inputTitle}". Please try again with a different title.\n[Ready for input]█\x1b[0m\`\`\``
+            );
+            return;
+        }
+
+        const suggestedGame = searchResults.games[0];
+        const validatedTitle = suggestedGame.title;
+
+        if (
+            !validatedTitle.toLowerCase().includes(inputTitle.toLowerCase()) &&
+            inputTitle.toLowerCase() !== validatedTitle.toLowerCase()
+        ) {
+            await message.channel.send(
+                `\`\`\`ansi\n\x1b[32m[INFO] Did you mean "${validatedTitle}"? If so, please type !review write ${validatedTitle}.\n[Ready for input]█\x1b[0m\`\`\``
+            );
+            return;
+        }
+
+        const existingReviews = await database.getReviewsForGame(validatedTitle);
+        const hasReviewed = existingReviews.some(
+            (review) => review.username.toLowerCase() === message.author.username.toLowerCase()
+        );
+
+        if (hasReviewed) {
+            await message.channel.send(
+                '```ansi\n\x1b[32m[ERROR] You have already reviewed this game.\n[Ready for input]█\x1b[0m```'
+            );
+            return;
+        }
+
+        await collectReviewDetails(message, validatedTitle);
+
+    } catch (error) {
+        console.error('MobyAPI Validation Error:', error);
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] Failed to validate game title. Please try again later.\n[Ready for input]█\x1b[0m```'
+        );
     }
+}
 
-    const selectedGame = validGames[gameNumber - 1];
-
-    // Check if the user has already submitted a review for this game
-    const existingReviews = await database.getReviewsForGame(selectedGame);
-    const hasReviewed = existingReviews.some(
-        review => review.username.toLowerCase() === message.author.username.toLowerCase()
-    );
-
-    if (hasReviewed) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] You have already reviewed this game.\n[Ready for input]█\x1b[0m```');
-        return;
-    }
-
+async function collectReviewDetails(message, gameTitle) {
     const scores = {};
     const categories = [
         ['art', 'Rate the art/graphics (1-5):'],
@@ -179,33 +230,39 @@ async function handleWrite(message) {
 
     for (const [category, prompt] of categories) {
         await message.channel.send(`\`\`\`ansi\n\x1b[32m${prompt}\x1b[0m\`\`\``);
-        
+
         const scoreCollected = await message.channel.awaitMessages({
-            filter: m => {
+            filter: (m) => {
                 const num = parseInt(m.content);
-                return filter(m) && !isNaN(num) && num >= 1 && num <= 5;
+                return m.author.id === message.author.id && !isNaN(num) && num >= 1 && num <= 5;
             },
             max: 1,
-            time: 30000
+            time: 30000 // 30 seconds for each score
         });
 
         if (scoreCollected.size === 0) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```');
+            await message.channel.send(
+                '```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```'
+            );
             return;
         }
 
         scores[category] = parseInt(scoreCollected.first().content);
     }
 
-    await message.channel.send('```ansi\n\x1b[32mAdd any comments about your experience:\x1b[0m```');
+    await message.channel.send(
+        '```ansi\n\x1b[32mAdd any comments about your experience (You have 3 minutes to respond):\x1b[0m```'
+    );
     const commentsCollected = await message.channel.awaitMessages({
-        filter,
+        filter: (m) => m.author.id === message.author.id,
         max: 1,
-        time: 60000
+        time: 180000 // 3 minutes for comments
     });
 
     if (commentsCollected.size === 0) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```');
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```'
+        );
         return;
     }
 
@@ -214,19 +271,21 @@ async function handleWrite(message) {
         comments: commentsCollected.first().content
     };
 
-    await database.saveReview(selectedGame, message.author.username, review);
+    await database.saveReview(gameTitle, message.author.username, review);
 
     const confirmEmbed = new TerminalEmbed()
         .setTerminalTitle('REVIEW SUBMITTED')
         .setTerminalDescription('[REVIEW SAVED SUCCESSFULLY]')
-        .addTerminalField('REVIEW DETAILS',
-            `GAME: ${selectedGame}\n` +
+        .addTerminalField(
+            'REVIEW DETAILS',
+            `GAME: ${gameTitle}\n` +
             `ART: ${scores.art}/5\n` +
             `STORY: ${scores.story}/5\n` +
             `COMBAT: ${scores.combat}/5\n` +
             `MUSIC: ${scores.music}/5\n` +
             `OVERALL: ${scores.overall}/5\n\n` +
-            `COMMENTS: ${review.comments}`)
+            `COMMENTS: ${review.comments}`
+        )
         .setTerminalFooter();
 
     await message.channel.send({ embeds: [confirmEmbed] });
