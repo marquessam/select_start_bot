@@ -54,7 +54,7 @@ async function showHelp(message) {
     await message.channel.send({ embeds: [embed] });
 }
 
-async function handleRead(message, shadowGame) {
+async function handleRead(message, shadowGame, mobyAPI) {
     const validGames = await database.getValidGamesList();
     const reviews = await database.getReviews();
 
@@ -107,9 +107,24 @@ async function handleRead(message, shadowGame) {
     const selectedGame = gamesWithReviews[choice - 1];
     const gameReviews = reviews.games[selectedGame];
 
+    // Fetch box art and game details from MobyAPI
+    let boxArtUrl = null;
+    let description = null;
+    try {
+        const result = await mobyAPI.searchGames(selectedGame);
+
+        if (result && result.games.length > 0) {
+            const game = result.games[0];
+            boxArtUrl = game.sample_cover?.image || null;
+            description = game.description?.replace(/<[^>]*>/g, '').trim() || null;
+        }
+    } catch (error) {
+        console.error(`Failed to fetch details for "${selectedGame}":`, error);
+    }
+
     const reviewEmbed = new TerminalEmbed()
         .setTerminalTitle(`${selectedGame} REVIEWS`)
-        .setTerminalDescription('[DATABASE ACCESS GRANTED]')
+        .setTerminalDescription(description || '[No description available]')
         .addTerminalField(
             'AVERAGE SCORES',
             `ART: ${gameReviews.averageScores.art}/5\n` +
@@ -119,7 +134,11 @@ async function handleRead(message, shadowGame) {
             `OVERALL: ${gameReviews.averageScores.overall}/5`
         );
 
-    gameReviews.reviews.forEach((review, index) => {
+    if (boxArtUrl) {
+        reviewEmbed.setImage(boxArtUrl);
+    }
+
+    gameReviews.reviews.forEach((review) => {
         reviewEmbed.addTerminalField(
             `REVIEW BY ${review.username}`,
             `ART: ${review.scores.art}/5 | ` +
@@ -131,12 +150,17 @@ async function handleRead(message, shadowGame) {
         );
     });
 
+    reviewEmbed.setTerminalFooter('Data provided by MobyGames');
+
     await message.channel.send({ embeds: [reviewEmbed] });
+
+    await message.channel.send('```ansi\n\x1b[32m> Review data loaded successfully\n[Ready for input]█\x1b[0m```');
 
     if (shadowGame) {
         await shadowGame.tryShowError(message);
     }
 }
+
 
 async function handleWrite(message, args, mobyAPI) {
     if (args.length === 0) {
