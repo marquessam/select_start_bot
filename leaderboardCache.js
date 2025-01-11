@@ -1,4 +1,4 @@
-const { fetchLeaderboardData, api: raAPI } = require('./raAPI.js');
+const raAPI = require('./raAPI');
 const { ErrorHandler, BotError } = require('./utils/errorHandler');
 const CacheManager = require('./utils/cacheManager');
 const logger = require('./utils/logger');
