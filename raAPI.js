@@ -129,39 +129,40 @@ class RetroAchievementsAPI {
         );
     }
 
-    async fetchLeaderboardData() {
-        return await this.leaderboardCache.getOrFetch(
-            'current-leaderboard',
-            async () => {
-                try {
-                    const data = await this.makeRequest('API_GetGameRankAndScore.php', {
-                        g: process.env.CURRENT_GAME_ID
-                    });
+   async fetchLeaderboardData() {
+    return await this.leaderboardCache.getOrFetch(
+        'current-leaderboard',
+        async () => {
+            try {
+                const data = await this.makeRequest('API_GetGameRankAndScore.php', {
+                    g: process.env.CURRENT_GAME_ID
+                });
 
-                    if (!data?.data) {
-                        throw new Error('Invalid leaderboard data received');
-                    }
-
-                    // Process and format the data
-                    const processedData = {
-                        leaderboard: data.data.map(entry => ({
-                            username: entry.user,
-                            rank: entry.rank,
-                            score: parseInt(entry.score),
-                            totalScore: parseInt(entry.totalScore) || 0,
-                            achievements: entry.achievements || []
-                        })).sort((a, b) => b.score - a.score),
-                        lastUpdated: new Date().toISOString()
-                    };
-
-                    return processedData;
-                } catch (error) {
-                    ErrorHandler.handleAPIError(error, 'Fetch Leaderboard');
-                    throw error;
+                if (!data?.data) {
+                    throw new Error('Invalid leaderboard data received');
                 }
+
+                // Process and format the data
+                return {
+                    leaderboard: data.data.map(entry => ({
+                        username: entry.user,
+                        rank: entry.rank,
+                        score: parseInt(entry.score),
+                        totalScore: parseInt(entry.totalScore) || 0,
+                        achievements: entry.achievements || []
+                    })).sort((a, b) => b.score - a.score),
+                    lastUpdated: new Date().toISOString()
+                };
+            } catch (error) {
+                logger.error('Error fetching leaderboard:', {
+                    error: error.message,
+                    context: 'API Request'
+                });
+                throw error;
             }
-        );
-    }
+        }
+    );
+}
 
     async fetchUserProgress(username, gameId) {
         const cacheKey = `progress-${username}-${gameId}`;
