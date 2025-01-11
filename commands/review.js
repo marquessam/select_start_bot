@@ -17,6 +17,7 @@ module.exports = {
                     await handleRead(message, shadowGame, mobyAPI);
                     break;
                 case 'write':
+                    // Pass the rest of the arguments (the game title) to handleWrite
                     await handleWrite(message, args.slice(1), mobyAPI);
                     break;
                 default:
@@ -163,6 +164,7 @@ async function handleRead(message, shadowGame, mobyAPI) {
 }
 
 async function handleWrite(message, args, mobyAPI) {
+    // 1. If user did not provide a game title, prompt them
     if (args.length === 0) {
         await message.channel.send(
             '```ansi\n\x1b[32m[ERROR] Please provide a game title to review. Example: !review write Super Metroid\n[Ready for input]█\x1b[0m```'
@@ -170,9 +172,13 @@ async function handleWrite(message, args, mobyAPI) {
         return;
     }
 
-    const inputTitle = args.join(' ');
+    // 2. Warn user about the 3-minute timeout
+    await message.channel.send(
+        '```ansi\n\x1b[32m[WARNING] You have 3 minutes to respond to each prompt. If you do not respond in time, you can simply start the process again.\n[Ready for input]█\x1b[0m```'
+    );
 
-    // Validate game title with MobyAPI
+    // 3. Validate game title
+    const inputTitle = args.join(' ');
     try {
         const searchResults = await mobyAPI.searchGames(inputTitle);
 
@@ -186,6 +192,7 @@ async function handleWrite(message, args, mobyAPI) {
         const suggestedGame = searchResults.games[0];
         const validatedTitle = suggestedGame.title;
 
+        // Check if user input matches or is contained in validatedTitle
         if (
             !validatedTitle.toLowerCase().includes(inputTitle.toLowerCase()) &&
             inputTitle.toLowerCase() !== validatedTitle.toLowerCase()
@@ -208,8 +215,8 @@ async function handleWrite(message, args, mobyAPI) {
             return;
         }
 
+        // 4. Begin collecting scores and comments
         await collectReviewDetails(message, validatedTitle);
-
     } catch (error) {
         console.error('MobyAPI Validation Error:', error);
         await message.channel.send(
