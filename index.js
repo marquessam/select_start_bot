@@ -1,214 +1,242 @@
-// raAPI.js
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+require('dotenv').config();
+const { Client, GatewayIntentBits } = require('discord.js');
 const database = require('./database');
+const UserStats = require('./userStats');
+const CommandHandler = require('./handlers/commandHandler');
+const UserTracker = require('./userTracker');
+const Announcer = require('./utils/announcer');
+const createLeaderboardCache = require('./leaderboardCache');
+const ShadowGame = require('./shadowGame');
+const ErrorHandler = require('./utils/errorHandler');
+const AchievementFeed = require('./achievementFeed');
+const MobyAPI = require('./mobyAPI');
 
-// Rate limiting setup
-const rateLimiter = {
-    requests: new Map(),
-    cooldown: 1000, // 1 second between requests
-    queue: [],
-    processing: false,
+const REQUIRED_ENV_VARS = [
+    'RA_CHANNEL_ID',
+    'DISCORD_TOKEN',
+    'ANNOUNCEMENT_CHANNEL_ID',
+    'ACHIEVEMENT_FEED_CHANNEL',
+    'MOBYGAMES_API_KEY',
+    'MOBYGAMES_API_URL'
+];
 
-    async processQueue() {
-        if (this.processing || this.queue.length === 0) return;
-        
-        this.processing = true;
-        while (this.queue.length > 0) {
-            const { url, resolve, reject } = this.queue[0];
-            
-            try {
-                const now = Date.now();
-                const lastRequest = this.requests.get(url) || 0;
-                const timeToWait = Math.max(0, lastRequest + this.cooldown - now);
-                
-                if (timeToWait > 0) {
-                    await new Promise(r => setTimeout(r, timeToWait));
-                }
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessageReactions
+    ]
+});
 
-                const response = await fetch(url);
-                this.requests.set(url, Date.now());
-                
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch: ${response.statusText}`);
-                }
-                
-                const data = await response.json();
-                resolve(data);
-            } catch (error) {
-                reject(error);
-            }
-            
-            this.queue.shift();
-            await new Promise(r => setTimeout(r, this.cooldown));
-        }
-        this.processing = false;
-    },
+// We'll store references to our core services here once they're initialized
+let services = null;
 
-    async makeRequest(url) {
-        return new Promise((resolve, reject) => {
-            this.queue.push({ url, resolve, reject });
-            this.processQueue();
-        });
-    }
-};
-
-// Cache setup
-const cache = {
-    userProfiles: new Map(),
-    leaderboardData: null,
-    profileTTL: 3600000, // 1 hour
-    leaderboardTTL: 300000, // 5 minutes
-    lastLeaderboardUpdate: 0
-};
-
-async function fetchUserProfile(username) {
-    try {
-        // Check cache first
-        const cachedProfile = cache.userProfiles.get(username);
-        if (cachedProfile && (Date.now() - cachedProfile.timestamp < cache.profileTTL)) {
-            return cachedProfile.data;
-        }
-
-        const params = new URLSearchParams({
-            z: process.env.RA_USERNAME,
-            y: process.env.RA_API_KEY,
-            u: username
-        });
-
-        const url = `https://retroachievements.org/API/API_GetUserSummary.php?${params}`;
-        const data = await rateLimiter.makeRequest(url);
-
-        const profile = {
-            username: data.Username,
-            profileImage: `https://retroachievements.org${data.UserPic}`,
-            profileUrl: `https://retroachievements.org/user/${data.Username}`
-        };
-
-        // Update cache
-        cache.userProfiles.set(username, {
-            data: profile,
-            timestamp: Date.now()
-        });
-
-        return profile;
-    } catch (error) {
-        console.error(`[RA API] Error fetching user profile for ${username}:`, error);
-        // Return default profile on error
-        return {
-            username,
-            profileImage: `https://retroachievements.org/UserPic/${username}.png`,
-            profileUrl: `https://retroachievements.org/user/${username}`
-        };
+// =======================
+//  Environment & DB Setup
+// =======================
+async function validateEnvironment() {
+    const missingVars = REQUIRED_ENV_VARS.filter((v) => !process.env[v]);
+    if (missingVars.length > 0) {
+        throw new Error(`Missing environment variables: ${missingVars.join(', ')}`);
     }
 }
 
-async function fetchLeaderboardData() {
+async function connectDatabase() {
     try {
-        // Existing cache check
-        if (cache.leaderboardData && Date.now() - cache.lastLeaderboardUpdate < cache.leaderboardTTL) {
-            console.log('[RA API] Returning cached leaderboard data');
-            return cache.leaderboardData;
-        }
-
-        console.log('[RA API] Fetching fresh leaderboard data');
-
-        const challenge = await database.getCurrentChallenge();
-        if (!challenge || !challenge.gameId) {
-            throw new Error('No active challenge found in database');
-        }
-
-        const validUsers = await database.getValidUsers();
-        console.log(`[RA API] Fetching data for ${validUsers.length} users`);
-
-        const usersProgress = [];
-        for (const username of validUsers) {
-            try {
-                // Fetch challenge progress
-                const challengeParams = new URLSearchParams({
-                    z: process.env.RA_USERNAME,
-                    y: process.env.RA_API_KEY,
-                    g: challenge.gameId,
-                    u: username
-                });
-
-                // Fetch recent achievements
-                const recentParams = new URLSearchParams({
-                    z: process.env.RA_USERNAME,
-                    y: process.env.RA_API_KEY,
-                    u: username,
-                    c: 50  // Last 50 achievements
-                });
-
-                // Make both requests
-                const [challengeData, profile, recentAchievements] = await Promise.all([
-                    rateLimiter.makeRequest(`https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${challengeParams}`),
-                    fetchUserProfile(username),
-                    rateLimiter.makeRequest(`https://retroachievements.org/API/API_GetUserRecentAchievements.php?${recentParams}`)
-                ]);
-
-                // Process challenge achievements
-                const challengeAchievements = challengeData.Achievements ? Object.values(challengeData.Achievements) : [];
-                const numAchievements = challengeAchievements.length;
-                const completed = challengeAchievements.filter(ach => parseInt(ach.DateEarned) > 0).length;
-
-                // Check for beaten game achievement in challenge
-                const hasBeatenGame = challengeAchievements.some(ach => {
-                    const isWinCondition = (ach.Flags & 2) === 2;
-                    const isEarned = parseInt(ach.DateEarned) > 0;
-                    return isWinCondition && isEarned;
-                });
-
-                // Combine achievements for feed
-                const allAchievements = [
-                    ...challengeAchievements,
-                    ...(recentAchievements || [])
-                ];
-
-                usersProgress.push({
-                    username,
-                    profileImage: profile.profileImage,
-                    profileUrl: profile.profileUrl,
-                    completedAchievements: completed,
-                    totalAchievements: numAchievements,
-                    completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : '0.00',
-                    hasBeatenGame: !!hasBeatenGame,
-                    achievements: allAchievements  // Now includes both challenge and recent achievements
-                });
-
-                console.log(`[RA API] Fetched progress for ${username}: ${completed}/${numAchievements} achievements`);
-            } catch (error) {
-                console.error(`[RA API] Error fetching data for ${username}:`, error);
-                usersProgress.push({
-                    username,
-                    profileImage: `https://retroachievements.org/UserPic/${username}.png`,
-                    profileUrl: `https://retroachievements.org/user/${username}`,
-                    completedAchievements: 0,
-                    totalAchievements: 0,
-                    completionPercentage: 0,
-                    hasBeatenGame: false,
-                    achievements: []
-                });
-            }
-        }
-
-        const leaderboardData = {
-            leaderboard: usersProgress.sort((a, b) => b.completionPercentage - a.completionPercentage),
-            gameInfo: challenge,
-            lastUpdated: new Date().toISOString()
-        };
-
-        cache.leaderboardData = leaderboardData;
-        cache.lastLeaderboardUpdate = Date.now();
-
-        console.log(`[RA API] Leaderboard data updated with ${usersProgress.length} users`);
-        return leaderboardData;
+        await database.connect();
+        console.log('MongoDB connected successfully');
+        return true;
     } catch (error) {
-        console.error('[RA API] Error fetching leaderboard data:', error);
+        ErrorHandler.logError(error, 'Database Connection');
         throw error;
     }
 }
 
-module.exports = {
-    fetchUserProfile,
-    fetchLeaderboardData
+// ======================
+//   Core Services Setup
+// ======================
+async function createCoreServices() {
+    try {
+        const userStats = new UserStats(database);
+        const userTracker = new UserTracker(database, userStats);
+        const leaderboardCache = createLeaderboardCache(database);
+        const commandHandler = new CommandHandler();
+        const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
+        const shadowGame = new ShadowGame();
+        const achievementFeed = new AchievementFeed(client, database);
+
+        // Tie userStats into the leaderboard cache
+        leaderboardCache.setUserStats(userStats);
+
+        // Expose the leaderboard cache globally (if needed by other modules)
+        global.leaderboardCache = leaderboardCache;
+
+        return {
+            userStats,
+            userTracker,
+            leaderboardCache,
+            commandHandler,
+            announcer,
+            shadowGame,
+            achievementFeed,
+            mobyAPI: MobyAPI
+        };
+    } catch (error) {
+        ErrorHandler.logError(error, 'Creating Core Services');
+        throw error;
+    }
+}
+
+async function initializeServices(coreServices) {
+    const {
+        userTracker,
+        userStats,
+        announcer,
+        commandHandler,
+        shadowGame,
+        leaderboardCache,
+        achievementFeed,
+        mobyAPI        
+    } = coreServices;
+
+    try {
+        console.log('Initializing services...');
+
+        await Promise.all([
+            shadowGame.loadConfig().catch((e) => ErrorHandler.logError(e, 'Shadow Game Init')),
+            userTracker.initialize().catch((e) => ErrorHandler.logError(e, 'User Tracker Init')),
+            userStats.loadStats(userTracker).catch((e) => ErrorHandler.logError(e, 'User Stats Init')),
+            announcer.initialize().catch((e) => ErrorHandler.logError(e, 'Announcer Init')),
+            commandHandler.loadCommands(coreServices).catch((e) => ErrorHandler.logError(e, 'Command Handler Init')),
+            leaderboardCache.initialize().catch((e) => ErrorHandler.logError(e, 'Leaderboard Cache Init')),
+            achievementFeed.initialize().catch((e) => ErrorHandler.logError(e, 'Achievement Feed Init')),
+            Promise.resolve()  // Placeholder for mobyAPI since it doesn't need initialization
+        ]);
+
+        console.log('All services initialized successfully');
+        return coreServices;
+    } catch (error) {
+        ErrorHandler.logError(error, 'Service Initialization');
+        throw error;
+    }
+}
+
+// ======================
+//      Bot Setup
+// ======================
+async function setupBot() {
+    try {
+        await validateEnvironment();
+        await connectDatabase();
+        const coreServices = await createCoreServices();
+        services = await initializeServices(coreServices);
+        console.log('Bot setup completed successfully');
+    } catch (error) {
+        ErrorHandler.logError(error, 'Bot Setup');
+        throw error;
+    }
+}
+
+// ======================
+//   Message Handling
+// ======================
+async function handleMessage(message, services) {
+    const { userTracker, shadowGame, commandHandler } = services;
+    const tasks = [];
+
+    // If message is in the RA channel, process user tracking
+    if (message.channel.id === process.env.RA_CHANNEL_ID) {
+        tasks.push(
+            userTracker.processMessage(message).catch((e) =>
+                ErrorHandler.logError(e, 'User Tracker Message Processing')
+            )
+        );
+    }
+
+    // Additional tasks for every message
+    tasks.push(
+        shadowGame.checkMessage(message).catch((e) =>
+            ErrorHandler.logError(e, 'Shadow Game Message Check')
+        ),
+        commandHandler.handleCommand(message, services).catch((e) =>
+            ErrorHandler.logError(e, 'Command Handler')
+        )
+    );
+
+    // Run all tasks concurrently; don't let one failure block the others
+    await Promise.allSettled(tasks);
+}
+
+// ======================
+//   Discord Bot Events
+// ======================
+client.once('ready', async () => {
+    try {
+        console.log(`Logged in as ${client.user.tag}`);
+        await setupBot();
+    } catch (error) {
+        console.error('Fatal initialization error:', error);
+        process.exit(1);
+    }
+});
+
+client.on('messageCreate', async (message) => {
+    // Ignore bot messages or uninitialized services
+    if (message.author.bot || !services) return;
+
+    try {
+        await handleMessage(message, services);
+    } catch (error) {
+        ErrorHandler.logError(error, 'Message Handler');
+    }
+});
+
+// ======================
+//   Periodic Tasks
+// ======================
+const updateLeaderboards = async () => {
+    if (!services?.leaderboardCache) return;
+
+    try {
+        await services.leaderboardCache.updateLeaderboards();
+    } catch (error) {
+        ErrorHandler.logError(error, 'Leaderboard Update');
+        // Optionally retry after 5 minutes
+        setTimeout(updateLeaderboards, 5 * 60 * 1000);
+    }
 };
+
+// Update leaderboards every hour
+setInterval(updateLeaderboards, 60 * 60 * 1000);
+
+// ======================
+//  Graceful Shutdown
+// ======================
+const shutdown = async (signal) => {
+    console.log(`Received ${signal}. Shutting down gracefully...`);
+    try {
+        await database.disconnect();
+        console.log('Cleanup completed');
+        process.exit(0);
+    } catch (error) {
+        console.error('Error during shutdown:', error);
+        process.exit(1);
+    }
+};
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('uncaughtException', (error) => {
+    ErrorHandler.logError(error, 'Uncaught Exception');
+    setTimeout(() => process.exit(1), 1000);
+});
+process.on('unhandledRejection', (error) => {
+    ErrorHandler.logError(error, 'Unhandled Rejection');
+});
+
+// ======================
+//    Start the Bot
+// ======================
+client.login(process.env.DISCORD_TOKEN);
