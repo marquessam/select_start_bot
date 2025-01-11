@@ -5,7 +5,9 @@ const CacheManager = require('./utils/cacheManager');
 const logger = require('./utils/logger');
 
 class RetroAchievementsAPI {
-    constructor() {
+    constructor(database) {
+        this.database = database;
+        
         // API configuration
         this.baseUrl = 'https://retroachievements.org/API';
         this.username = process.env.RA_USERNAME;
@@ -116,7 +118,10 @@ class RetroAchievementsAPI {
                 profileUrl: `https://retroachievements.org/user/${data.Username}`
             };
         } catch (error) {
-            logger.error(`Error fetching profile for ${username}:`, error);
+            logger.error(`Error fetching profile for ${username}:`, {
+                error: error.message,
+                username
+            });
             return {
                 username,
                 profileImage: `https://retroachievements.org/UserPic/${username}.png`,
@@ -131,27 +136,45 @@ class RetroAchievementsAPI {
                 g: process.env.CURRENT_GAME_ID
             });
 
-            if (!data?.Achievements) {
-                throw new Error('Invalid leaderboard data received');
+            const leaderboard = [];
+            const users = await this.database.getValidUsers();
+
+            for (const username of users) {
+                try {
+                    const progress = await this.fetchUserProgress(username, process.env.CURRENT_GAME_ID);
+                    if (progress) {
+                        leaderboard.push({
+                            username,
+                            completedAchievements: progress.achievements.filter(a => parseInt(a.DateEarned) > 0).length,
+                            totalAchievements: progress.achievements.length,
+                            completionPercentage: progress.completionPercentage,
+                            achievements: progress.achievements
+                        });
+                    }
+                } catch (error) {
+                    logger.warn(`Error fetching progress for ${username}`, { 
+                        error: error.message,
+                        username 
+                    });
+                }
             }
 
-            // Process and format the data
+            // Always return a valid response even if empty
             return {
-                leaderboard: Object.values(data.Achievements).map(achievement => ({
-                    username: achievement.Author,
-                    completedAchievements: achievement.NumAchieved || 0,
-                    totalAchievements: achievement.NumPossible || 0,
-                    completionPercentage: achievement.PctWon || 0,
-                    achievements: achievement.Achievements || []
-                })).sort((a, b) => b.completionPercentage - a.completionPercentage),
+                leaderboard: leaderboard.sort((a, b) => b.completionPercentage - a.completionPercentage),
                 lastUpdated: new Date().toISOString()
             };
+            
         } catch (error) {
             logger.error('Error fetching leaderboard:', {
                 error: error.message,
                 context: 'API Request'
             });
-            throw error;
+            // Return empty data instead of throwing
+            return {
+                leaderboard: [],
+                lastUpdated: new Date().toISOString()
+            };
         }
     }
 
@@ -204,14 +227,22 @@ class RetroAchievementsAPI {
     }
 }
 
-// Create a singleton instance
-const raAPI = new RetroAchievementsAPI();
+// Singleton instance management
+let apiInstance = null;
 
-// Export both the API instance and wrapper functions
+function initializeAPI(database) {
+    if (!apiInstance) {
+        apiInstance = new RetroAchievementsAPI(database);
+    }
+    return apiInstance;
+}
+
+// Export both initialization and wrapper functions
 module.exports = {
-    fetchLeaderboardData: () => raAPI.fetchLeaderboardData(),
-    fetchUserProfile: (username) => raAPI.fetchUserProfile(username),
-    fetchUserProgress: (username, gameId) => raAPI.fetchUserProgress(username, gameId),
-    fetchGameInfo: (gameId) => raAPI.fetchGameInfo(gameId),
-    api: raAPI
+    initialize: initializeAPI,
+    fetchLeaderboardData: () => apiInstance ? apiInstance.fetchLeaderboardData() : Promise.reject(new Error('API not initialized')),
+    fetchUserProfile: (username) => apiInstance ? apiInstance.fetchUserProfile(username) : Promise.reject(new Error('API not initialized')),
+    fetchUserProgress: (username, gameId) => apiInstance ? apiInstance.fetchUserProgress(username, gameId) : Promise.reject(new Error('API not initialized')),
+    fetchGameInfo: (gameId) => apiInstance ? apiInstance.fetchGameInfo(gameId) : Promise.reject(new Error('API not initialized')),
+    api: apiInstance
 };
