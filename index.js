@@ -1,3 +1,6 @@
+const { initializeUtils } = require('./utils/init');
+const utils = initializeUtils();
+global.utils = utils;  // Make utils available globally
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const database = require('./database');
