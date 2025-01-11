@@ -3,6 +3,7 @@ const { fetchLeaderboardData } = require('./raAPI');
 const { ErrorHandler, BotError } = require('./utils/errorHandler');
 const { withTransaction } = require('./utils/transactions');
 const commonValidators = require('./utils/validators');
+const logger = require('./utils/logger');
 
 class AchievementFeed {
     constructor(client, database) {
