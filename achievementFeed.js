@@ -280,13 +280,17 @@ class AchievementFeed {
 
             const userIconUrl = `https://retroachievements.org/UserPic/${username}.png`;
 
+            // Include the game name from the achievement object (if available)
+            const gameName = achievement.GameTitle || 'Unknown Game';
+
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
                 .setTitle('Achievement Unlocked! 🏆')
                 .setThumbnail(badgeUrl)
                 .setDescription(
                     `**${username}** earned **${achievement.Title || 'Achievement'}**\n` +
-                    `*${achievement.Description || 'No description available'}*`
+                    `*${achievement.Description || 'No description available'}*\n\n` +
+                    `**Game:** ${gameName}`
                 )
                 .setFooter({
                     text: `Points: ${achievement.Points || '0'}`,
