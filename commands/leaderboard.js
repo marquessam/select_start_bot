@@ -43,51 +43,61 @@ module.exports = {
     },
 
     async displayMonthlyLeaderboard(message, shadowGame) {
-        try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
+    try {
+        await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
 
-            const leaderboardData = await DataService.getLeaderboard('monthly');
-            const currentChallenge = await DataService.getCurrentChallenge();
+        const gameId = 319; // Chrono Trigger ID
+        const gameInfo = await DataService.getGameInfo(gameId);
+        const validUsers = await DataService.getValidUsers();
 
-            const validUsers = await DataService.getValidUsers();
-            const activeUsers = leaderboardData.filter(user =>
-                validUsers.includes(user.username.toLowerCase()) &&
-                (user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0)
-            );
-
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('USER RANKINGS')
-                .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]');
-
-            activeUsers.slice(0, 3).forEach((user, index) => {
-                const medals = ['🥇', '🥈', '🥉'];
-                embed.addTerminalField(
-                    `${medals[index]} ${user.username}`,
-                    `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\nPROGRESS: ${user.completionPercentage}%`
-                );
-            });
-
-            const additionalParticipants = activeUsers.slice(3)
-                .map(user => `${user.username} (${user.completionPercentage}%)`)
-                .join('\n');
-
-            if (additionalParticipants) {
-                embed.addTerminalField('ADDITIONAL PARTICIPANTS', additionalParticipants);
+        const leaderboard = [];
+        for (const username of validUsers) {
+            const progress = await DataService.fetchUserProgress(username, gameId);
+            if (progress) {
+                leaderboard.push({
+                    username,
+                    completedAchievements: progress.achievements.filter(a => parseInt(a.DateEarned) > 0).length,
+                    totalAchievements: progress.achievements.length,
+                    completionPercentage: progress.completionPercentage || 0,
+                });
             }
-
-            if (activeUsers.length === 0) {
-                embed.addTerminalField('STATUS', 'No active participants yet');
-            }
-
-            embed.setTerminalFooter();
-            await message.channel.send({ embeds: [embed] });
-            if (shadowGame) await shadowGame.tryShowError(message);
-        } catch (error) {
-            console.error('Monthly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
         }
-    },
+
+        leaderboard.sort((a, b) => b.completionPercentage - a.completionPercentage);
+
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('USER RANKINGS')
+            .setThumbnail(`https://retroachievements.org${gameInfo?.imageIcon || ''}`)
+            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]');
+
+        leaderboard.slice(0, 3).forEach((user, index) => {
+            const medals = ['🥇', '🥈', '🥉'];
+            embed.addTerminalField(
+                `${medals[index]} ${user.username}`,
+                `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\nPROGRESS: ${user.completionPercentage}%`
+            );
+        });
+
+        const additionalParticipants = leaderboard.slice(3)
+            .map(user => `${user.username} (${user.completionPercentage}%)`)
+            .join('\n');
+
+        if (additionalParticipants) {
+            embed.addTerminalField('ADDITIONAL PARTICIPANTS', additionalParticipants);
+        }
+
+        if (leaderboard.length === 0) {
+            embed.addTerminalField('STATUS', 'No active participants yet');
+        }
+
+        embed.setTerminalFooter();
+        await message.channel.send({ embeds: [embed] });
+        if (shadowGame) await shadowGame.tryShowError(message);
+    } catch (error) {
+        console.error('Monthly Leaderboard Error:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
+    }
+}
 
     async displayYearlyLeaderboard(message, shadowGame) {
         try {
