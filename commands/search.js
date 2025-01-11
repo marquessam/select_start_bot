@@ -39,7 +39,7 @@ module.exports = {
 
       // 6) Build an embed (terminal-style) with data from the first game
       const embed = new TerminalEmbed()
-        .setTerminalTitle(game.title) // Removed "MobyGames:" prefix
+        .setTerminalTitle(game.title)
         .setTerminalDescription(
           game.description
             ? game.description.slice(0, 500) // limit to ~500 chars
@@ -51,7 +51,7 @@ module.exports = {
         embed.setImage(game.sample_cover.image);
       }
 
-      // 8) Show some extra details (platforms, genres, rating, etc.)
+      // 8) Show some extra details (platforms, genres, etc.)
       if (Array.isArray(game.platforms) && game.platforms.length > 0) {
         const platformList = game.platforms
           .map((p) => `${p.platform_name} (${p.first_release_date || 'N/A'})`)
@@ -64,19 +64,22 @@ module.exports = {
         embed.addTerminalField('Genres', genreList);
       }
 
-      if (game.moby_score) {
-        embed.addTerminalField('Moby Score', String(game.moby_score));
-      }
-
-      // 9) Add attribution footer instead of "MobyGames:" in the title
-      embed.setTerminalFooter('Data courtesy of MobyGames');
-
-      // 10) Send the embed to the channel
+      // 9) Send the embed to the channel
       await message.channel.send({ embeds: [embed] });
 
-      // 11) Done
+      // 10) Send the remaining description if it's too long
+      if (game.description && game.description.length > 500) {
+        const extraDescription = game.description.slice(500);
+        const descriptionChunks = extraDescription.match(/.{1,2000}/g); // Split into 2000-char chunks
+
+        for (const chunk of descriptionChunks) {
+          await message.channel.send(`\u200B${chunk}`); // Send each chunk
+        }
+      }
+
+      // 11) Attribution message
       await message.channel.send(
-        '```ansi\n\x1b[32m> Search complete\n[Ready for input]█\x1b[0m```'
+        '```ansi\n\x1b[32m[INFO] Data provided by MobyGames\n[Ready for input]█\x1b[0m```'
       );
     } catch (error) {
       console.error('MobyGames Search Error:', error);
