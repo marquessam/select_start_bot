@@ -100,7 +100,7 @@ class LeaderboardCache {
 
             // Get monthly leaderboard
             try {
-                const monthlyData = await fetchLeaderboardData();
+                const monthlyData = await raAPI.fetchLeaderboardData();
                 this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
                 
                 // Update participation tracking if userStats is available
