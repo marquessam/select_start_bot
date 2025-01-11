@@ -1,7 +1,5 @@
-// commands/leaderboard.js
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
-const logger = require('../utils/logger');
 
 module.exports = {
     name: 'leaderboard',
@@ -39,7 +37,7 @@ module.exports = {
                 if (shadowGame) await shadowGame.tryShowError(message);
             }
         } catch (error) {
-            logger.error('Leaderboard Command Error:', { error: error.message });
+            console.error('Leaderboard Command Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to process leaderboard command\n[Ready for input]█\x1b[0m```');
         }
     },
@@ -51,7 +49,6 @@ module.exports = {
             const leaderboardData = await DataService.getLeaderboard('monthly');
             const currentChallenge = await DataService.getCurrentChallenge();
 
-            // Filter out users with 0 progress
             const validUsers = await DataService.getValidUsers();
             const activeUsers = leaderboardData.filter(user =>
                 validUsers.includes(user.username.toLowerCase()) &&
@@ -63,7 +60,6 @@ module.exports = {
                 .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]');
 
-            // Display top 3
             activeUsers.slice(0, 3).forEach((user, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
                 embed.addTerminalField(
@@ -72,7 +68,6 @@ module.exports = {
                 );
             });
 
-            // Display remaining active participants
             const additionalParticipants = activeUsers.slice(3)
                 .map(user => `${user.username} (${user.completionPercentage}%)`)
                 .join('\n');
@@ -89,7 +84,7 @@ module.exports = {
             await message.channel.send({ embeds: [embed] });
             if (shadowGame) await shadowGame.tryShowError(message);
         } catch (error) {
-            logger.error('Monthly Leaderboard Error:', { error: error.message });
+            console.error('Monthly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
@@ -101,13 +96,11 @@ module.exports = {
             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
             const validUsers = await DataService.getValidUsers();
 
-            // Filter for valid and active users
             const activeUsers = yearlyLeaderboard.filter(user =>
                 validUsers.includes(user.username.toLowerCase()) &&
                 user.points > 0
             );
 
-            // Initialize ranking variables
             let currentPoints = null;
             let currentRank = 1;
             let sameRankCount = 0;
@@ -143,7 +136,7 @@ module.exports = {
             await message.channel.send({ embeds: [embed] });
             if (shadowGame) await shadowGame.tryShowError(message);
         } catch (error) {
-            logger.error('Yearly Leaderboard Error:', { error: error.message });
+            console.error('Yearly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
@@ -204,7 +197,7 @@ module.exports = {
             await message.channel.send({ embeds: [embed] });
             if (shadowGame) await shadowGame.tryShowError(message);
         } catch (error) {
-            logger.error('High Scores Error:', { error: error.message });
+            console.error('High Scores Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve high scores\n[Ready for input]█\x1b[0m```');
         }
     },
