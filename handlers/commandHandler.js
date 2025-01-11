@@ -1,9 +1,7 @@
+// handlers/commandHandler.js
 const fs = require('fs');
 const path = require('path');
 const { Collection } = require('discord.js');
-const { ErrorHandler, BotError } = require('../utils/errorHandler');
-const PermissionsManager = require('../utils/permissions');
-const commonValidators = require('../utils/validators');
 const logger = require('../utils/logger');
 
 class CommandHandler {
@@ -13,10 +11,8 @@ class CommandHandler {
         this.cooldowns = new Map();
 
         this.config = {
-            defaultCooldown: 3000,
-            adminCooldown: 1000,
-            maxRetries: 3,
-            retryDelay: 1000,
+            defaultCooldown: 3000,   // 3 seconds for normal commands
+            adminCooldown: 1000,     // 1 second for admin commands
             commandsPath: path.join(__dirname, '..', 'commands'),
             adminCommandsPath: path.join(__dirname, '..', 'commands', 'admin')
         };
@@ -24,6 +20,7 @@ class CommandHandler {
 
     async loadCommands(dependencies) {
         try {
+            // Clear existing commands in both collections
             this.commands.clear();
             this.adminCommands.clear();
 
@@ -31,27 +28,25 @@ class CommandHandler {
             await this._loadCommandsFromDirectory(
                 this.config.commandsPath,
                 this.commands,
-                false
+                false // isAdmin
             );
 
-            // Load admin commands
+            // Load admin commands (if directory exists)
             if (fs.existsSync(this.config.adminCommandsPath)) {
                 await this._loadCommandsFromDirectory(
                     this.config.adminCommandsPath,
                     this.adminCommands,
-                    true
+                    true // isAdmin
                 );
             }
 
+            // Inject dependencies
             this._injectDependencies(dependencies);
 
-            console.log(
-                `CommandHandler: Loaded ${this.commands.size} normal commands and ` +
-                `${this.adminCommands.size} admin commands.`
-            );
+            logger.info(`CommandHandler: Loaded ${this.commands.size} normal commands and ${this.adminCommands.size} admin commands.`);
             return true;
         } catch (error) {
-            ErrorHandler.logError(error, 'Command Loading');
+            logger.error('Error loading commands:', { error: error.message });
             return false;
         }
     }
@@ -64,68 +59,63 @@ class CommandHandler {
         for (const file of commandFiles) {
             const filePath = path.join(dirPath, file);
             try {
+                // Clear the require cache so reloading is possible
                 delete require.cache[require.resolve(filePath)];
-                const command = require(filePath);
 
+                const command = require(filePath);
                 if (command.name) {
+                    // Convert command name to lowercase for consistency
                     const cmdName = command.name.toLowerCase();
+
+                    // Mark if it's an admin command
                     command.isAdmin = isAdmin;
+
+                    // Store in the appropriate collection
                     collection.set(cmdName, command);
                 }
             } catch (err) {
-                ErrorHandler.logError(err, `Loading command file: ${file}`);
+                logger.error(`Error loading command file: ${file}`, { error: err.message });
             }
         }
     }
 
     _injectDependencies(dependencies) {
-        for (const collection of [this.commands, this.adminCommands]) {
-            for (const command of collection.values()) {
-                command.dependencies = dependencies;
-            }
+        for (const command of this.commands.values()) {
+            command.dependencies = dependencies;
+        }
+        for (const command of this.adminCommands.values()) {
+            command.dependencies = dependencies;
         }
     }
 
-    async validateAndGetCommand(message, commandName) {
-        // Check normal commands first
-        let command = this.commands.get(commandName);
-        let isAdminCommand = false;
+    hasAdminPermission(message) {
+        const member = message.member;
+        if (!member) return false;
 
-        // If not found, check admin commands
-        if (!command) {
-            command = this.adminCommands.get(commandName);
-            isAdminCommand = !!command;
-        }
-
-        if (!command) {
-            return null;
-        }
-
-        // Validate permissions
-        try {
-            await PermissionsManager.validateCommand(message, command);
-        } catch (error) {
-            throw error;
-        }
-
-        return { command, isAdminCommand };
+        return (
+            member.permissions.has('ADMINISTRATOR') ||
+            member.roles.cache.has(process.env.ADMIN_ROLE_ID)
+        );
     }
 
     isOnCooldown(userId, commandName, isAdmin) {
         const now = Date.now();
         const cooldownKey = `${userId}-${commandName}`;
-        const cooldownEnd = this.cooldowns.get(cooldownKey);
 
+        const cooldownEnd = this.cooldowns.get(cooldownKey);
         if (cooldownEnd && now < cooldownEnd) {
             return true;
         }
 
-        const duration = isAdmin ? 
-            this.config.adminCooldown : 
-            this.config.defaultCooldown;
+        // Determine the cooldown duration
+        const duration = isAdmin
+            ? this.config.adminCooldown
+            : this.config.defaultCooldown;
 
+        // Set the new cooldown expiration time
         this.cooldowns.set(cooldownKey, now + duration);
 
+        // Occasionally clean up old cooldowns
         if (Math.random() < 0.1) {
             this._cleanupCooldowns();
         }
@@ -142,107 +132,79 @@ class CommandHandler {
         }
     }
 
-   async handleCommand(message, services) {
-    if (!message.content.startsWith('!')) return;
+    async handleCommand(message, services) {
+        if (!message.content.startsWith('!')) return;
 
-    const args = message.content.slice(1).trim().split(/\s+/);
-    const commandName = args.shift().toLowerCase();
-    const startTime = Date.now();
+        const args = message.content.slice(1).trim().split(/\s+/);
+        const commandName = args.shift().toLowerCase();
 
-    try {
-        const commandInfo = await this.validateAndGetCommand(message, commandName);
-        
-        if (!commandInfo) {
-            logger.debug('Command not found', {
-                command: commandName,
-                user: message.author.username
-            });
-            return;
+        // Check normal commands first
+        let command = this.commands.get(commandName);
+        let isAdminCommand = false;
+
+        // If not found, check admin
+        if (!command) {
+            command = this.adminCommands.get(commandName);
+            isAdminCommand = !!command;
         }
 
-        const { command, isAdminCommand } = commandInfo;
+        // If no command found at all, bail
+        if (!command) return;
 
-        // Check cooldown
-        if (this.isOnCooldown(message.author.id, commandName, isAdminCommand)) {
-            throw new BotError(
-                'Command is on cooldown',
-                ErrorHandler.ERROR_TYPES.RATE_LIMIT,
-                'Command Execution'
+        try {
+            // If it's admin, verify user has permission
+            if (isAdminCommand && !this.hasAdminPermission(message)) {
+                await message.channel.send(
+                    '```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```'
+                );
+                return;
+            }
+
+            // Check cooldown
+            if (this.isOnCooldown(
+                message.author.id,
+                commandName,
+                isAdminCommand
+            )) {
+                await message.channel.send(
+                    '```ansi\n\x1b[32m[ERROR] Command on cooldown\n[Ready for input]█\x1b[0m```'
+                );
+                return;
+            }
+
+            // Execute the command
+            await command.execute(message, args, services);
+            
+            // Log successful command execution
+            logger.info('Command executed', {
+                command: commandName,
+                user: message.author.username,
+                guild: message.guild?.name || 'DM',
+                channel: message.channel.name
+            });
+
+        } catch (error) {
+            logger.error('Command execution failed', {
+                command: commandName,
+                user: message.author.username,
+                error: error.message
+            });
+            
+            await message.channel.send(
+                '```ansi\n\x1b[32m[ERROR] Command execution failed\n[Ready for input]█\x1b[0m```'
             );
         }
-
-        // Execute with retry logic
-        let lastError = null;
-        for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
-            try {
-                await command.execute(message, args, services);
-                
-                // Log successful command execution
-                await actionLogger.logCommand(message, command, true);
-                
-                logger.info('Command executed successfully', {
-                    command: commandName,
-                    user: message.author.username,
-                    duration: Date.now() - startTime
-                });
-                
-                return;
-            } catch (error) {
-                lastError = error;
-                
-                logger.warn(`Command failed (attempt ${attempt}/${this.config.maxRetries})`, {
-                    command: commandName,
-                    user: message.author.username,
-                    error: error.message
-                });
-
-                if (attempt < this.config.maxRetries) {
-                    await new Promise(resolve => 
-                        setTimeout(resolve, this.config.retryDelay * attempt)
-                    );
-                }
-            }
-        }
-
-        // If we get here, all retries failed
-        throw lastError;
-
-    } catch (error) {
-        // Log failed command
-        await actionLogger.logCommand(message, command, false, error);
-        
-        logger.error('Command failed', {
-            command: commandName,
-            user: message.author.username,
-            error: error.message,
-            duration: Date.now() - startTime
-        });
-
-        // Handle different types of errors appropriately
-        if (error instanceof BotError) {
-            if (error.type === ErrorHandler.ERROR_TYPES.PERMISSION) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
-            } else if (error.type === ErrorHandler.ERROR_TYPES.RATE_LIMIT) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Command on cooldown\n[Ready for input]█\x1b[0m```');
-            } else {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Command execution failed\n[Ready for input]█\x1b[0m```');
-            }
-        } else {
-            ErrorHandler.logError(error, `Command Execution: ${commandName}`);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] An unexpected error occurred\n[Ready for input]█\x1b[0m```');
-        }
     }
-}
-    
+
     async reloadCommand(commandName) {
         try {
             const nameLower = commandName.toLowerCase();
-            
-            // Remove from existing collections
+
+            // Remove from normal or admin collections if exists
             this.commands.delete(nameLower);
             this.adminCommands.delete(nameLower);
 
-            // Try loading from regular commands
+            // Attempt reload from normal commands
             const regularPath = path.join(this.config.commandsPath, `${nameLower}.js`);
             if (fs.existsSync(regularPath)) {
                 delete require.cache[require.resolve(regularPath)];
@@ -252,7 +214,7 @@ class CommandHandler {
                 return true;
             }
 
-            // Try loading from admin commands
+            // Attempt reload from admin commands
             const adminPath = path.join(this.config.adminCommandsPath, `${nameLower}.js`);
             if (fs.existsSync(adminPath)) {
                 delete require.cache[require.resolve(adminPath)];
@@ -264,7 +226,10 @@ class CommandHandler {
 
             return false;
         } catch (error) {
-            ErrorHandler.logError(error, `Reloading command: ${commandName}`);
+            logger.error('Error reloading command:', {
+                command: commandName,
+                error: error.message
+            });
             return false;
         }
     }
