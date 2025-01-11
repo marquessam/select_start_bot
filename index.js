@@ -1,6 +1,3 @@
-const { initializeUtils } = require('./utils/init');
-const utils = initializeUtils();
-global.utils = utils;  // Make utils available globally
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const database = require('./database');
@@ -13,8 +10,6 @@ const ShadowGame = require('./shadowGame');
 const ErrorHandler = require('./utils/errorHandler');
 const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
-const raAPI = require('./raAPI');
-raAPI.initialize(database);
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
