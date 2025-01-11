@@ -765,20 +765,18 @@ async verifyArcadeScore(game, username) {
     // Game List Methods
     // ===================
     
-    async getValidGamesList() {
+ async getValidGamesList() {
     try {
         const currentChallenge = await this.getCurrentChallenge();
         const highScores = await this.getHighScores();
         const reviews = await this.getReviews();
         const previousChallenges = await this.getPreviousChallenges();
 
-        // Safeguards to ensure the data is defined and iterable
         const currentGame = currentChallenge?.gameName ? [currentChallenge.gameName] : [];
         const highScoreGames = highScores?.games ? Object.keys(highScores.games) : [];
         const reviewGames = reviews?.games ? Object.keys(reviews.games) : [];
         const previousGameNames = previousChallenges?.map(game => game.gameName).filter(Boolean) || [];
 
-        // Combine all sources into a Set to ensure unique entries
         const validGames = new Set([
             ...currentGame,
             ...highScoreGames,
@@ -788,11 +786,11 @@ async verifyArcadeScore(game, username) {
 
         return Array.from(validGames);
     } catch (error) {
-        // Log the error and rethrow it for upstream handling
-        ErrorHandler.logError(error, 'Get Valid Games List');
-        throw error;
+        console.error('Error in getValidGamesList:', error); // Temporary logging fallback
+        throw new Error('Failed to retrieve valid games list');
     }
 }
+
 
     async getPreviousChallenges() {
         const collection = await this.getCollection('challenges');
