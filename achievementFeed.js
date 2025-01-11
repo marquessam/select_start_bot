@@ -1,9 +1,8 @@
 const { EmbedBuilder, PermissionsBitField } = require('discord.js');
-const raAPI = require('./raAPI');
+const { fetchLeaderboardData } = require('./raAPI');
 const { ErrorHandler, BotError } = require('./utils/errorHandler');
 const { withTransaction } = require('./utils/transactions');
 const commonValidators = require('./utils/validators');
-const logger = require('./utils/logger');
 
 class AchievementFeed {
     constructor(client, database) {
@@ -72,7 +71,7 @@ class AchievementFeed {
 
     async loadInitialAchievements() {
         try {
-            const data = await raAPI.fetchLeaderboardData();
+            const data = await fetchLeaderboardData();
             if (!data?.leaderboard) return;
 
             for (const user of data.leaderboard) {
