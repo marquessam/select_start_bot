@@ -126,7 +126,6 @@ async function handleRead(message, shadowGame, mobyAPI) {
 
     const reviewEmbed = new TerminalEmbed()
         .setTerminalTitle(`${selectedGame} REVIEWS`)
-        .setTerminalDescription(description || '[No description available]')
         .addTerminalField(
             'AVERAGE SCORES',
             `ART: ${gameReviews.averageScores.art}/5\n` +
