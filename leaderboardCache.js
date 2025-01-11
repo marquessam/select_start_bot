@@ -1,193 +1,240 @@
-const { fetchLeaderboardData } = require('./raAPI.js');
-const { ErrorHandler, BotError } = require('./utils/errorHandler');
-const CacheManager = require('./utils/cacheManager');
+const fs = require('fs');
+const path = require('path');
+const { Collection } = require('discord.js');
+const { ErrorHandler, BotError } = require('../utils/errorHandler');
+const PermissionsManager = require('../utils/permissions');
+const commonValidators = require('../utils/validators');
 
-class LeaderboardCache {
-    constructor(database) {
-        this.database = database;
-        this.userStats = null;
-        
-        // Initialize cache managers
-        this.userCache = new CacheManager({
-            defaultTTL: 15 * 60 * 1000,  // 15 minutes
-            maxSize: 500
-        });
-        
-        this.leaderboardCache = new CacheManager({
-            defaultTTL: 10 * 60 * 1000,  // 10 minutes
-            maxSize: 100
-        });
+class CommandHandler {
+    constructor() {
+        this.commands = new Collection();
+        this.adminCommands = new Collection();
+        this.cooldowns = new Map();
 
-        this.cache = {
-            validUsers: new Set(),
-            yearlyLeaderboard: [],
-            monthlyLeaderboard: [],
-            lastUpdated: null,
-            updateInterval: 15 * 60 * 1000  // 15 minutes
+        this.config = {
+            defaultCooldown: 3000,
+            adminCooldown: 1000,
+            maxRetries: 3,
+            retryDelay: 1000,
+            commandsPath: path.join(__dirname, '..', 'commands'),
+            adminCommandsPath: path.join(__dirname, '..', 'commands', 'admin')
         };
     }
 
-    setUserStats(userStatsInstance) {
-        this.userStats = userStatsInstance;
-    }
-
-    async initialize() {
+    async loadCommands(dependencies) {
         try {
-            console.log('[LEADERBOARD CACHE] Initializing...');
-            await this.updateValidUsers();
-            await this.updateLeaderboards(true); // Force initial update
-            console.log('[LEADERBOARD CACHE] Initialization complete');
+            this.commands.clear();
+            this.adminCommands.clear();
+
+            // Load normal commands
+            await this._loadCommandsFromDirectory(
+                this.config.commandsPath,
+                this.commands,
+                false
+            );
+
+            // Load admin commands
+            if (fs.existsSync(this.config.adminCommandsPath)) {
+                await this._loadCommandsFromDirectory(
+                    this.config.adminCommandsPath,
+                    this.adminCommands,
+                    true
+                );
+            }
+
+            this._injectDependencies(dependencies);
+
+            console.log(
+                `CommandHandler: Loaded ${this.commands.size} normal commands and ` +
+                `${this.adminCommands.size} admin commands.`
+            );
             return true;
         } catch (error) {
-            console.error('[LEADERBOARD CACHE] Initialization error:', error);
+            ErrorHandler.logError(error, 'Command Loading');
             return false;
         }
     }
 
-    async updateValidUsers() {
-        try {
-            if (!this.database) {
-                throw new Error('Database instance not set');
-            }
+    async _loadCommandsFromDirectory(dirPath, collection, isAdmin = false) {
+        const commandFiles = fs
+            .readdirSync(dirPath)
+            .filter((file) => file.endsWith('.js'));
 
-            const users = await this.database.getValidUsers();
-            this.cache.validUsers = new Set(users.map(u => u.toLowerCase()));
+        for (const file of commandFiles) {
+            const filePath = path.join(dirPath, file);
+            try {
+                delete require.cache[require.resolve(filePath)];
+                const command = require(filePath);
 
-            console.log(`[LEADERBOARD CACHE] Updated valid users: ${users.length} users`);
-
-            // Initialize stats for all valid users if userStats is available
-            if (this.userStats) {
-                for (const username of users) {
-                    await this.userStats.initializeUserIfNeeded(username);
+                if (command.name) {
+                    const cmdName = command.name.toLowerCase();
+                    command.isAdmin = isAdmin;
+                    collection.set(cmdName, command);
                 }
+            } catch (err) {
+                ErrorHandler.logError(err, `Loading command file: ${file}`);
             }
-
-            return true;
-        } catch (error) {
-            console.error('[LEADERBOARD CACHE] Error updating valid users:', error);
-            return false;
         }
     }
 
-    isValidUser(username) {
-        return username && this.cache.validUsers.has(username.toLowerCase());
+    _injectDependencies(dependencies) {
+        for (const collection of [this.commands, this.adminCommands]) {
+            for (const command of collection.values()) {
+                command.dependencies = dependencies;
+            }
+        }
     }
 
-    async updateLeaderboards(force = false) {
+    async validateAndGetCommand(message, commandName) {
+        // Check normal commands first
+        let command = this.commands.get(commandName);
+        let isAdminCommand = false;
+
+        // If not found, check admin commands
+        if (!command) {
+            command = this.adminCommands.get(commandName);
+            isAdminCommand = !!command;
+        }
+
+        if (!command) {
+            return null;
+        }
+
+        // Validate permissions
         try {
-            if (!force && !this._shouldUpdate()) {
+            await PermissionsManager.validateCommand(message, command);
+        } catch (error) {
+            throw error;
+        }
+
+        return { command, isAdminCommand };
+    }
+
+    isOnCooldown(userId, commandName, isAdmin) {
+        const now = Date.now();
+        const cooldownKey = `${userId}-${commandName}`;
+        const cooldownEnd = this.cooldowns.get(cooldownKey);
+
+        if (cooldownEnd && now < cooldownEnd) {
+            return true;
+        }
+
+        const duration = isAdmin ? 
+            this.config.adminCooldown : 
+            this.config.defaultCooldown;
+
+        this.cooldowns.set(cooldownKey, now + duration);
+
+        if (Math.random() < 0.1) {
+            this._cleanupCooldowns();
+        }
+
+        return false;
+    }
+
+    _cleanupCooldowns() {
+        const now = Date.now();
+        for (const [key, expireTime] of this.cooldowns.entries()) {
+            if (now >= expireTime) {
+                this.cooldowns.delete(key);
+            }
+        }
+    }
+
+    async handleCommand(message, services) {
+        if (!message.content.startsWith('!')) return;
+
+        const args = message.content.slice(1).trim().split(/\s+/);
+        const commandName = args.shift().toLowerCase();
+
+        try {
+            const commandInfo = await this.validateAndGetCommand(message, commandName);
+            
+            if (!commandInfo) {
                 return;
             }
 
-            console.log('[LEADERBOARD CACHE] Updating leaderboards...');
+            const { command, isAdminCommand } = commandInfo;
 
-            // Ensure we have valid users
-            if (this.cache.validUsers.size === 0) {
-                await this.updateValidUsers();
-            }
-
-            // Get yearly leaderboard
-            if (this.userStats) {
-                const currentYear = new Date().getFullYear().toString();
-                const validUsers = Array.from(this.cache.validUsers);
-                
-                this.cache.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(
-                    currentYear,
-                    validUsers
+            // Check cooldown
+            if (this.isOnCooldown(message.author.id, commandName, isAdminCommand)) {
+                throw new BotError(
+                    'Command is on cooldown',
+                    ErrorHandler.ERROR_TYPES.RATE_LIMIT,
+                    'Command Execution'
                 );
             }
 
-            // Get monthly leaderboard
-            try {
-                const monthlyData = await fetchLeaderboardData();
-                this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
-                
-                // Update participation tracking if userStats is available
-                if (this.userStats) {
-                    await this.userStats.updateMonthlyParticipation(monthlyData);
-                }
-            } catch (error) {
-                console.error('[LEADERBOARD CACHE] Error fetching monthly data:', error);
-                if (!this.cache.monthlyLeaderboard.length) {
-                    this.cache.monthlyLeaderboard = [];
+            // Execute with retry logic
+            let lastError = null;
+            for (let attempt = 1; attempt <= this.config.maxRetries; attempt++) {
+                try {
+                    await command.execute(message, args, services);
+                    return;
+                } catch (error) {
+                    lastError = error;
+                    if (attempt < this.config.maxRetries) {
+                        await new Promise(resolve => 
+                            setTimeout(resolve, this.config.retryDelay * attempt)
+                        );
+                    }
                 }
             }
 
-            this.cache.lastUpdated = Date.now();
-            console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
+            // If we get here, all retries failed
+            throw lastError;
+
         } catch (error) {
-            console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
-            throw error;
+            // Handle different types of errors appropriately
+            if (error instanceof BotError) {
+                if (error.type === ErrorHandler.ERROR_TYPES.PERMISSION) {
+                    await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
+                } else if (error.type === ErrorHandler.ERROR_TYPES.RATE_LIMIT) {
+                    await message.channel.send('```ansi\n\x1b[32m[ERROR] Command on cooldown\n[Ready for input]█\x1b[0m```');
+                } else {
+                    await message.channel.send('```ansi\n\x1b[32m[ERROR] Command execution failed\n[Ready for input]█\x1b[0m```');
+                }
+            } else {
+                ErrorHandler.logError(error, `Command Execution: ${commandName}`);
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] An unexpected error occurred\n[Ready for input]█\x1b[0m```');
+            }
         }
     }
 
-    _shouldUpdate() {
-        return !this.cache.lastUpdated || 
-               (Date.now() - this.cache.lastUpdated) > this.cache.updateInterval;
-    }
-
-    _constructMonthlyLeaderboard(monthlyData) {
+    async reloadCommand(commandName) {
         try {
-            if (!monthlyData?.leaderboard) {
-                console.warn('[LEADERBOARD CACHE] No monthly data available');
-                return [];
+            const nameLower = commandName.toLowerCase();
+            
+            // Remove from existing collections
+            this.commands.delete(nameLower);
+            this.adminCommands.delete(nameLower);
+
+            // Try loading from regular commands
+            const regularPath = path.join(this.config.commandsPath, `${nameLower}.js`);
+            if (fs.existsSync(regularPath)) {
+                delete require.cache[require.resolve(regularPath)];
+                const cmd = require(regularPath);
+                cmd.isAdmin = false;
+                this.commands.set(nameLower, cmd);
+                return true;
             }
 
-            const validUsers = Array.from(this.cache.validUsers);
-            console.log(`[LEADERBOARD CACHE] Constructing monthly leaderboard for ${validUsers.length} users`);
+            // Try loading from admin commands
+            const adminPath = path.join(this.config.adminCommandsPath, `${nameLower}.js`);
+            if (fs.existsSync(adminPath)) {
+                delete require.cache[require.resolve(adminPath)];
+                const cmd = require(adminPath);
+                cmd.isAdmin = true;
+                this.adminCommands.set(nameLower, cmd);
+                return true;
+            }
 
-            const monthlyParticipants = validUsers.map(participant => {
-                const user = monthlyData.leaderboard.find(
-                    u => u.username.toLowerCase() === participant.toLowerCase()
-                );
-                
-                return user || {
-                    username: participant,
-                    completionPercentage: 0,
-                    completedAchievements: 0,
-                    totalAchievements: 0,
-                    hasCompletion: false
-                };
-            });
-
-            return monthlyParticipants.sort((a, b) => {
-                const percentageDiff = b.completionPercentage - a.completionPercentage;
-                if (percentageDiff !== 0) return percentageDiff;
-                return b.completedAchievements - a.completedAchievements;
-            });
+            return false;
         } catch (error) {
-            console.error('[LEADERBOARD CACHE] Error constructing monthly leaderboard:', error);
-            return [];
+            ErrorHandler.logError(error, `Reloading command: ${commandName}`);
+            return false;
         }
-    }
-
-    getYearlyLeaderboard() {
-        if (!this.cache.yearlyLeaderboard || !this.cache.yearlyLeaderboard.length) {
-            console.warn('[LEADERBOARD CACHE] Yearly leaderboard not initialized');
-            return [];
-        }
-        return this.cache.yearlyLeaderboard;
-    }
-
-    getMonthlyLeaderboard() {
-        if (!this.cache.monthlyLeaderboard || !this.cache.monthlyLeaderboard.length) {
-            console.warn('[LEADERBOARD CACHE] Monthly leaderboard not initialized');
-            return [];
-        }
-        return this.cache.monthlyLeaderboard;
-    }
-
-    getLastUpdated() {
-        return this.cache.lastUpdated;
-    }
-
-    async refreshLeaderboard() {
-        await this.updateLeaderboards(true);
     }
 }
 
-function createLeaderboardCache(database) {
-    return new LeaderboardCache(database);
-}
-
-module.exports = createLeaderboardCache;
+module.exports = CommandHandler;
