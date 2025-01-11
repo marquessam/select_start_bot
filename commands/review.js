@@ -1,6 +1,5 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const database = require('../database');
-const { MobyAPI } = require('../mobyAPI');
 
 module.exports = {
     name: 'review',
@@ -13,9 +12,9 @@ module.exports = {
 
             const [subcommand] = args;
 
-            switch (subcommand) {
+            switch (subcommand.toLowerCase()) {
                 case 'read':
-                    await handleRead(message, shadowGame);
+                    await handleRead(message, shadowGame, mobyAPI);
                     break;
                 case 'write':
                     await handleWrite(message, args.slice(1), mobyAPI);
@@ -109,21 +108,22 @@ async function handleRead(message, shadowGame, mobyAPI) {
 
     // Fetch box art and game details from MobyAPI
     let boxArtUrl = null;
-let description = null;
+    let description = null;
 
-try {
-    const result = await mobyAPI.searchGames(selectedGame);
+    try {
+        const result = await mobyAPI.searchGames(selectedGame);
 
-    if (result && result.games.length > 0) {
-        const game = result.games[0];
-        boxArtUrl = game.sample_cover?.image || null;
-        description = game.description?.replace(/<[^>]*>/g, '').trim() || null;
-    } else {
-        console.warn(`No results found for "${selectedGame}" in MobyAPI.`);
+        if (result && result.games.length > 0) {
+            const game = result.games[0];
+            boxArtUrl = game.sample_cover?.image || null;
+            description = game.description?.replace(/<[^>]*>/g, '').trim() || null;
+        } else {
+            console.warn(`No results found for "${selectedGame}" in MobyAPI.`);
+        }
+    } catch (error) {
+        console.error(`Failed to fetch details for "${selectedGame}":`, error);
     }
-} catch (error) {
-    console.error(`Failed to fetch details for "${selectedGame}":`, error);
-}
+
     const reviewEmbed = new TerminalEmbed()
         .setTerminalTitle(`${selectedGame} REVIEWS`)
         .setTerminalDescription(description || '[No description available]')
@@ -162,7 +162,6 @@ try {
         await shadowGame.tryShowError(message);
     }
 }
-
 
 async function handleWrite(message, args, mobyAPI) {
     if (args.length === 0) {
