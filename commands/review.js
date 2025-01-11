@@ -156,6 +156,18 @@ async function handleWrite(message) {
     }
 
     const selectedGame = validGames[gameNumber - 1];
+
+    // Check if the user has already submitted a review for this game
+    const existingReviews = await database.getReviewsForGame(selectedGame);
+    const hasReviewed = existingReviews.some(
+        review => review.username.toLowerCase() === message.author.username.toLowerCase()
+    );
+
+    if (hasReviewed) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] You have already reviewed this game.\n[Ready for input]█\x1b[0m```');
+        return;
+    }
+
     const scores = {};
     const categories = [
         ['art', 'Rate the art/graphics (1-5):'],
@@ -219,3 +231,4 @@ async function handleWrite(message) {
 
     await message.channel.send({ embeds: [confirmEmbed] });
 }
+
