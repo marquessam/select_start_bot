@@ -2,6 +2,7 @@
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const { ErrorHandler, BotError } = require('./utils/errorHandler');
 const CacheManager = require('./utils/cacheManager');
+const logger = require('./utils/logger');
 
 class RetroAchievementsAPI {
     constructor() {
@@ -107,102 +108,94 @@ class RetroAchievementsAPI {
     }
 
     async fetchUserProfile(username) {
-        return await this.profileCache.getOrFetch(
-            `profile-${username}`,
-            async () => {
-                try {
-                    const data = await this.makeRequest('API_GetUserSummary.php', { u: username });
-                    return {
-                        username: data.Username,
-                        profileImage: `https://retroachievements.org${data.UserPic}`,
-                        profileUrl: `https://retroachievements.org/user/${data.Username}`
-                    };
-                } catch (error) {
-                    console.error(`Error fetching profile for ${username}:`, error);
-                    return {
-                        username,
-                        profileImage: `https://retroachievements.org/UserPic/${username}.png`,
-                        profileUrl: `https://retroachievements.org/user/${username}`
-                    };
-                }
-            }
-        );
-    }
-
-   async fetchLeaderboardData() {
-    try {
-        const data = await this.makeRequest('API_GetGameRankAndScore.php', {
-            g: process.env.CURRENT_GAME_ID
-        });
-
-        if (!data?.data) {
-            throw new Error('Invalid leaderboard data received');
+        try {
+            const data = await this.makeRequest('API_GetUserSummary.php', { u: username });
+            return {
+                username: data.Username,
+                profileImage: `https://retroachievements.org${data.UserPic}`,
+                profileUrl: `https://retroachievements.org/user/${data.Username}`
+            };
+        } catch (error) {
+            logger.error(`Error fetching profile for ${username}:`, error);
+            return {
+                username,
+                profileImage: `https://retroachievements.org/UserPic/${username}.png`,
+                profileUrl: `https://retroachievements.org/user/${username}`
+            };
         }
-
-        // Process and format the data
-        return {
-            leaderboard: data.data.map(entry => ({
-                username: entry.user,
-                rank: entry.rank,
-                score: parseInt(entry.score),
-                totalScore: parseInt(entry.totalScore) || 0,
-                achievements: entry.achievements || []
-            })).sort((a, b) => b.score - a.score),
-            lastUpdated: new Date().toISOString()
-        };
-    } catch (error) {
-        console.error('Error fetching leaderboard:', error);
-        throw error;
     }
-}
-    
-    async fetchUserProgress(username, gameId) {
-        const cacheKey = `progress-${username}-${gameId}`;
-        return await this.profileCache.getOrFetch(
-            cacheKey,
-            async () => {
-                try {
-                    const data = await this.makeRequest('API_GetUserProgress.php', {
-                        u: username,
-                        g: gameId
-                    });
 
-                    return {
-                        username: data.User,
-                        gameId: gameId,
-                        achievements: data.Achievements || [],
-                        totalScore: parseInt(data.TotalScore) || 0,
-                        completionPercentage: parseFloat(data.CompletionPercentage) || 0
-                    };
-                } catch (error) {
-                    ErrorHandler.handleAPIError(error, 'Fetch User Progress');
-                    return null;
-                }
-            },
-            5 * 60 * 1000 // 5 minute cache for progress
-        );
+    async fetchLeaderboardData() {
+        try {
+            const data = await this.makeRequest('API_GetGameInfoAndUserProgress.php', {
+                g: process.env.CURRENT_GAME_ID
+            });
+
+            if (!data?.Achievements) {
+                throw new Error('Invalid leaderboard data received');
+            }
+
+            // Process and format the data
+            return {
+                leaderboard: Object.values(data.Achievements).map(achievement => ({
+                    username: achievement.Author,
+                    completedAchievements: achievement.NumAchieved || 0,
+                    totalAchievements: achievement.NumPossible || 0,
+                    completionPercentage: achievement.PctWon || 0,
+                    achievements: achievement.Achievements || []
+                })).sort((a, b) => b.completionPercentage - a.completionPercentage),
+                lastUpdated: new Date().toISOString()
+            };
+        } catch (error) {
+            logger.error('Error fetching leaderboard:', {
+                error: error.message,
+                context: 'API Request'
+            });
+            throw error;
+        }
+    }
+
+    async fetchUserProgress(username, gameId) {
+        try {
+            const data = await this.makeRequest('API_GetUserProgress.php', {
+                u: username,
+                g: gameId
+            });
+
+            return {
+                username: data.User,
+                gameId: gameId,
+                achievements: data.Achievements || [],
+                totalScore: parseInt(data.TotalScore) || 0,
+                completionPercentage: parseFloat(data.PctWon) || 0
+            };
+        } catch (error) {
+            logger.error('Error fetching user progress:', {
+                username,
+                gameId,
+                error: error.message
+            });
+            return null;
+        }
     }
 
     async fetchGameInfo(gameId) {
-        return await this.profileCache.getOrFetch(
-            `game-${gameId}`,
-            async () => {
-                try {
-                    const data = await this.makeRequest('API_GetGame.php', { i: gameId });
-                    return {
-                        id: gameId,
-                        title: data.Title,
-                        console: data.Console,
-                        imageIcon: data.ImageIcon,
-                        achievements: data.Achievements || []
-                    };
-                } catch (error) {
-                    ErrorHandler.handleAPIError(error, 'Fetch Game Info');
-                    return null;
-                }
-            },
-            24 * 60 * 60 * 1000 // 24 hour cache for game info
-        );
+        try {
+            const data = await this.makeRequest('API_GetGame.php', { i: gameId });
+            return {
+                id: gameId,
+                title: data.Title,
+                console: data.Console,
+                imageIcon: data.ImageIcon,
+                achievements: data.Achievements || []
+            };
+        } catch (error) {
+            logger.error('Error fetching game info:', {
+                gameId,
+                error: error.message
+            });
+            return null;
+        }
     }
 
     clearCache() {
@@ -211,5 +204,14 @@ class RetroAchievementsAPI {
     }
 }
 
-// Export a singleton instance
-module.exports = new RetroAchievementsAPI();
+// Create a singleton instance
+const raAPI = new RetroAchievementsAPI();
+
+// Export both the API instance and wrapper functions
+module.exports = {
+    fetchLeaderboardData: () => raAPI.fetchLeaderboardData(),
+    fetchUserProfile: (username) => raAPI.fetchUserProfile(username),
+    fetchUserProgress: (username, gameId) => raAPI.fetchUserProgress(username, gameId),
+    fetchGameInfo: (gameId) => raAPI.fetchGameInfo(gameId),
+    api: raAPI
+};
