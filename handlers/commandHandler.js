@@ -1,15 +1,18 @@
-// handlers/commandHandler.js
 const fs = require('fs');
 const path = require('path');
-const { Collection } = require('discord.js');
-const logger = require('../utils/logger');
+const { Collection, PermissionFlagsBits } = require('discord.js');
+const ErrorHandler = require('../utils/errorHandler');
 
 class CommandHandler {
     constructor() {
+        // Separate collections for normal and admin commands
         this.commands = new Collection();
         this.adminCommands = new Collection();
+
+        // Cooldown map: key = `${userId}-${commandName}`, value = timestamp when cooldown ends
         this.cooldowns = new Map();
 
+        // Configuration
         this.config = {
             defaultCooldown: 3000,   // 3 seconds for normal commands
             adminCooldown: 1000,     // 1 second for admin commands
@@ -18,6 +21,9 @@ class CommandHandler {
         };
     }
 
+    /**
+     * Load both normal and admin commands, then inject dependencies.
+     */
     async loadCommands(dependencies) {
         try {
             // Clear existing commands in both collections
@@ -43,14 +49,21 @@ class CommandHandler {
             // Inject dependencies
             this._injectDependencies(dependencies);
 
-            logger.info(`CommandHandler: Loaded ${this.commands.size} normal commands and ${this.adminCommands.size} admin commands.`);
+            console.log(
+                `CommandHandler: Loaded ${this.commands.size} normal commands and ` +
+                `${this.adminCommands.size} admin commands.`
+            );
             return true;
         } catch (error) {
-            logger.error('Error loading commands:', { error: error.message });
+            ErrorHandler.logError(error, 'Command Loading');
             return false;
         }
     }
 
+    /**
+     * Loads .js files from a directory into either the normal commands
+     * collection or the admin commands collection.
+     */
     async _loadCommandsFromDirectory(dirPath, collection, isAdmin = false) {
         const commandFiles = fs
             .readdirSync(dirPath)
@@ -74,11 +87,14 @@ class CommandHandler {
                     collection.set(cmdName, command);
                 }
             } catch (err) {
-                logger.error(`Error loading command file: ${file}`, { error: err.message });
+                ErrorHandler.logError(err, `Loading command file: ${file}`);
             }
         }
     }
 
+    /**
+     * Inject shared dependencies into all commands (both normal & admin).
+     */
     _injectDependencies(dependencies) {
         for (const command of this.commands.values()) {
             command.dependencies = dependencies;
@@ -88,22 +104,31 @@ class CommandHandler {
         }
     }
 
+    /**
+     * Check if the message author has admin permission via either
+     * the Administrator bit or a special ADMIN_ROLE_ID.
+     */
     hasAdminPermission(message) {
         const member = message.member;
         if (!member) return false;
 
         return (
-            member.permissions.has('ADMINISTRATOR') ||
+            member.permissions.has(PermissionFlagsBits.Administrator) ||
             member.roles.cache.has(process.env.ADMIN_ROLE_ID)
         );
     }
 
+    /**
+     * Checks if the user is on cooldown for a given command.
+     * If not, sets a new cooldown.
+     */
     isOnCooldown(userId, commandName, isAdmin) {
         const now = Date.now();
         const cooldownKey = `${userId}-${commandName}`;
 
         const cooldownEnd = this.cooldowns.get(cooldownKey);
         if (cooldownEnd && now < cooldownEnd) {
+            // Still on cooldown
             return true;
         }
 
@@ -123,6 +148,9 @@ class CommandHandler {
         return false;
     }
 
+    /**
+     * Cleanup expired entries in the cooldown map.
+     */
     _cleanupCooldowns() {
         const now = Date.now();
         for (const [key, expireTime] of this.cooldowns.entries()) {
@@ -132,9 +160,15 @@ class CommandHandler {
         }
     }
 
+    /**
+     * Main handler for a message. Checks if it starts with "!", then finds
+     * the command in either normal or admin collections, handles perms & cooldowns.
+     */
     async handleCommand(message, services) {
+        // Only handle messages starting with '!'
         if (!message.content.startsWith('!')) return;
 
+        // Parse command name and args
         const args = message.content.slice(1).trim().split(/\s+/);
         const commandName = args.shift().toLowerCase();
 
@@ -174,28 +208,18 @@ class CommandHandler {
 
             // Execute the command
             await command.execute(message, args, services);
-            
-            // Log successful command execution
-            logger.info('Command executed', {
-                command: commandName,
-                user: message.author.username,
-                guild: message.guild?.name || 'DM',
-                channel: message.channel.name
-            });
-
         } catch (error) {
-            logger.error('Command execution failed', {
-                command: commandName,
-                user: message.author.username,
-                error: error.message
-            });
-            
+            ErrorHandler.logError(error, `Command Execution: ${commandName}`);
             await message.channel.send(
                 '```ansi\n\x1b[32m[ERROR] Command execution failed\n[Ready for input]█\x1b[0m```'
             );
         }
     }
 
+    /**
+     * Utility to reload a single command by name, searching both
+     * normal and admin directories.
+     */
     async reloadCommand(commandName) {
         try {
             const nameLower = commandName.toLowerCase();
@@ -226,10 +250,7 @@ class CommandHandler {
 
             return false;
         } catch (error) {
-            logger.error('Error reloading command:', {
-                command: commandName,
-                error: error.message
-            });
+            ErrorHandler.logError(error, `Reloading command: ${commandName}`);
             return false;
         }
     }
