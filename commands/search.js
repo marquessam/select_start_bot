@@ -27,69 +27,59 @@ module.exports = {
       // 4) Call our MobyAPI search
       const result = await mobyAPI.searchGames(query);
 
-      // result should look like: { "games": [ ... ] } in normal format
+      // 5) Validate result format
       if (!result || !Array.isArray(result.games) || result.games.length === 0) {
         return message.channel.send(
           '```ansi\n\x1b[32m[ERROR] No results found for that title.\n[Ready for input]█\x1b[0m```'
         );
       }
 
-      // 5) Take the *first* matching game
-      const game = result.games[0];
+      // If there is more than one match, let the user pick from the top few
+      const MAX_CHOICES = 5;
+      const gamesFound = result.games.slice(0, MAX_CHOICES);
 
-      // Remove HTML tags from the description
-      const sanitizeDescription = (description) => {
-        return description.replace(/<[^>]*>/g, '').trim();
-      };
+      if (gamesFound.length > 1) {
+        // List possible choices
+        const choicesList = gamesFound
+          .map((g, index) => `${index + 1}. ${g.title}`)
+          .join('\n');
 
-      // Build the MobyGames game link
-      const gameLink = `https://www.mobygames.com/game/${game.id}/${game.title.replace(/\s+/g, '-').toLowerCase()}`;
-
-      // 6) Build an embed (terminal-style) with data from the first game
-      const embed = new TerminalEmbed()
-        .setTerminalTitle(game.title)
-        .setTerminalDescription(
-          game.description
-            ? sanitizeDescription(game.description.slice(0, 300)) + `... [Read more](${gameLink})`
-            : `No description available. [More Info](${gameLink})`
+        await message.channel.send(
+          '```ansi\n\x1b[32mMultiple matches found:\n' +
+            `${choicesList}\n\n` +
+            'Enter the number of the game you want to view.\n' +
+            '[Ready for input]█\x1b[0m```'
         );
 
-      // 7) Add a large image if it exists (instead of a thumbnail)
-      if (game.sample_cover && game.sample_cover.image) {
-        embed.setImage(game.sample_cover.image);
+        // Collect user response (one message)
+        const filter = (m) => m.author.id === message.author.id && !isNaN(m.content);
+        const collected = await message.channel.awaitMessages({
+          filter,
+          max: 1,
+          time: 30000, // 30 seconds to pick
+        });
+
+        if (!collected.size) {
+          return message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```'
+          );
+        }
+
+        const choice = parseInt(collected.first().content, 10);
+        if (choice < 1 || choice > gamesFound.length) {
+          return message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] Invalid choice.\n[Ready for input]█\x1b[0m```'
+          );
+        }
+
+        // Use the chosen game
+        const selectedGame = gamesFound[choice - 1];
+        await this.displayGame(message, selectedGame);
+      } else {
+        // Only one match, just display it
+        await this.displayGame(message, gamesFound[0]);
       }
 
-      // 8) Show some extra details (platforms, genres, developer, publisher, etc.)
-      if (Array.isArray(game.platforms) && game.platforms.length > 0) {
-        const platformList = game.platforms
-          .map((p) => `${p.platform_name} (${p.first_release_date || 'N/A'})`)
-          .join('\n');
-        embed.addTerminalField('Platforms', platformList);
-      }
-
-      if (Array.isArray(game.genres) && game.genres.length > 0) {
-        const genreList = game.genres.map((g) => g.genre_name).join(', ');
-        embed.addTerminalField('Genres', genreList);
-      }
-
-      if (game.developer) {
-        embed.addTerminalField('Developer', game.developer);
-      }
-
-      if (game.publisher) {
-        embed.addTerminalField('Publisher', game.publisher);
-      }
-
-      // 9) Attribution message
-      embed.setTerminalFooter('Data provided by MobyGames');
-
-      // 10) Send the embed to the channel
-      await message.channel.send({ embeds: [embed] });
-
-      // 11) Done
-      await message.channel.send(
-        '```ansi\n\x1b[32m> Search complete\n[Ready for input]█\x1b[0m```'
-      );
     } catch (error) {
       console.error('MobyGames Search Error:', error);
       await message.channel.send(
@@ -97,5 +87,66 @@ module.exports = {
       );
     }
   },
-};
 
+  /**
+   * Helper method to create and send the embed for a given game object
+   */
+  async displayGame(message, game) {
+    // Remove HTML tags from the description
+    const sanitizeDescription = (description) => {
+      return description.replace(/<[^>]*>/g, '').trim();
+    };
+
+    // Build the MobyGames game link
+    const gameLink = `https://www.mobygames.com/game/${game.id}/${game.title
+      .replace(/\s+/g, '-')
+      .toLowerCase()}`;
+
+    // Build embed with data from the selected game
+    const embed = new TerminalEmbed()
+      .setTerminalTitle(game.title)
+      .setTerminalDescription(
+        game.description
+          ? sanitizeDescription(game.description.slice(0, 300)) +
+              `... [Read more](${gameLink})`
+          : `No description available. [More Info](${gameLink})`
+      );
+
+    // Add a large image if it exists (instead of a thumbnail)
+    if (game.sample_cover && game.sample_cover.image) {
+      embed.setImage(game.sample_cover.image);
+    }
+
+    // Show some extra details (platforms, genres, developer, publisher, etc.)
+    if (Array.isArray(game.platforms) && game.platforms.length > 0) {
+      const platformList = game.platforms
+        .map((p) => `${p.platform_name} (${p.first_release_date || 'N/A'})`)
+        .join('\n');
+      embed.addTerminalField('Platforms', platformList);
+    }
+
+    if (Array.isArray(game.genres) && game.genres.length > 0) {
+      const genreList = game.genres.map((g) => g.genre_name).join(', ');
+      embed.addTerminalField('Genres', genreList);
+    }
+
+    if (game.developer) {
+      embed.addTerminalField('Developer', game.developer);
+    }
+
+    if (game.publisher) {
+      embed.addTerminalField('Publisher', game.publisher);
+    }
+
+    // Attribution message
+    embed.setTerminalFooter('Data provided by MobyGames');
+
+    // Send the embed to the channel
+    await message.channel.send({ embeds: [embed] });
+
+    // Done
+    await message.channel.send(
+      '```ansi\n\x1b[32m> Search complete\n[Ready for input]█\x1b[0m```'
+    );
+  },
+};
