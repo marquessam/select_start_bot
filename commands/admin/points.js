@@ -62,8 +62,19 @@ async function handleAddPoints(message, args, userStats) {
     const points = parseInt(args[1]);
     const reason = args.slice(2).join(' ');
 
-    if (isNaN(points)) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid points value\n[Ready for input]█\x1b[0m```');
+    // Validate inputs using new validators
+    if (!commonValidators.username(username)) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid username format\n[Ready for input]█\x1b[0m```');
+        return;
+    }
+
+    if (!commonValidators.points(points)) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid points value (must be between -100 and 100)\n[Ready for input]█\x1b[0m```');
+        return;
+    }
+
+    if (!commonValidators.reason(reason)) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid reason (must be 3-200 characters)\n[Ready for input]█\x1b[0m```');
         return;
     }
 
@@ -113,7 +124,6 @@ async function handleAddPoints(message, args, userStats) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to add points\n[Ready for input]█\x1b[0m```');
     }
 }
-
 async function handleAddMultiPoints(message, args, userStats) {
     if (args.length < 4) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !points addmulti <points> <reason> <user1> <user2> ...\n[Ready for input]█\x1b[0m```');
