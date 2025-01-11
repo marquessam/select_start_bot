@@ -37,13 +37,18 @@ module.exports = {
       // 5) Take the *first* matching game
       const game = result.games[0];
 
+      // Remove HTML tags from the description
+      const sanitizeDescription = (description) => {
+        return description.replace(/<[^>]*>/g, '').trim();
+      };
+
       // 6) Build an embed (terminal-style) with data from the first game
       const embed = new TerminalEmbed()
         .setTerminalTitle(game.title)
         .setTerminalDescription(
           game.description
-            ? game.description.slice(0, 500) // limit to ~500 chars
-            : 'No description available.'
+            ? sanitizeDescription(game.description.slice(0, 300)) + '... [Read more](https://www.mobygames.com/game/' + game.id + ')'
+            : 'No description available. [More Info](https://www.mobygames.com/game/' + game.id + ')'
         );
 
       // 7) Add a large image if it exists (instead of a thumbnail)
@@ -64,22 +69,15 @@ module.exports = {
         embed.addTerminalField('Genres', genreList);
       }
 
-      // 9) Send the embed to the channel
+      // 9) Attribution message
+      embed.setTerminalFooter('Data provided by MobyGames');
+
+      // 10) Send the embed to the channel
       await message.channel.send({ embeds: [embed] });
 
-      // 10) Send the remaining description if it's too long
-      if (game.description && game.description.length > 500) {
-        const extraDescription = game.description.slice(500);
-        const descriptionChunks = extraDescription.match(/.{1,2000}/g); // Split into 2000-char chunks
-
-        for (const chunk of descriptionChunks) {
-          await message.channel.send(`\u200B${chunk}`); // Send each chunk
-        }
-      }
-
-      // 11) Attribution message
+      // 11) Done
       await message.channel.send(
-        '```ansi\n\x1b[32m[INFO] Data provided by MobyGames\n[Ready for input]█\x1b[0m```'
+        '```ansi\n\x1b[32m> Search complete\n[Ready for input]█\x1b[0m```'
       );
     } catch (error) {
       console.error('MobyGames Search Error:', error);
