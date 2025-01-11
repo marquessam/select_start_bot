@@ -133,56 +133,73 @@ const nominations = {
     },
 
     async handleAdd(message, args) {
-        if (args.length < 2) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !nominations add <platform> <game name>\n[Ready for input]█\x1b[0m```');
-            return;
-        }
+    if (args.length < 2) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !nominations add <platform> <game name>\n[Ready for input]█\x1b[0m```');
+        return;
+    }
 
-        const nominationStatus = await database.getNominationStatus();
-        if (!nominationStatus?.isOpen) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Nominations are currently closed\n[Ready for input]█\x1b[0m```');
-            return;
-        }
+    const nominationStatus = await database.getNominationStatus();
+    if (!nominationStatus?.isOpen) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Nominations are closed, check event calendar for more details\n[Ready for input]█\x1b[0m```');
+        return;
+    }
 
-        const hasNominated = await database.hasUserNominated(message.author.id);
-        if (hasNominated) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] You have already submitted a nomination this period\n[Ready for input]█\x1b[0m```');
-            return;
-        }
+    // Check number of nominations instead
+    const nominationCount = await database.getUserNominationCount(message.author.id);
+    const NOMINATION_LIMIT = 3;
+    if (nominationCount >= NOMINATION_LIMIT) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] You have already used all your nominations (maximum 3)\n[Ready for input]█\x1b[0m```');
+        return;
+    }
 
-        const platform = args[0].toUpperCase();
-        const validPlatforms = ['NES', 'SNES', 'GB', 'GBC', 'GBA', 'PSX', 'N64'];
-        
-        if (!validPlatforms.includes(platform)) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid platform. Valid platforms: NES, SNES, GB, GBC, GBA, PSX, N64\n[Ready for input]█\x1b[0m```');
-            return;
-        }
+    const platform = args[0].toUpperCase();
+    const validPlatforms = ['NES', 'MASTER SYSTEM', 'GENESIS', 'SNES', 
+        'GB', 'GBC', 'GBA', 'GAME GEAR', 
+        'NEO GEO', 'TURBOGRAFX-16', 'PSX', 'N64', 'SATURN'];
+    
+    if (!validPlatforms.includes(platform)) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid platform. Valid platforms: NES, MASTER SYSTEM, GENESIS, SNES, GB, GBC, GBA, GAME GEAR, NEO GEO, TURBOGRAFX-16, PSX, N64, SATURN\n[Ready for input]█\x1b[0m```');
+        return;
+    }
 
-        const gameName = args.slice(1).join(' ');
-        if (!gameName) {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Please provide a game name\n[Ready for input]█\x1b[0m```');
-            return;
-        }
+    const gameName = args.slice(1).join(' ');
+    if (!gameName) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Please provide a game name\n[Ready for input]█\x1b[0m```');
+        return;
+    }
 
-        await database.addNomination({
-            game: gameName,
-            discordId: message.author.id,
-            discordUsername: message.author.username,
-            platform
-        });
+    // Check for duplicate nomination
+    const existingNominations = await database.getNominations();
+    const isDuplicate = existingNominations.some(nom => 
+        nom.game.toLowerCase() === gameName.toLowerCase()
+    );
 
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('NOMINATION SUBMITTED')
-            .setTerminalDescription('[SUBMISSION SUCCESSFUL]')
-            .addTerminalField('DETAILS',
-                `GAME: ${gameName}\n` +
-                `PLATFORM: ${platform}\n` +
-                `SUBMITTED BY: ${message.author.username}\n` +
-                `DATE: ${new Date().toLocaleDateString()}`)
-            .setTerminalFooter();
+    if (isDuplicate) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] This game has already been nominated\n[Ready for input]█\x1b[0m```');
+        return;
+    }
 
-        await message.channel.send({ embeds: [embed] });
-    },
+    await database.addNomination({
+        game: gameName,
+        discordId: message.author.id,
+        discordUsername: message.author.username,
+        platform
+    });
+
+    const embed = new TerminalEmbed()
+        .setTerminalTitle('NOMINATION SUBMITTED')
+        .setTerminalDescription('[SUBMISSION SUCCESSFUL]')
+        .addTerminalField('DETAILS',
+            `GAME: ${gameName}\n` +
+            `PLATFORM: ${platform}\n` +
+            `SUBMITTED BY: ${message.author.username}\n` +
+            `DATE: ${new Date().toLocaleDateString()}`)
+        .addTerminalField('REMAINING NOMINATIONS',
+            `You have ${NOMINATION_LIMIT - (nominationCount + 1)} nomination${NOMINATION_LIMIT - (nominationCount + 1) !== 1 ? 's' : ''} remaining`)
+        .setTerminalFooter();
+
+    await message.channel.send({ embeds: [embed] });
+}
 
     async handleRemove(message, args) {
         if (args.length < 1) {
