@@ -1,7 +1,6 @@
-const raAPI = require('./raAPI');
+const { fetchLeaderboardData } = require('./raAPI.js');
 const { ErrorHandler, BotError } = require('./utils/errorHandler');
 const CacheManager = require('./utils/cacheManager');
-const logger = require('./utils/logger');
 
 class LeaderboardCache {
     constructor(database) {
@@ -100,7 +99,7 @@ class LeaderboardCache {
 
             // Get monthly leaderboard
             try {
-                const monthlyData = await raAPI.fetchLeaderboardData();
+                const monthlyData = await fetchLeaderboardData();
                 this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
                 
                 // Update participation tracking if userStats is available
