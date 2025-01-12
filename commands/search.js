@@ -103,16 +103,17 @@ module.exports = {
   /**
    * Helper method to create and send the embed for a given game object
    */
-  async displayGame(message, game) {
+ async displayGame(message, game) {
     // Remove HTML tags from the description
     const sanitizeDescription = (description) => {
-      return description.replace(/<[^>]*>/g, '').trim();
+        return description.replace(/<[^>]*>/g, '').trim();
     };
 
-    // Build the MobyGames game link
-    const gameLink = `https://www.mobygames.com/game/${game.id}/${game.title
-      .replace(/\s+/g, '-')
-      .toLowerCase()}`;
+    // Fix: Build the MobyGames game link with the correct format
+    const gameLink = `https://www.mobygames.com/game/${game.game_id}/${game.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-') // Replace any non-alphanumeric chars with hyphens
+        .replace(/^-+|-+$/g, '')}`; // Remove leading/trailing hyphens
 
     // Build embed with data from the selected game
     const embed = new TerminalEmbed()
