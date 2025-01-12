@@ -72,11 +72,6 @@ class AchievementFeed {
         }
     }
 
-    /**
-     * loadInitialAchievements()
-     * Grabs both challenge-based data and recent achievements
-     * to populate the initial "lastAchievements" sets.
-     */
     async loadInitialAchievements() {
         try {
             // 1. Fetch the challenge-based data
@@ -105,11 +100,6 @@ class AchievementFeed {
         }
     }
 
-    /**
-     * checkNewAchievements()
-     * Periodically checks for newly earned achievements from both
-     * challenge-based data and recent achievements across all games.
-     */
     async checkNewAchievements() {
         if (!this.channel) {
             throw new BotError('No valid channel to post in', ErrorHandler.ERROR_TYPES.VALIDATION, 'Achievement Feed Channel');
@@ -126,11 +116,11 @@ class AchievementFeed {
             }
 
             // 3. Merge user achievements
-           const combinedUsers = this.mergeChallengeAndRecent(challengeData, recentData);
+            const combinedUsers = this.mergeChallengeAndRecent(challengeData, recentData);
 
             // Log achievement data for debugging
-                console.log('Challenge Data:', JSON.stringify(challengeData?.leaderboard?.[0]?.achievements?.slice(0, 2) || [], null, 2));
-                console.log('Recent Data:', JSON.stringify(recentData?.[0]?.achievements?.slice(0, 2) || [], null, 2));
+            console.log('Challenge Data:', JSON.stringify(challengeData?.leaderboard?.[0]?.achievements?.slice(0, 2) || [], null, 2));
+            console.log('Recent Data:', JSON.stringify(recentData?.[0]?.achievements?.slice(0, 2) || [], null, 2));
 
             // 4. Loop through each user to detect newly earned achievements
             for (const user of combinedUsers) {
@@ -195,80 +185,76 @@ class AchievementFeed {
         }
     }
 
-    /**
-     * Merges challenge-based data with all-recent data.
-     * Returns an array of user objects with a single 'achievements' array.
-     */
-   mergeChallengeAndRecent(challengeData, recentData) {
-    // Create a map from username to user object
-    const userMap = new Map();
+    mergeChallengeAndRecent(challengeData, recentData) {
+        // Create a map from username to user object
+        const userMap = new Map();
 
-    // Helper function to deduplicate achievements
-    const deduplicateAchievements = (achievements) => {
-        const achievementMap = new Map();
-        achievements.forEach(ach => {
-            if (!ach) return; // Skip null/undefined achievements
-            const key = `${ach.GameID}-${ach.ID}`;
-            const existingAch = achievementMap.get(key);
-            
-            // Keep the achievement with the more recent earned date
-            if (!existingAch || 
-                (parseInt(ach.DateEarned) > parseInt(existingAch.DateEarned))) {
-                achievementMap.set(key, ach);
-            }
-        });
-        return Array.from(achievementMap.values());
-    };
-
-    // 1. Populate from challenge data
-    for (const userObj of challengeData.leaderboard || []) {
-        if (!userObj?.username) continue;
-        const key = userObj.username.toLowerCase();
-        const achievements = userObj.achievements || [];
-        
-        userMap.set(key, {
-            username: userObj.username,
-            achievements: achievements
-        });
-    }
-
-    // 2. Merge in recent achievements
-    for (const recentUser of recentData || []) {
-        if (!recentUser?.username) continue;
-        const key = recentUser.username.toLowerCase();
-        const recentAchievements = recentUser.achievements || [];
-
-        if (!userMap.has(key)) {
-            // If user wasn't in challenge data, add a new entry
-            userMap.set(key, {
-                username: recentUser.username,
-                achievements: recentAchievements
+        // Helper function to deduplicate achievements
+        const deduplicateAchievements = (achievements) => {
+            const achievementMap = new Map();
+            achievements.forEach(ach => {
+                if (!ach) return; // Skip null/undefined achievements
+                const key = `${ach.GameID}-${ach.ID}`;
+                const existingAch = achievementMap.get(key);
+                
+                // Keep the achievement with the more recent earned date
+                if (!existingAch || 
+                    (parseInt(ach.DateEarned) > parseInt(existingAch.DateEarned))) {
+                    achievementMap.set(key, ach);
+                }
             });
-        } else {
-            // Merge achievements with existing
-            const existingData = userMap.get(key);
-            const combinedAchievements = [
-                ...(existingData.achievements || []),
-                ...recentAchievements
-            ];
+            return Array.from(achievementMap.values());
+        };
 
-            // Deduplicate the combined achievements
-            const uniqueAchievements = deduplicateAchievements(combinedAchievements);
-
+        // 1. Populate from challenge data
+        for (const userObj of challengeData.leaderboard || []) {
+            if (!userObj?.username) continue;
+            const key = userObj.username.toLowerCase();
+            const achievements = userObj.achievements || [];
+            
             userMap.set(key, {
-                username: recentUser.username,
-                achievements: uniqueAchievements
+                username: userObj.username,
+                achievements: achievements
             });
         }
-    }
 
-    // Final deduplication pass for all users
-    const users = Array.from(userMap.values());
-    return users.map(user => ({
-        ...user,
-        achievements: deduplicateAchievements(user.achievements)
-    }));
-}
+        // 2. Merge in recent achievements
+        for (const recentUser of recentData || []) {
+            if (!recentUser?.username) continue;
+            const key = recentUser.username.toLowerCase();
+            const recentAchievements = recentUser.achievements || [];
+
+            if (!userMap.has(key)) {
+                // If user wasn't in challenge data, add a new entry
+                userMap.set(key, {
+                    username: recentUser.username,
+                    achievements: recentAchievements
+                });
+            } else {
+                // Merge achievements with existing
+                const existingData = userMap.get(key);
+                const combinedAchievements = [
+                    ...(existingData.achievements || []),
+                    ...recentAchievements
+                ];
+
+                // Deduplicate the combined achievements
+                const uniqueAchievements = deduplicateAchievements(combinedAchievements);
+
+                userMap.set(key, {
+                    username: recentUser.username,
+                    achievements: uniqueAchievements
+                });
+            }
+        }
+
+        // Final deduplication pass for all users
+        const users = Array.from(userMap.values());
+        return users.map(user => ({
+            ...user,
+            achievements: deduplicateAchievements(user.achievements)
+        }));
+    }
 
     async announceAchievement(username, achievement) {
         if (!this.channel) {
@@ -313,8 +299,25 @@ class AchievementFeed {
 
             const userIconUrl = `https://retroachievements.org/UserPic/${username}.png`;
 
-            // Include the game name from the achievement object (if available)
-            const gameName = achievement.GameTitle || 'Unknown Game';
+            // Improved game title handling
+            let gameName = 'Unknown Game';
+            if (achievement.GameTitle) {
+                gameName = achievement.GameTitle;
+            } else if (achievement.GameName) {
+                gameName = achievement.GameName;
+            } else if (achievement.game?.Title) {
+                gameName = achievement.game.Title;
+            }
+
+            // Log the achievement data for debugging
+            console.log('Achievement data:', {
+                username,
+                achievementTitle: achievement.Title,
+                gameTitle: gameName,
+                originalGameTitle: achievement.GameTitle,
+                gameName: achievement.GameName,
+                gameObject: achievement.game
+            });
 
             const embed = new EmbedBuilder()
                     .setColor('#00FF00')
@@ -323,7 +326,7 @@ class AchievementFeed {
                     .setDescription(
                         `**${username}** earned **${achievement.Title || 'Achievement'}**\n` +
                         `*${achievement.Description || 'No description available'}*\n\n` +
-                        `**Game:** ${achievement.GameTitle || gameName}\n` +
+                        `**Game:** ${gameName}\n` +
                         `**Points:** ${achievement.Points || '0'}`
                     )
                     .setFooter({
