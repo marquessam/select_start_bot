@@ -1,33 +1,31 @@
 // utils/errorHandler.js
 
-class ErrorHandler {
-    static ERROR_TYPES = {
-        API: 'API_ERROR',
-        DATABASE: 'DATABASE_ERROR',
-        VALIDATION: 'VALIDATION_ERROR',
-        PERMISSION: 'PERMISSION_ERROR'
-    };
+const logError = (error, context) => {
+    const timestamp = new Date().toISOString();
+    console.error(`[${timestamp}] [${context}]:`, error);
+};
 
-    static logError(error, context) {
-        const timestamp = new Date().toISOString();
-        console.error(`[${timestamp}] [${context}]:`, error);
-    }
+const handleAPIError = (error, context) => {
+    logError(error, `API_ERROR - ${context}`);
+    return error.message;
+};
 
-    static handleAPIError(error, context) {
-        this.logError(error, `API_ERROR - ${context}`);
-        return error.message;
-    }
+const handleDatabaseError = (error, context) => {
+    logError(error, `DATABASE_ERROR - ${context}`);
+    return error.message;
+};
 
-    static handleDatabaseError(error, context) {
-        this.logError(error, `DATABASE_ERROR - ${context}`);
-        return error.message;
-    }
+const handleValidationError = (error, details) => {
+    logError(error, `VALIDATION_ERROR - ${JSON.stringify(details)}`);
+    return error.message;
+};
 
-    static handleValidationError(error, details) {
-        this.logError(error, `VALIDATION_ERROR - ${JSON.stringify(details)}`);
-        return error.message;
-    }
-}
+const ERROR_TYPES = {
+    API: 'API_ERROR',
+    DATABASE: 'DATABASE_ERROR',
+    VALIDATION: 'VALIDATION_ERROR',
+    PERMISSION: 'PERMISSION_ERROR'
+};
 
 class BotError extends Error {
     constructor(message, type, context, originalError = null) {
@@ -40,6 +38,10 @@ class BotError extends Error {
 }
 
 module.exports = {
-    ErrorHandler,
+    logError,
+    handleAPIError,
+    handleDatabaseError,
+    handleValidationError,
+    ERROR_TYPES,
     BotError
 };
