@@ -109,21 +109,19 @@ module.exports = {
         return description.replace(/<[^>]*>/g, '').trim();
     };
 
-    // Fix: Build the MobyGames game link with the correct format
-    const gameLink = `https://www.mobygames.com/game/${game.game_id}/${game.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-') // Replace any non-alphanumeric chars with hyphens
-        .replace(/^-+|-+$/g, '')}`; // Remove leading/trailing hyphens
+   const gameLink = `https://www.mobygames.com/game/${game.game_id}/${game.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')}`;
 
-    // Build embed with data from the selected game
-    const embed = new TerminalEmbed()
-      .setTerminalTitle(game.title)
-      .setTerminalDescription(
+// Add clickable link in the game info
+const embed = new TerminalEmbed()
+    .setTerminalTitle(game.title)
+    .setTerminalDescription(
         game.description
-          ? sanitizeDescription(game.description.slice(0, 300)) +
-              `... [Read more](${gameLink})`
-          : `No description available. [More Info](${gameLink})`
-      );
+            ? `${sanitizeDescription(game.description.slice(0, 300))}... [Read more](${gameLink})`
+            : `No description available.\n\n[View on MobyGames](${gameLink})`
+    );
 
     // Add a large image if it exists (instead of a thumbnail)
     if (game.sample_cover && game.sample_cover.image) {
