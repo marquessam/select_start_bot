@@ -1,5 +1,8 @@
+// arcade.js
+
 const TerminalEmbed = require('../utils/embedBuilder');
 const database = require('../database');
+const mobyAPI = require('../mobyAPI');
 
 module.exports = {
     name: 'arcade',
@@ -26,7 +29,7 @@ module.exports = {
                 }
             }
 
-            switch(command) {
+            switch (command) {
                 case 'reset':
                     await handleReset(message, subArgs);
                     break;
@@ -47,6 +50,7 @@ module.exports = {
 async function showGameList(message) {
     const arcadeData = await database.getArcadeScores();
     
+    // Build a list of games with an index
     const gameList = Object.entries(arcadeData.games)
         .map(([name, game], index) => {
             const hasScores = game.scores.length > 0 ? '✓' : ' ';
@@ -54,21 +58,42 @@ async function showGameList(message) {
         })
         .join('\n');
 
+    // Create the embed
     const embed = new TerminalEmbed()
         .setTerminalTitle('ARCADE CHALLENGE')
-        .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT A GAME TO VIEW RANKINGS]\n[EXPIRES: ' + arcadeData.expiryDate + ']')
-        .addTerminalField('SUBMISSION REQUIREMENTS', 
-            'All high scores must be verified with screenshot evidence posted in the screenshot-submissions channel.')
-        .addTerminalField('AVAILABLE GAMES', gameList + '\n\n✓ = Scores recorded')
-        .addTerminalField('USAGE', 
+        .setTerminalDescription(
+            '[DATABASE ACCESS GRANTED]\n' +
+            '[SELECT A GAME TO VIEW RANKINGS]\n' +
+            `[EXPIRES: ${arcadeData.expiryDate}]`
+        )
+        .addTerminalField(
+            'SUBMISSION REQUIREMENTS',
+            'All high scores must be verified with screenshot evidence posted in the screenshot-submissions channel.'
+        )
+        .addTerminalField(
+            'AVAILABLE GAMES',
+            gameList + '\n\n✓ = Scores recorded'
+        )
+        .addTerminalField(
+            'USAGE',
             '!arcade <game number> - View specific game rankings\n' +
             '!arcade reset <game_number> [username] - Reset scores\n' +
-            '!arcade rules - Update game rules');
+            '!arcade rules - Update game rules'
+        );
 
-    // Add a preview image of the first game if available
-    const firstGame = Object.values(arcadeData.games)[0];
-    if (firstGame?.boxArt) {
-        embed.setImage(firstGame.boxArt);
+    // Attempt to embed an image for the first game
+    const firstGameName = Object.keys(arcadeData.games)[0];
+    const firstGameData = arcadeData.games[firstGameName];
+    let firstBoxArt = firstGameData?.boxArt;
+    
+    // If there's no box art in the database, fetch from Moby
+    if (!firstBoxArt && firstGameName) {
+        firstBoxArt = await fetchBoxArt(firstGameName);
+    }
+
+    // If we have a box art URL, set it in the embed
+    if (firstBoxArt) {
+        embed.setImage(firstBoxArt);
     }
 
     embed.setTerminalFooter();
@@ -81,28 +106,45 @@ async function handleViewGame(message, args) {
     const games = Object.entries(arcadeData.games);
     
     if (isNaN(gameNum) || gameNum < 1 || gameNum > games.length) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```'
+        );
         return;
     }
 
+    // Identify the chosen game
     const [gameName, gameData] = games[gameNum - 1];
-    const scoreList = gameData.scores.length > 0 ?
-        gameData.scores
-            .map((score, index) => `${['🥇', '🥈', '🥉'][index]} ${score.username}: ${score.score.toLocaleString()}`)
-            .join('\n') :
-        'No scores recorded';
+
+    // Build the score list
+    const scoreList = gameData.scores.length > 0
+        ? gameData.scores
+            .map((score, index) => {
+                const medals = ['🥇', '🥈', '🥉'];
+                const medal = medals[index] || '';
+                return `${medal} ${score.username}: ${score.score.toLocaleString()}`;
+            })
+            .join('\n')
+        : 'No scores recorded';
+
+    // Check if we have boxArt in DB; if not, fetch from Moby
+    let boxArt = gameData.boxArt;
+    if (!boxArt) {
+        boxArt = await fetchBoxArt(gameName);
+    }
 
     const embed = new TerminalEmbed()
         .setTerminalTitle(`${gameName} RANKINGS`)
         .setTerminalDescription('[DATABASE ACCESS GRANTED]')
-        .addTerminalField('GAME INFO', 
+        .addTerminalField(
+            'GAME INFO',
             `PLATFORM: ${gameData.platform}\n` +
-            `RULES: ${gameData.description}`)
+            `RULES: ${gameData.description}`
+        )
         .addTerminalField('HIGH SCORES', scoreList);
 
-    // Add the box art if available
-    if (gameData.boxArt) {
-        embed.setImage(gameData.boxArt);
+    // Add the box art if we have it
+    if (boxArt) {
+        embed.setImage(boxArt);
     }
 
     embed.setTerminalFooter();
@@ -111,7 +153,11 @@ async function handleViewGame(message, args) {
 
 async function handleReset(message, args) {
     if (!args.length) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !arcade reset <game_number> [username]\n[Ready for input]█\x1b[0m```');
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] Invalid syntax\n' +
+            'Usage: !arcade reset <game_number> [username]\n' +
+            '[Ready for input]█\x1b[0m```'
+        );
         return;
     }
 
@@ -122,47 +168,73 @@ async function handleReset(message, args) {
     const games = Object.entries(arcadeData.games);
 
     if (gameNum < 1 || gameNum > games.length) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```'
+        );
         return;
     }
 
     const [gameName, gameData] = games[gameNum - 1];
     const oldScores = [...(gameData.scores || [])];
 
+    // Remove a single user's score, or reset all scores
     if (username) {
         await database.removeArcadeScore(gameName, username);
     } else {
         await database.resetArcadeScores(gameName);
     }
 
+    // Retrieve updated data for display
     const updatedData = await database.getArcadeScores();
     const updatedScores = updatedData.games[gameName].scores;
+
+    // If no boxArt, attempt to fetch from Moby
+    let boxArt = gameData.boxArt;
+    if (!boxArt) {
+        boxArt = await fetchBoxArt(gameName);
+    }
 
     const embed = new TerminalEmbed()
         .setTerminalTitle(`${gameName} - SCORES RESET`)
         .setTerminalDescription('[UPDATE COMPLETE]')
-        .addTerminalField('ACTION TAKEN', 
-            username ? `Removed score for user: ${username}` : 'Reset all scores for game');
+        .addTerminalField(
+            'ACTION TAKEN',
+            username
+                ? `Removed score for user: ${username}`
+                : 'Reset all scores for game'
+        );
 
+    // Show previous rankings if any
     if (oldScores.length > 0) {
-        embed.addTerminalField('PREVIOUS RANKINGS',
-            oldScores.map((score, index) => {
-                const medals = ['🥇', '🥈', '🥉'];
-                return `${medals[index]} ${score.username}: ${score.score.toLocaleString()}`;
-            }).join('\n'));
+        embed.addTerminalField(
+            'PREVIOUS RANKINGS',
+            oldScores
+                .map((score, index) => {
+                    const medals = ['🥇', '🥈', '🥉'];
+                    const medal = medals[index] || '';
+                    return `${medal} ${score.username}: ${score.score.toLocaleString()}`;
+                })
+                .join('\n')
+        );
     }
 
-    embed.addTerminalField('CURRENT RANKINGS',
-        updatedScores.length > 0 ? 
-            updatedScores.map((score, index) => {
-                const medals = ['🥇', '🥈', '🥉'];
-                return `${medals[index]} ${score.username}: ${score.score.toLocaleString()}`;
-            }).join('\n') :
-            'No scores recorded');
+    // Show updated rankings
+    embed.addTerminalField(
+        'CURRENT RANKINGS',
+        updatedScores.length > 0
+            ? updatedScores
+                .map((score, index) => {
+                    const medals = ['🥇', '🥈', '🥉'];
+                    const medal = medals[index] || '';
+                    return `${medal} ${score.username}: ${score.score.toLocaleString()}`;
+                })
+                .join('\n')
+            : 'No scores recorded'
+    );
 
-    // Add the box art to the reset confirmation if available
-    if (gameData.boxArt) {
-        embed.setImage(gameData.boxArt);
+    // Add the box art if available
+    if (boxArt) {
+        embed.setImage(boxArt);
     }
 
     embed.setTerminalFooter();
@@ -173,7 +245,9 @@ async function handleRules(message) {
     const filter = m => m.author.id === message.author.id;
     const timeout = 30000;
 
-    await message.channel.send('```ansi\n\x1b[32mEnter the game number to update rules for:\x1b[0m```');
+    await message.channel.send(
+        '```ansi\n\x1b[32mEnter the game number to update rules for:\x1b[0m```'
+    );
 
     let gameResponse;
     try {
@@ -184,7 +258,9 @@ async function handleRules(message) {
             errors: ['time']
         });
     } catch (error) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Time expired\n[Ready for input]█\x1b[0m```');
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] Time expired\n[Ready for input]█\x1b[0m```'
+        );
         return;
     }
 
@@ -193,13 +269,17 @@ async function handleRules(message) {
     const games = Object.entries(arcadeData.games);
 
     if (isNaN(gameNum) || gameNum < 1 || gameNum > games.length) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```'
+        );
         return;
     }
 
     const [gameName, gameData] = games[gameNum - 1];
 
-    await message.channel.send('```ansi\n\x1b[32mEnter the new rules:\x1b[0m```');
+    await message.channel.send(
+        '```ansi\n\x1b[32mEnter the new rules:\x1b[0m```'
+    );
 
     let rulesResponse;
     try {
@@ -210,25 +290,77 @@ async function handleRules(message) {
             errors: ['time']
         });
     } catch (error) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Time expired\n[Ready for input]█\x1b[0m```');
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] Time expired\n[Ready for input]█\x1b[0m```'
+        );
         return;
     }
 
     const newRules = rulesResponse.first().content;
     await database.updateArcadeRules(gameName, newRules);
 
+    // If the game doesn't already have boxArt, fetch it from Moby
+    let boxArt = gameData.boxArt;
+    if (!boxArt) {
+        boxArt = await fetchBoxArt(gameName);
+    }
+
     const embed = new TerminalEmbed()
         .setTerminalTitle('GAME RULES UPDATED')
         .setTerminalDescription('[UPDATE SUCCESSFUL]')
-        .addTerminalField('DETAILS',
-            `GAME: ${gameName}\n` +
-            `NEW RULES: ${newRules}`);
-    
-    // Add the box art to the rules update confirmation if available
-    if (gameData.boxArt) {
-        embed.setImage(gameData.boxArt);
+        .addTerminalField(
+            'DETAILS',
+            `GAME: ${gameName}\nNEW RULES: ${newRules}`
+        );
+
+    // Add the box art if available
+    if (boxArt) {
+        embed.setImage(boxArt);
     }
 
     embed.setTerminalFooter();
     await message.channel.send({ embeds: [embed] });
+}
+
+/**
+ * fetchBoxArt
+ * Uses our MobyAPI to look up box art for a given game name.
+ * Adjust this function to match your MobyGames API response structure.
+ */
+async function fetchBoxArt(gameName) {
+    try {
+        // 1) Search for the game by name
+        const searchResults = await mobyAPI.searchGames(gameName);
+        if (!searchResults || !searchResults.games || searchResults.games.length === 0) {
+            return null;
+        }
+
+        // 2) Grab the first result
+        const firstGame = searchResults.games[0];
+        const gameId = firstGame.game_id;
+
+        // 3) Fetch the artwork data for this game
+        const artworkData = await mobyAPI.getGameArtwork(gameId);
+        if (!artworkData) return null;
+
+        // 4) Identify a box art URL from the returned data.
+        //    This logic depends on how your MobyGames data is structured.
+        let boxArtUrl = null;
+
+        // Suppose `artworkData` is an array of platform objects:
+        // Each platform object might have a `media.boxArts` array:
+        if (Array.isArray(artworkData)) {
+            for (const platformObj of artworkData) {
+                if (platformObj?.media?.boxArts?.length) {
+                    boxArtUrl = platformObj.media.boxArts[0].image;
+                    break; 
+                }
+            }
+        }
+
+        return boxArtUrl;
+    } catch (error) {
+        console.error('Failed to fetch box art from MobyGames:', error);
+        return null;
+    }
 }
