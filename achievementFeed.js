@@ -1,5 +1,5 @@
 const { EmbedBuilder, PermissionsBitField } = require('discord.js');
-const { ErrorHandler, BotError } = require('./utils/errorHandler');
+const { logError } = require('./utils/errorHandler');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 class AchievementFeed {
@@ -52,14 +52,14 @@ class AchievementFeed {
 
             this.intervalHandle = setInterval(() => {
                 this.checkNewAchievements().catch(err => {
-                    console.error('Achievement Feed Check Error:', err);
+                    logError(err, 'Achievement Feed Check');
                 });
             }, this.checkInterval);
 
             console.log('AchievementFeed: Initialized successfully');
             return true;
         } catch (error) {
-            console.error('Achievement Feed Init Error:', error);
+            logError(error, 'Achievement Feed Init');
             return false;
         }
     }
@@ -77,11 +77,11 @@ class AchievementFeed {
 
                     this.lastAchievements.set(username.toLowerCase(), new Set(earnedAchievementIds));
                 } catch (error) {
-                    console.error(`Error loading achievements for ${username}:`, error);
+                    logError(error, `Achievement Load: ${username}`);
                 }
             }
         } catch (error) {
-            console.error('Load Initial Achievements Error:', error);
+            logError(error, 'Load Initial Achievements');
         }
     }
 
@@ -102,14 +102,14 @@ class AchievementFeed {
             const data = await response.json();
             return data || [];
         } catch (error) {
-            console.error(`Error fetching achievements for ${username}:`, error);
+            logError(error, `Achievement Fetch: ${username}`);
             return [];
         }
     }
 
     async checkNewAchievements() {
         if (!this.channel) {
-            console.error('No valid channel to post in');
+            logError(new Error('No valid channel to post in'), 'Achievement Feed Channel');
             return;
         }
 
@@ -137,11 +137,11 @@ class AchievementFeed {
 
                     this.lastAchievements.set(username.toLowerCase(), currentEarned);
                 } catch (error) {
-                    console.error(`Error processing achievements for ${username}:`, error);
+                    logError(error, `Achievement Process: ${username}`);
                 }
             }
         } catch (error) {
-            console.error('Check Achievements Error:', error);
+            logError(error, 'Check Achievements');
         }
     }
 
@@ -204,7 +204,7 @@ class AchievementFeed {
                 this.announcementHistory.messageIds.clear();
             }
         } catch (error) {
-            console.error('Announce Achievement Error:', error);
+            logError(error, `Achievement Announce: ${username}`);
         }
     }
 
