@@ -92,59 +92,58 @@ module.exports = {
         }
     },
 
-    async displayYearlyLeaderboard(message, shadowGame) {
-        try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
+   async displayYearlyLeaderboard(message, shadowGame) {
+    try {
+        await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
-            const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
-            const validUsers = await DataService.getValidUsers();
+        const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
+        const validUsers = await DataService.getValidUsers();
 
-            // Filter for valid and active users
-            const activeUsers = yearlyLeaderboard.filter(user =>
-                validUsers.includes(user.username.toLowerCase()) &&
-                user.points > 0
-            );
+        // Filter for valid and active users
+        const activeUsers = yearlyLeaderboard.filter(user =>
+            validUsers.includes(user.username.toLowerCase()) &&
+            user.points > 0
+        );
 
-            // Initialize ranking variables
-            let currentPoints = null;
-            let currentRank = 1;
-            let sameRankCount = 0;
+        // 1) Sort in descending order by points
+        const sortedActiveUsers = activeUsers.sort((a, b) => b.points - a.points);
 
-            const rankedLeaderboard = activeUsers.map((user) => {
-                if (user.points !== currentPoints) {
-                    currentRank += sameRankCount;
-                    sameRankCount = 0;
-                    currentPoints = user.points;
-                } else {
-                    sameRankCount++;
-                }
-                return {
-                    ...user,
-                    rank: currentRank,
-                };
-            });
+        // Initialize ranking variables
+        let currentPoints = null;
+        let currentRank = 1;
+        let sameRankCount = 0;
 
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('YEARLY RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
-
-            if (rankedLeaderboard.length > 0) {
-                embed.addTerminalField('TOP USERS',
-                    rankedLeaderboard
-                        .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
-                        .join('\n'));
+        // 2) Map through the sorted list to assign ranks
+        const rankedLeaderboard = sortedActiveUsers.map((user, index) => {
+            // If this user's points differ from the "previous" user's points...
+            if (user.points !== currentPoints) {
+                // Increase the rank by however many users had the same points
+                currentRank += sameRankCount;
+                sameRankCount = 0;
+                currentPoints = user.points;
             } else {
-                embed.addTerminalField('STATUS', 'No rankings available');
+                // If the points are the same, increment the count of ties
+                sameRankCount++;
             }
 
-            embed.setTerminalFooter();
-            await message.channel.send({ embeds: [embed] });
-            if (shadowGame) await shadowGame.tryShowError(message);
-        } catch (error) {
-            console.error('Yearly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
-        }
-    },
+            return {
+                ...user,
+                rank: currentRank,
+            };
+        });
+
+        // Now `rankedLeaderboard` should have users sorted by points
+        // and assigned a rank accordingly.
+        console.log(rankedLeaderboard);
+
+        // Your code to display or return the leaderboard goes here
+        // e.g., formatting the leaderboard for Discord, etc.
+    } catch (error) {
+        console.error(error);
+        // Handle the error (e.g., send a message to the channel)
+    }
+}
+
 
     async displayHighScores(message, args, shadowGame) {
         try {
