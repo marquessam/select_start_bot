@@ -26,15 +26,19 @@ module.exports = {
 
             const subcommand = args[0].toLowerCase();
 
-            if (subcommand === 'month') {
-                await this.displayMonthlyLeaderboard(message, shadowGame);
-            } else if (subcommand === 'year') {
-                await this.displayYearlyLeaderboard(message, shadowGame);
-            } else if (subcommand === 'highscores') {
-                await this.displayHighScores(message, args.slice(1), shadowGame);
-            } else {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid option\nUse !leaderboard to see available options\n[Ready for input]█\x1b[0m```');
-                if (shadowGame) await shadowGame.tryShowError(message);
+            switch(subcommand) {
+                case 'month':
+                    await this.displayMonthlyLeaderboard(message, shadowGame);
+                    break;
+                case 'year':
+                    await this.displayYearlyLeaderboard(message, shadowGame);
+                    break;
+                case 'highscores':
+                    await this.displayHighScores(message, args.slice(1), shadowGame);
+                    break;
+                default:
+                    await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid option\nUse !leaderboard to see available options\n[Ready for input]█\x1b[0m```');
+                    if (shadowGame) await shadowGame.tryShowError(message);
             }
         } catch (error) {
             console.error('Leaderboard Command Error:', error);
@@ -42,6 +46,7 @@ module.exports = {
         }
     },
 
+    // Display monthly leaderboard
     async displayMonthlyLeaderboard(message, shadowGame) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
@@ -92,7 +97,8 @@ module.exports = {
         }
     },
 
-   async displayYearlyLeaderboard(message, shadowGame) {
+    // Display yearly leaderboard
+    async displayYearlyLeaderboard(message, shadowGame) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
@@ -106,7 +112,6 @@ module.exports = {
 
             let currentRank = 1;
             let previousPoints = null;
-            let skippedRanks = 0;
 
             // Assign ranks properly
             const rankedLeaderboard = activeUsers.map((user, index) => {
@@ -141,8 +146,9 @@ module.exports = {
             console.error('Yearly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
         }
-    }
-    
+    },
+
+    // Display high scores
     async displayHighScores(message, args, shadowGame) {
         try {
             const highscores = await DataService.getArcadeScores();
@@ -188,11 +194,15 @@ module.exports = {
                     gameData.scores
                         .map((score, index) => {
                             const medals = ['🥇', '🥈', '🥉'];
-                            return `${medals[index] || ''} ${score.username}: ${score.score}`;
+                            return `${medals[index] || ''} ${score.username}: ${score.score.toLocaleString()}`;
                         })
                         .join('\n'));
             } else {
                 embed.addTerminalField('STATUS', 'No scores recorded yet');
+            }
+
+            if (gameData.boxArt) {
+                embed.setImage(gameData.boxArt);
             }
 
             embed.setTerminalFooter();
@@ -202,5 +212,5 @@ module.exports = {
             console.error('High Scores Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve high scores\n[Ready for input]█\x1b[0m```');
         }
-    },
+    }
 };
