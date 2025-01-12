@@ -106,55 +106,60 @@ async function handleViewGame(message, args) {
     const games = Object.entries(arcadeData.games);
     
     if (isNaN(gameNum) || gameNum < 1 || gameNum > games.length) {
-        await message.channel.send(
-            '```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```'
-        );
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
         return;
     }
 
-    // Identify the chosen game
     const [gameName, gameData] = games[gameNum - 1];
-
-    // Generate MobyGames link if we find the game
-let mobyLink = '';
-try {
-    const searchResult = await mobyAPI.searchGames(gameName);
-    if (searchResult?.games?.[0]) {
-        const game = searchResult.games[0];
-        mobyLink = `https://www.mobygames.com/game/${game.game_id}/${game.title
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-+|-+$/g, '')}`;
-    }
-} catch (error) {
-    console.error('Failed to generate MobyGames link:', error);
-}
-
-const embed = new TerminalEmbed()
-    .setTerminalTitle(`${gameName} RANKINGS`)
-    .setTerminalDescription('[DATABASE ACCESS GRANTED]' + 
-        (mobyLink ? `\n\n[View on MobyGames](${mobyLink})` : ''));
 
     // Build the score list
     const scoreList = gameData.scores.length > 0
         ? gameData.scores
             .map((score, index) => {
                 const medals = ['🥇', '🥈', '🥉'];
-                const medal = medals[index] || '';
-                return `${medal} ${score.username}: ${score.score.toLocaleString()}`;
+                return `${medals[index] || ''} ${score.username}: ${score.score.toLocaleString()}`;
             })
             .join('\n')
         : 'No scores recorded';
 
     // Check if we have boxArt in DB; if not, fetch from Moby
     let boxArt = gameData.boxArt;
-    if (!boxArt) {
-        boxArt = await fetchBoxArt(gameName);
+    let mobyLink = '';
+
+    try {
+        const searchResult = await mobyAPI.searchGames(gameName);
+        if (searchResult?.games?.length > 0) {
+            // Try to find exact match first
+            let matchedGame = searchResult.games.find(game => 
+                game.title.toLowerCase() === gameName.toLowerCase()
+            );
+
+            // If no exact match, use first result
+            if (!matchedGame) {
+                matchedGame = searchResult.games[0];
+            }
+
+            console.log(`Matched game: ${matchedGame.title} for search: ${gameName}`);
+
+            if (!boxArt && matchedGame.sample_cover?.image) {
+                boxArt = matchedGame.sample_cover.image;
+            }
+
+            mobyLink = `https://www.mobygames.com/game/${matchedGame.game_id}/${matchedGame.title
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '')}`;
+        }
+    } catch (error) {
+        console.error('Failed to fetch game data:', error);
     }
 
     const embed = new TerminalEmbed()
         .setTerminalTitle(`${gameName} RANKINGS`)
-        .setTerminalDescription('[DATABASE ACCESS GRANTED]')
+        .setTerminalDescription(
+            '[DATABASE ACCESS GRANTED]' + 
+            (mobyLink ? `\n\n[View on MobyGames](${mobyLink})` : '')
+        )
         .addTerminalField(
             'GAME INFO',
             `PLATFORM: ${gameData.platform}\n` +
@@ -162,7 +167,6 @@ const embed = new TerminalEmbed()
         )
         .addTerminalField('HIGH SCORES', scoreList);
 
-    // Add the box art if we have it
     if (boxArt) {
         embed.setImage(boxArt);
     }
@@ -170,7 +174,6 @@ const embed = new TerminalEmbed()
     embed.setTerminalFooter();
     await message.channel.send({ embeds: [embed] });
 }
-
 async function handleReset(message, args) {
     if (!args.length) {
         await message.channel.send(
