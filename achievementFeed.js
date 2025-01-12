@@ -7,17 +7,23 @@ class AchievementFeed {
         this.client = client;
         this.database = database;
         this.channelId = process.env.ACHIEVEMENT_FEED_CHANNEL;
-        this.lastAchievements = new Map(); // key: username, value: set of earned achievement IDs
+        this.lastAchievements = new Map();
         
+        // API Rate Limiting
+        this.requestQueue = [];
+        this.isProcessing = false;
+        this.requestDelay = 2000; // 2 seconds between requests
+        this.lastRequestTime = 0;
+
         // Check interval
         this.checkInterval = 10 * 60 * 1000; // 10 minutes
         this.channel = null;
         this.intervalHandle = null;
 
-        // Rate limiting
-        this.MAX_ANNOUNCEMENTS = 5;  // Max 5 announcements
-        this.TIME_WINDOW_MS = 60 * 1000;  // per 60 seconds
-        this.COOLDOWN_MS = 3 * 1000;  // 3 second cooldown between announcements
+        // Discord Rate Limiting
+        this.MAX_ANNOUNCEMENTS = 5;
+        this.TIME_WINDOW_MS = 60 * 1000;
+        this.COOLDOWN_MS = 3 * 1000;
         
         this.announcementHistory = {
             timestamps: [],
@@ -29,6 +35,54 @@ class AchievementFeed {
         this.lastError = null;
         this.maxErrors = 5;
         this.errorResetInterval = 30 * 60 * 1000;
+    }
+
+    async makeRequest(url) {
+        return new Promise((resolve, reject) => {
+            this.requestQueue.push({ url, resolve, reject });
+            this.processQueue();
+        });
+    }
+
+    async processQueue() {
+        if (this.isProcessing || this.requestQueue.length === 0) return;
+
+        this.isProcessing = true;
+
+        while (this.requestQueue.length > 0) {
+            const { url, resolve, reject } = this.requestQueue[0];
+            
+            try {
+                const now = Date.now();
+                const timeSinceLastRequest = now - this.lastRequestTime;
+                if (timeSinceLastRequest < this.requestDelay) {
+                    await new Promise(r => setTimeout(r, this.requestDelay - timeSinceLastRequest));
+                }
+
+                const response = await fetch(url);
+                this.lastRequestTime = Date.now();
+
+                if (response.status === 429) {
+                    await new Promise(r => setTimeout(r, 5000));
+                    this.requestQueue.unshift({ url, resolve, reject });
+                    continue;
+                }
+
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                resolve(data);
+            } catch (error) {
+                reject(error);
+            }
+
+            this.requestQueue.shift();
+            await new Promise(r => setTimeout(r, this.requestDelay));
+        }
+
+        this.isProcessing = false;
     }
 
     async initialize() {
@@ -76,6 +130,7 @@ class AchievementFeed {
                         .map(ach => ach.ID);
 
                     this.lastAchievements.set(username.toLowerCase(), new Set(earnedAchievementIds));
+                    await new Promise(r => setTimeout(r, 1000));
                 } catch (error) {
                     logError(error, `Achievement Load: ${username}`);
                 }
@@ -94,12 +149,10 @@ class AchievementFeed {
                 c: 50
             });
 
-            const response = await fetch(`https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch achievements: ${response.statusText}`);
-            }
+            const data = await this.makeRequest(
+                `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`
+            );
             
-            const data = await response.json();
             return data || [];
         } catch (error) {
             logError(error, `Achievement Fetch: ${username}`);
@@ -129,7 +182,7 @@ class AchievementFeed {
                             currentEarned.add(achievement.ID);
 
                             if (!previouslyEarned.has(achievement.ID)) {
-                                await new Promise(resolve => setTimeout(resolve, 1000)); // Rate limiting
+                                await new Promise(resolve => setTimeout(resolve, 1000));
                                 await this.announceAchievement(username, achievement);
                             }
                         }
@@ -154,7 +207,6 @@ class AchievementFeed {
                 return;
             }
 
-            // Rate limiting
             const currentTime = Date.now();
             if (this.announcementHistory.lastAnnouncement) {
                 const timeSinceLastAnnouncement = currentTime - this.announcementHistory.lastAnnouncement;
