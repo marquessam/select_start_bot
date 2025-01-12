@@ -349,29 +349,28 @@ async function handleRules(message) {
  */
 async function fetchBoxArt(gameName) {
     try {
-        // Search for the game using the same method as the search command
         const result = await mobyAPI.searchGames(gameName);
         
-        // Check if we got any results
         if (!result || !Array.isArray(result.games) || result.games.length === 0) {
-            // Try fallback with known title fixes (like in search command)
-            const fallbackQuery = gameName.replace(/\bpokemon\b/i, 'pokémon');
-            if (fallbackQuery !== gameName) {
-                console.log(`Attempting fallback search: "${gameName}" => "${fallbackQuery}"`);
-                result = await mobyAPI.searchGames(fallbackQuery);
-            }
-            
-            if (!result || !Array.isArray(result.games) || result.games.length === 0) {
-                return null;
-            }
+            return null;
         }
 
-        // Get the first matching game
-        const game = result.games[0];
+        // Find exact match first
+        let matchedGame = result.games.find(game => 
+            game.title.toLowerCase() === gameName.toLowerCase()
+        );
+
+        // If no exact match, use first result
+        if (!matchedGame) {
+            matchedGame = result.games[0];
+        }
+
+        // Log for debugging
+        console.log(`Searching for: "${gameName}"`);
+        console.log('Found game:', matchedGame.title);
         
-        // Use the same boxart property as the search command
-        if (game.sample_cover && game.sample_cover.image) {
-            return game.sample_cover.image;
+        if (matchedGame.sample_cover?.image) {
+            return matchedGame.sample_cover.image;
         }
 
         return null;
