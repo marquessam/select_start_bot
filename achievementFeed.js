@@ -317,7 +317,6 @@ class AchievementFeed {
             const gameName = achievement.GameTitle || 'Unknown Game';
 
             const embed = new EmbedBuilder()
-                const embed = new EmbedBuilder()
                     .setColor('#00FF00')
                     .setTitle('Achievement Unlocked! 🏆')
                     .setThumbnail(badgeUrl)
