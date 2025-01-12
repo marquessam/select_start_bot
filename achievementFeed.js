@@ -1,6 +1,5 @@
 const { EmbedBuilder, PermissionsBitField } = require('discord.js');
 const { ErrorHandler, BotError } = require('./utils/errorHandler');
-const { withTransaction } = require('./utils/transactions');
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 class AchievementFeed {
@@ -36,7 +35,7 @@ class AchievementFeed {
         try {
             const channel = await this.client.channels.fetch(this.channelId);
             if (!channel) {
-                throw new BotError('Channel not found', ErrorHandler.ERROR_TYPES.VALIDATION, 'Achievement Feed Init');
+                throw new Error('Channel not found');
             }
 
             const permissions = channel.permissionsFor(this.client.user);
@@ -45,7 +44,7 @@ class AchievementFeed {
                 PermissionsBitField.Flags.SendMessages,
                 PermissionsBitField.Flags.EmbedLinks
             ])) {
-                throw new BotError('Missing required permissions', ErrorHandler.ERROR_TYPES.PERMISSION, 'Achievement Feed Init');
+                throw new Error('Missing required permissions');
             }
 
             this.channel = channel;
@@ -53,14 +52,14 @@ class AchievementFeed {
 
             this.intervalHandle = setInterval(() => {
                 this.checkNewAchievements().catch(err => {
-                    this.handleError(err, 'Scheduled Check');
+                    console.error('Achievement Feed Check Error:', err);
                 });
             }, this.checkInterval);
 
             console.log('AchievementFeed: Initialized successfully');
             return true;
         } catch (error) {
-            ErrorHandler.logError(error, 'Achievement Feed Init');
+            console.error('Achievement Feed Init Error:', error);
             return false;
         }
     }
@@ -82,28 +81,36 @@ class AchievementFeed {
                 }
             }
         } catch (error) {
-            ErrorHandler.handleAPIError(error, 'Load Initial Achievements');
+            console.error('Load Initial Achievements Error:', error);
         }
     }
 
     async fetchUserRecentAchievements(username) {
-        const params = new URLSearchParams({
-            z: process.env.RA_USERNAME,
-            y: process.env.RA_API_KEY,
-            u: username,
-            c: 50
-        });
+        try {
+            const params = new URLSearchParams({
+                z: process.env.RA_USERNAME,
+                y: process.env.RA_API_KEY,
+                u: username,
+                c: 50
+            });
 
-        const response = await fetch(`https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`);
-        if (!response.ok) throw new Error('Failed to fetch achievements');
-        
-        const data = await response.json();
-        return data || [];
+            const response = await fetch(`https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch achievements: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            return data || [];
+        } catch (error) {
+            console.error(`Error fetching achievements for ${username}:`, error);
+            return [];
+        }
     }
 
     async checkNewAchievements() {
         if (!this.channel) {
-            throw new BotError('No valid channel to post in', ErrorHandler.ERROR_TYPES.VALIDATION, 'Achievement Feed Channel');
+            console.error('No valid channel to post in');
+            return;
         }
 
         try {
@@ -134,7 +141,7 @@ class AchievementFeed {
                 }
             }
         } catch (error) {
-            await this.handleError(error, 'Check Achievements');
+            console.error('Check Achievements Error:', error);
         }
     }
 
@@ -197,26 +204,7 @@ class AchievementFeed {
                 this.announcementHistory.messageIds.clear();
             }
         } catch (error) {
-            await this.handleError(error, 'Announce Achievement');
-        }
-    }
-
-    async handleError(error, context) {
-        this.errorCount++;
-        this.lastError = { time: Date.now(), error, context };
-        ErrorHandler.logError(error, `Achievement Feed - ${context}`);
-
-        if (this.errorCount >= this.maxErrors) {
-            console.error('Achievement Feed: Too many errors, temporarily stopping feed');
-            this.stopFeed();
-            
-            setTimeout(() => {
-                console.log('Achievement Feed: Attempting restart after error shutdown');
-                this.errorCount = 0;
-                this.initialize().catch(err => {
-                    console.error('Achievement Feed: Failed to restart:', err);
-                });
-            }, this.errorResetInterval);
+            console.error('Announce Achievement Error:', error);
         }
     }
 
