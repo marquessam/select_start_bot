@@ -329,36 +329,32 @@ async function handleRules(message) {
  */
 async function fetchBoxArt(gameName) {
     try {
-        // 1) Search for the game by name
-        const searchResults = await mobyAPI.searchGames(gameName);
-        if (!searchResults || !searchResults.games || searchResults.games.length === 0) {
-            return null;
-        }
-
-        // 2) Grab the first result
-        const firstGame = searchResults.games[0];
-        const gameId = firstGame.game_id;
-
-        // 3) Fetch the artwork data for this game
-        const artworkData = await mobyAPI.getGameArtwork(gameId);
-        if (!artworkData) return null;
-
-        // 4) Identify a box art URL from the returned data.
-        //    This logic depends on how your MobyGames data is structured.
-        let boxArtUrl = null;
-
-        // Suppose `artworkData` is an array of platform objects:
-        // Each platform object might have a `media.boxArts` array:
-        if (Array.isArray(artworkData)) {
-            for (const platformObj of artworkData) {
-                if (platformObj?.media?.boxArts?.length) {
-                    boxArtUrl = platformObj.media.boxArts[0].image;
-                    break; 
-                }
+        // Search for the game using the same method as the search command
+        const result = await mobyAPI.searchGames(gameName);
+        
+        // Check if we got any results
+        if (!result || !Array.isArray(result.games) || result.games.length === 0) {
+            // Try fallback with known title fixes (like in search command)
+            const fallbackQuery = gameName.replace(/\bpokemon\b/i, 'pokémon');
+            if (fallbackQuery !== gameName) {
+                console.log(`Attempting fallback search: "${gameName}" => "${fallbackQuery}"`);
+                result = await mobyAPI.searchGames(fallbackQuery);
+            }
+            
+            if (!result || !Array.isArray(result.games) || result.games.length === 0) {
+                return null;
             }
         }
 
-        return boxArtUrl;
+        // Get the first matching game
+        const game = result.games[0];
+        
+        // Use the same boxart property as the search command
+        if (game.sample_cover && game.sample_cover.image) {
+            return game.sample_cover.image;
+        }
+
+        return null;
     } catch (error) {
         console.error('Failed to fetch box art from MobyGames:', error);
         return null;
