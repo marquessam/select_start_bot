@@ -122,4 +122,5 @@ class ErrorHandler {
     }
 }
 
-module.exports = ErrorHandler;
+// Export both classes
+module.exports = { ErrorHandler, BotError };
