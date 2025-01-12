@@ -26,6 +26,18 @@ class TerminalEmbed extends EmbedBuilder {
             text: `TERMINAL_ID: ${Date.now().toString(36).toUpperCase()}` 
         });
     }
+
+    // Override setImage to ensure it works with terminal styling
+    setImage(url) {
+        if (!url) return this;
+        return super.setImage(url);
+    }
+
+    // Add a terminal-themed thumbnail if needed
+    setTerminalThumbnail(url) {
+        if (!url) return this;
+        return super.setThumbnail(url);
+    }
 }
 
 module.exports = TerminalEmbed;
