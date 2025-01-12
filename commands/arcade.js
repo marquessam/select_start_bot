@@ -63,9 +63,15 @@ async function showGameList(message) {
         .addTerminalField('USAGE', 
             '!arcade <game number> - View specific game rankings\n' +
             '!arcade reset <game_number> [username] - Reset scores\n' +
-            '!arcade rules - Update game rules')
-        .setTerminalFooter();
+            '!arcade rules - Update game rules');
 
+    // Add a preview image of the first game if available
+    const firstGame = Object.values(arcadeData.games)[0];
+    if (firstGame?.boxArt) {
+        embed.setImage(firstGame.boxArt);
+    }
+
+    embed.setTerminalFooter();
     await message.channel.send({ embeds: [embed] });
 }
 
@@ -92,9 +98,14 @@ async function handleViewGame(message, args) {
         .addTerminalField('GAME INFO', 
             `PLATFORM: ${gameData.platform}\n` +
             `RULES: ${gameData.description}`)
-        .addTerminalField('HIGH SCORES', scoreList)
-        .setTerminalFooter();
+        .addTerminalField('HIGH SCORES', scoreList);
 
+    // Add the box art if available
+    if (gameData.boxArt) {
+        embed.setImage(gameData.boxArt);
+    }
+
+    embed.setTerminalFooter();
     await message.channel.send({ embeds: [embed] });
 }
 
@@ -148,6 +159,11 @@ async function handleReset(message, args) {
                 return `${medals[index]} ${score.username}: ${score.score.toLocaleString()}`;
             }).join('\n') :
             'No scores recorded');
+
+    // Add the box art to the reset confirmation if available
+    if (gameData.boxArt) {
+        embed.setImage(gameData.boxArt);
+    }
 
     embed.setTerminalFooter();
     await message.channel.send({ embeds: [embed] });
@@ -206,8 +222,13 @@ async function handleRules(message) {
         .setTerminalDescription('[UPDATE SUCCESSFUL]')
         .addTerminalField('DETAILS',
             `GAME: ${gameName}\n` +
-            `NEW RULES: ${newRules}`)
-        .setTerminalFooter();
+            `NEW RULES: ${newRules}`);
+    
+    // Add the box art to the rules update confirmation if available
+    if (gameData.boxArt) {
+        embed.setImage(gameData.boxArt);
+    }
 
+    embed.setTerminalFooter();
     await message.channel.send({ embeds: [embed] });
 }
