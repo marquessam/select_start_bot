@@ -92,35 +92,32 @@ module.exports = {
         }
     },
 
-    async displayYearlyLeaderboard(message, shadowGame) {
+   async displayYearlyLeaderboard(message, shadowGame) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
             const validUsers = await DataService.getValidUsers();
 
-            // Filter for valid and active users
-            const activeUsers = yearlyLeaderboard.filter(user =>
-                validUsers.includes(user.username.toLowerCase()) &&
-                user.points > 0
-            );
+            // Filter for valid and active users and sort by points
+            const activeUsers = yearlyLeaderboard
+                .filter(user => validUsers.includes(user.username.toLowerCase()) && user.points > 0)
+                .sort((a, b) => b.points - a.points); // Sort by points in descending order
 
-            // Initialize ranking variables
-            let currentPoints = null;
             let currentRank = 1;
-            let sameRankCount = 0;
+            let previousPoints = null;
+            let skippedRanks = 0;
 
-            const rankedLeaderboard = activeUsers.map((user) => {
-                if (user.points !== currentPoints) {
-                    currentRank += sameRankCount;
-                    sameRankCount = 0;
-                    currentPoints = user.points;
-                } else {
-                    sameRankCount++;
+            // Assign ranks properly
+            const rankedLeaderboard = activeUsers.map((user, index) => {
+                if (previousPoints !== user.points) {
+                    currentRank = index + 1;
+                    previousPoints = user.points;
                 }
+                
                 return {
                     ...user,
-                    rank: currentRank,
+                    rank: currentRank
                 };
             });
 
@@ -144,8 +141,8 @@ module.exports = {
             console.error('Yearly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
         }
-    },
-
+    }
+    
     async displayHighScores(message, args, shadowGame) {
         try {
             const highscores = await DataService.getArcadeScores();
