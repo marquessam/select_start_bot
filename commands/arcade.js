@@ -115,6 +115,26 @@ async function handleViewGame(message, args) {
     // Identify the chosen game
     const [gameName, gameData] = games[gameNum - 1];
 
+    // Generate MobyGames link if we find the game
+let mobyLink = '';
+try {
+    const searchResult = await mobyAPI.searchGames(gameName);
+    if (searchResult?.games?.[0]) {
+        const game = searchResult.games[0];
+        mobyLink = `https://www.mobygames.com/game/${game.game_id}/${game.title
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')}`;
+    }
+} catch (error) {
+    console.error('Failed to generate MobyGames link:', error);
+}
+
+const embed = new TerminalEmbed()
+    .setTerminalTitle(`${gameName} RANKINGS`)
+    .setTerminalDescription('[DATABASE ACCESS GRANTED]' + 
+        (mobyLink ? `\n\n[View on MobyGames](${mobyLink})` : ''));
+
     // Build the score list
     const scoreList = gameData.scores.length > 0
         ? gameData.scores
