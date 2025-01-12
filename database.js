@@ -243,26 +243,31 @@ class Database {
                 "Tony Hawk's Pro Skater": {
                     platform: "PSX",
                     description: "Highest possible score in 2 minute runs",
+                    boxArt: "https://cdn.mobygames.com/covers/4001324-tony-hawks-pro-skater-playstation-front-cover.jpg",
                     scores: []
                 },
                 "Mr. Driller": {
                     platform: "PSX",
                     description: "Deepest depth reached (in feet)",
+                    boxArt: "https://cdn.mobygames.com/covers/3999397-mr-driller-playstation-front-cover.jpg",
                     scores: []
                 },
                 "Tetris": {
                     platform: "Game Boy",
                     description: "Highest possible score",
+                    boxArt: "https://cdn.mobygames.com/covers/3908647-tetris-game-boy-front-cover.jpg",
                     scores: []
                 },
                 "Ms. Pac-Man": {
                     platform: "NES",
                     description: "Highest score on first board",
+                    boxArt: "https://cdn.mobygames.com/covers/4128500-ms-pac-man-nes-front-cover.jpg",
                     scores: []
                 },
                 "Raiden Trad": {
                     platform: "SNES",
                     description: "Highest possible score",
+                    boxArt: "https://cdn.mobygames.com/covers/6493484-raiden-trad-snes-front-cover.jpg",
                     scores: []
                 }
             },
@@ -282,7 +287,7 @@ class Database {
             }
 
             if (score === undefined || isNaN(score)) {
-                throw new Error('Valid score number is required');
+                throw new Error('Valid score value is required');
             }
 
             const collection = await this.getCollection('arcadechallenge');
@@ -471,7 +476,6 @@ class Database {
             throw error;
         }
     }
-
     // =================
     // Review Methods
     // =================
