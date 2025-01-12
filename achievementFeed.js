@@ -126,7 +126,11 @@ class AchievementFeed {
             }
 
             // 3. Merge user achievements
-            const combinedUsers = this.mergeChallengeAndRecent(challengeData, recentData);
+           const combinedUsers = this.mergeChallengeAndRecent(challengeData, recentData);
+
+            // Log achievement data for debugging
+                console.log('Challenge Data:', JSON.stringify(challengeData?.leaderboard?.[0]?.achievements?.slice(0, 2) || [], null, 2));
+                console.log('Recent Data:', JSON.stringify(recentData?.[0]?.achievements?.slice(0, 2) || [], null, 2));
 
             // 4. Loop through each user to detect newly earned achievements
             for (const user of combinedUsers) {
@@ -195,47 +199,76 @@ class AchievementFeed {
      * Merges challenge-based data with all-recent data.
      * Returns an array of user objects with a single 'achievements' array.
      */
-    mergeChallengeAndRecent(challengeData, recentData) {
-        // Format: challengeData.leaderboard => [{ username, achievements: [...] }, ...]
-        // recentData => [{ username, achievements: [...] }, ...]
+   mergeChallengeAndRecent(challengeData, recentData) {
+    // Create a map from username to user object
+    const userMap = new Map();
 
-        // Create a map from username to user object
-        const userMap = new Map();
+    // Helper function to deduplicate achievements
+    const deduplicateAchievements = (achievements) => {
+        const achievementMap = new Map();
+        achievements.forEach(ach => {
+            if (!ach) return; // Skip null/undefined achievements
+            const key = `${ach.GameID}-${ach.ID}`;
+            const existingAch = achievementMap.get(key);
+            
+            // Keep the achievement with the more recent earned date
+            if (!existingAch || 
+                (parseInt(ach.DateEarned) > parseInt(existingAch.DateEarned))) {
+                achievementMap.set(key, ach);
+            }
+        });
+        return Array.from(achievementMap.values());
+    };
 
-        // 1. Populate from challenge data
-        for (const userObj of challengeData.leaderboard || []) {
-            userMap.set(userObj.username.toLowerCase(), {
-                username: userObj.username,
-                achievements: userObj.achievements || []
+    // 1. Populate from challenge data
+    for (const userObj of challengeData.leaderboard || []) {
+        if (!userObj?.username) continue;
+        const key = userObj.username.toLowerCase();
+        const achievements = userObj.achievements || [];
+        
+        userMap.set(key, {
+            username: userObj.username,
+            achievements: achievements
+        });
+    }
+
+    // 2. Merge in recent achievements
+    for (const recentUser of recentData || []) {
+        if (!recentUser?.username) continue;
+        const key = recentUser.username.toLowerCase();
+        const recentAchievements = recentUser.achievements || [];
+
+        if (!userMap.has(key)) {
+            // If user wasn't in challenge data, add a new entry
+            userMap.set(key, {
+                username: recentUser.username,
+                achievements: recentAchievements
+            });
+        } else {
+            // Merge achievements with existing
+            const existingData = userMap.get(key);
+            const combinedAchievements = [
+                ...(existingData.achievements || []),
+                ...recentAchievements
+            ];
+
+            // Deduplicate the combined achievements
+            const uniqueAchievements = deduplicateAchievements(combinedAchievements);
+
+            userMap.set(key, {
+                username: recentUser.username,
+                achievements: uniqueAchievements
             });
         }
-
-        // 2. Merge in recent achievements
-        for (const recentUser of recentData) {
-            const key = recentUser.username.toLowerCase();
-            if (!userMap.has(key)) {
-                // If user wasn't in challenge data, add a new entry
-                userMap.set(key, {
-                    username: recentUser.username,
-                    achievements: recentUser.achievements
-                });
-            } else {
-                // Merge achievements with existing
-                const existingData = userMap.get(key);
-                const mergedAchievements = [
-                    ...(existingData.achievements || []),
-                    ...(recentUser.achievements || [])
-                ];
-                userMap.set(key, {
-                    username: recentUser.username,
-                    achievements: mergedAchievements
-                });
-            }
-        }
-
-        // Convert map back to an array
-        return Array.from(userMap.values());
     }
+
+    // Final deduplication pass for all users
+    const users = Array.from(userMap.values());
+    return users.map(user => ({
+        ...user,
+        achievements: deduplicateAchievements(user.achievements)
+    }));
+}
 
     async announceAchievement(username, achievement) {
         if (!this.channel) {
@@ -284,19 +317,21 @@ class AchievementFeed {
             const gameName = achievement.GameTitle || 'Unknown Game';
 
             const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle('Achievement Unlocked! 🏆')
-                .setThumbnail(badgeUrl)
-                .setDescription(
-                    `**${username}** earned **${achievement.Title || 'Achievement'}**\n` +
-                    `*${achievement.Description || 'No description available'}*\n\n` +
-                    `**Game:** ${gameName}`
-                )
-                .setFooter({
-                    text: `Points: ${achievement.Points || '0'}`,
-                    iconURL: userIconUrl
-                })
-                .setTimestamp();
+                const embed = new EmbedBuilder()
+                    .setColor('#00FF00')
+                    .setTitle('Achievement Unlocked! 🏆')
+                    .setThumbnail(badgeUrl)
+                    .setDescription(
+                        `**${username}** earned **${achievement.Title || 'Achievement'}**\n` +
+                        `*${achievement.Description || 'No description available'}*\n\n` +
+                        `**Game:** ${achievement.GameTitle || gameName}\n` +
+                        `**Points:** ${achievement.Points || '0'}`
+                    )
+                    .setFooter({
+                        text: `Earned at ${new Date(parseInt(achievement.DateEarned) * 1000).toLocaleString()}`,
+                        iconURL: userIconUrl
+                    })
+                    .setTimestamp();
 
             const message = await this.channel.send({ embeds: [embed] });
             
