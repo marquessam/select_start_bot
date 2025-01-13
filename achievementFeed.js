@@ -1,6 +1,6 @@
 const { EmbedBuilder, PermissionsBitField } = require('discord.js');
 const { logError } = require('./utils/errorHandler');
-const { fetchUserRecentAchievements } = require('./raAPI');
+const raAPI = require('./raAPI');
 
 class AchievementFeed {
     constructor(client, database) {
@@ -66,7 +66,7 @@ class AchievementFeed {
             
             for (const username of validUsers) {
                 try {
-                    const recentAchievements = await fetchUserRecentAchievements(username);
+                    const recentAchievements = await raAPI.fetchUserRecentAchievements(username);
                     const earnedAchievementIds = recentAchievements
                         .filter(ach => parseInt(ach.DateEarned, 10) > 0)
                         .map(ach => ach.ID);
@@ -98,7 +98,7 @@ class AchievementFeed {
             for (const username of validUsers) {
                 try {
                     console.log(`Checking achievements for user: ${username}`);
-                    const recentAchievements = await fetchUserRecentAchievements(username);
+                    const recentAchievements = await raAPI.fetchUserRecentAchievements(username);
                     
                     if (!Array.isArray(recentAchievements)) {
                         console.log(`No achievements found for ${username}`);
