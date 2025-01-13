@@ -7,7 +7,7 @@ const UserTracker = require('./userTracker');
 const Announcer = require('./utils/announcer');
 const createLeaderboardCache = require('./leaderboardCache');
 const ShadowGame = require('./shadowGame');
-const { ErrorHandler } = require('./utils/errorHandler');  // Add this line
+const errorHandler = require('./utils/errorHandler');
 const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
 
@@ -30,12 +30,9 @@ const client = new Client({
     ]
 });
 
-// We'll store references to our core services here once they're initialized
+// Store service references
 let services = null;
 
-// =======================
-//  Environment & DB Setup
-// =======================
 async function validateEnvironment() {
     const missingVars = REQUIRED_ENV_VARS.filter((v) => !process.env[v]);
     if (missingVars.length > 0) {
@@ -49,16 +46,15 @@ async function connectDatabase() {
         console.log('MongoDB connected successfully');
         return true;
     } catch (error) {
-        ErrorHandler.logError(error, 'Database Connection');
+        console.error('Database Connection Error:', error);
         throw error;
     }
 }
 
-// ======================
-//   Core Services Setup
-// ======================
 async function createCoreServices() {
     try {
+        console.log('Creating core services...');
+        
         const userStats = new UserStats(database);
         const userTracker = new UserTracker(database, userStats);
         const leaderboardCache = createLeaderboardCache(database);
@@ -67,9 +63,11 @@ async function createCoreServices() {
         const shadowGame = new ShadowGame();
         const achievementFeed = new AchievementFeed(client, database);
 
+        // Set up leaderboard cache
         leaderboardCache.setUserStats(userStats);
         global.leaderboardCache = leaderboardCache;
 
+        console.log('Core services created successfully');
         return {
             userStats,
             userTracker,
@@ -78,10 +76,10 @@ async function createCoreServices() {
             announcer,
             shadowGame,
             achievementFeed,
-            mobyAPI
+            mobyAPI: MobyAPI
         };
     } catch (error) {
-        ErrorHandler.logError(error, 'Creating Core Services');  // Changed this line
+        console.error('Error creating core services:', error);
         throw error;
     }
 }
@@ -94,35 +92,31 @@ async function initializeServices(coreServices) {
         commandHandler,
         shadowGame,
         leaderboardCache,
-        achievementFeed,
-        mobyAPI        
+        achievementFeed
     } = coreServices;
 
     try {
         console.log('Initializing services...');
 
+        // Initialize each service
         await Promise.all([
-            shadowGame.loadConfig().catch((e) => ErrorHandler.logError(e, 'Shadow Game Init')),
-            userTracker.initialize().catch((e) => ErrorHandler.logError(e, 'User Tracker Init')),
-            userStats.loadStats(userTracker).catch((e) => ErrorHandler.logError(e, 'User Stats Init')),
-            announcer.initialize().catch((e) => ErrorHandler.logError(e, 'Announcer Init')),
-            commandHandler.loadCommands(coreServices).catch((e) => ErrorHandler.logError(e, 'Command Handler Init')),
-            leaderboardCache.initialize().catch((e) => ErrorHandler.logError(e, 'Leaderboard Cache Init')),
-            achievementFeed.initialize().catch((e) => ErrorHandler.logError(e, 'Achievement Feed Init')),
-            Promise.resolve()  // Placeholder for mobyAPI since it doesn't need initialization
+            shadowGame.loadConfig().catch(e => console.error('Shadow Game Init Error:', e)),
+            userTracker.initialize().catch(e => console.error('User Tracker Init Error:', e)),
+            userStats.loadStats(userTracker).catch(e => console.error('User Stats Init Error:', e)),
+            announcer.initialize().catch(e => console.error('Announcer Init Error:', e)),
+            commandHandler.loadCommands(coreServices).catch(e => console.error('Command Handler Init Error:', e)),
+            leaderboardCache.initialize().catch(e => console.error('Leaderboard Cache Init Error:', e)),
+            achievementFeed.initialize().catch(e => console.error('Achievement Feed Init Error:', e))
         ]);
 
         console.log('All services initialized successfully');
         return coreServices;
     } catch (error) {
-        ErrorHandler.logError(error, 'Service Initialization');
+        console.error('Service Initialization Error:', error);
         throw error;
     }
 }
 
-// ======================
-//      Bot Setup
-// ======================
 async function setupBot() {
     try {
         await validateEnvironment();
@@ -131,44 +125,36 @@ async function setupBot() {
         services = await initializeServices(coreServices);
         console.log('Bot setup completed successfully');
     } catch (error) {
-        ErrorHandler.logError(error, 'Bot Setup');
+        console.error('Bot Setup Error:', error);
         throw error;
     }
 }
 
-// ======================
-//   Message Handling
-// ======================
 async function handleMessage(message, services) {
     const { userTracker, shadowGame, commandHandler } = services;
     const tasks = [];
 
-    // If message is in the RA channel, process user tracking
     if (message.channel.id === process.env.RA_CHANNEL_ID) {
         tasks.push(
-            userTracker.processMessage(message).catch((e) =>
-                ErrorHandler.logError(e, 'User Tracker Message Processing')
+            userTracker.processMessage(message).catch(e => 
+                console.error('User Tracker Message Processing Error:', e)
             )
         );
     }
 
-    // Additional tasks for every message
     tasks.push(
-        shadowGame.checkMessage(message).catch((e) =>
-            ErrorHandler.logError(e, 'Shadow Game Message Check')
+        shadowGame.checkMessage(message).catch(e => 
+            console.error('Shadow Game Message Check Error:', e)
         ),
-        commandHandler.handleCommand(message, services).catch((e) =>
-            ErrorHandler.logError(e, 'Command Handler')
+        commandHandler.handleCommand(message, services).catch(e => 
+            console.error('Command Handler Error:', e)
         )
     );
 
-    // Run all tasks concurrently; don't let one failure block the others
     await Promise.allSettled(tasks);
 }
 
-// ======================
-//   Discord Bot Events
-// ======================
+// Bot Events
 client.once('ready', async () => {
     try {
         console.log(`Logged in as ${client.user.tag}`);
@@ -180,37 +166,30 @@ client.once('ready', async () => {
 });
 
 client.on('messageCreate', async (message) => {
-    // Ignore bot messages or uninitialized services
     if (message.author.bot || !services) return;
 
     try {
         await handleMessage(message, services);
     } catch (error) {
-        ErrorHandler.logError(error, 'Message Handler');
+        console.error('Message Handler Error:', error);
     }
 });
 
-// ======================
-//   Periodic Tasks
-// ======================
+// Periodic Tasks
 const updateLeaderboards = async () => {
     if (!services?.leaderboardCache) return;
 
     try {
         await services.leaderboardCache.updateLeaderboards();
     } catch (error) {
-        ErrorHandler.logError(error, 'Leaderboard Update');
-        // Optionally retry after 5 minutes
+        console.error('Leaderboard Update Error:', error);
         setTimeout(updateLeaderboards, 5 * 60 * 1000);
     }
 };
 
-// Update leaderboards every hour
 setInterval(updateLeaderboards, 60 * 60 * 1000);
 
-// ======================
-//  Graceful Shutdown
-// ======================
+// Graceful Shutdown
 const shutdown = async (signal) => {
     console.log(`Received ${signal}. Shutting down gracefully...`);
     try {
@@ -223,17 +202,16 @@ const shutdown = async (signal) => {
     }
 };
 
+// Process Events
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('uncaughtException', (error) => {
-    ErrorHandler.logError(error, 'Uncaught Exception');
+    console.error('Uncaught Exception:', error);
     setTimeout(() => process.exit(1), 1000);
 });
 process.on('unhandledRejection', (error) => {
-    ErrorHandler.logError(error, 'Unhandled Rejection');
+    console.error('Unhandled Rejection:', error);
 });
 
-// ======================
-//    Start the Bot
-// ======================
+// Start Bot
 client.login(process.env.DISCORD_TOKEN);
