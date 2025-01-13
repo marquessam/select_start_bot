@@ -3,59 +3,23 @@ const { logError } = require('./utils/errorHandler');
 const raAPI = require('./raAPI');
 
 class AchievementFeed {
-    constructor(client, database) {
-        this.client = client;
-        this.database = database;
-        this.channelId = process.env.ACHIEVEMENT_FEED_CHANNEL;
-        this.lastAchievements = new Map();
-        
-        // Check interval
-        this.checkInterval = 5 * 60 * 1000; // 5 minutes
-        this.channel = null;
-        this.intervalHandle = null;
+    // ... (keep constructor and initialize methods the same)
 
-        // Discord Rate Limiting
-        this.MAX_ANNOUNCEMENTS = 5;
-        this.TIME_WINDOW_MS = 60 * 1000;
-        this.COOLDOWN_MS = 3 * 1000;
-        
-        this.announcementHistory = {
-            timestamps: [],
-            messageIds: new Set(),
-            lastAnnouncement: null
-        };
-    }
-
-    async initialize() {
+    async fetchUserRecentAchievements(username) {
         try {
-            const channel = await this.client.channels.fetch(this.channelId);
-            if (!channel) {
-                throw new Error('Channel not found');
-            }
+            const params = new URLSearchParams({
+                z: process.env.RA_USERNAME,
+                y: process.env.RA_API_KEY,
+                u: username,
+                c: 50
+            });
 
-            const permissions = channel.permissionsFor(this.client.user);
-            if (!permissions?.has([
-                PermissionsBitField.Flags.ViewChannel,
-                PermissionsBitField.Flags.SendMessages,
-                PermissionsBitField.Flags.EmbedLinks
-            ])) {
-                throw new Error('Missing required permissions');
-            }
-
-            this.channel = channel;
-            await this.loadInitialAchievements();
-
-            this.intervalHandle = setInterval(() => {
-                this.checkNewAchievements().catch(err => {
-                    logError(err, 'Achievement Feed Check');
-                });
-            }, this.checkInterval);
-
-            console.log('AchievementFeed: Initialized successfully');
-            return true;
+            const url = `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`;
+            const data = await rateLimiter.makeRequest(url);
+            return data || [];
         } catch (error) {
-            logError(error, 'Achievement Feed Init');
-            return false;
+            logError(error, `Achievement Fetch: ${username}`);
+            return [];
         }
     }
 
@@ -64,18 +28,18 @@ class AchievementFeed {
             const validUsers = await this.database.getValidUsers();
             console.log(`Loading initial achievements for ${validUsers.length} users...`);
             
-            for (const username of validUsers) {
+            const recentResults = await raAPI.fetchAllRecentAchievements();
+            
+            for (const userResult of recentResults) {
                 try {
-                    const recentAchievements = await raAPI.fetchUserRecentAchievements(username);
-                    const earnedAchievementIds = recentAchievements
+                    const earnedAchievementIds = userResult.achievements
                         .filter(ach => parseInt(ach.DateEarned, 10) > 0)
                         .map(ach => ach.ID);
 
-                    this.lastAchievements.set(username.toLowerCase(), new Set(earnedAchievementIds));
-                    console.log(`Loaded ${earnedAchievementIds.length} achievements for ${username}`);
-                    await new Promise(r => setTimeout(r, 1000)); // Brief delay between users
+                    this.lastAchievements.set(userResult.username.toLowerCase(), new Set(earnedAchievementIds));
+                    console.log(`Loaded ${earnedAchievementIds.length} achievements for ${userResult.username}`);
                 } catch (error) {
-                    logError(error, `Achievement Load: ${username}`);
+                    logError(error, `Achievement Load: ${userResult.username}`);
                 }
             }
         } catch (error) {
@@ -92,21 +56,21 @@ class AchievementFeed {
         console.log('Starting achievement check...');
 
         try {
-            const validUsers = await this.database.getValidUsers();
-            console.log(`Checking achievements for ${validUsers.length} users`);
+            const recentResults = await raAPI.fetchAllRecentAchievements();
+            console.log(`Checking achievements for ${recentResults.length} users`);
 
-            for (const username of validUsers) {
+            for (const userResult of recentResults) {
                 try {
-                    console.log(`Checking achievements for user: ${username}`);
-                    const recentAchievements = await raAPI.fetchUserRecentAchievements(username);
+                    console.log(`Checking achievements for user: ${userResult.username}`);
+                    const recentAchievements = userResult.achievements;
                     
                     if (!Array.isArray(recentAchievements)) {
-                        console.log(`No achievements found for ${username}`);
+                        console.log(`No achievements found for ${userResult.username}`);
                         continue;
                     }
 
-                    console.log(`Found ${recentAchievements.length} achievements for ${username}`);
-                    const previouslyEarned = this.lastAchievements.get(username.toLowerCase()) || new Set();
+                    console.log(`Found ${recentAchievements.length} achievements for ${userResult.username}`);
+                    const previouslyEarned = this.lastAchievements.get(userResult.username.toLowerCase()) || new Set();
                     const currentEarned = new Set();
 
                     for (const achievement of recentAchievements) {
@@ -116,22 +80,23 @@ class AchievementFeed {
                             currentEarned.add(achievement.ID);
 
                             if (!previouslyEarned.has(achievement.ID)) {
-                                console.log(`New achievement found for ${username}: ${achievement.Title}`);
+                                console.log(`New achievement found for ${userResult.username}: ${achievement.Title}`);
                                 await new Promise(resolve => setTimeout(resolve, 1000));
-                                await this.announceAchievement(username, achievement);
+                                await this.announceAchievement(userResult.username, achievement);
                             }
                         }
                     }
 
-                    this.lastAchievements.set(username.toLowerCase(), currentEarned);
+                    this.lastAchievements.set(userResult.username.toLowerCase(), currentEarned);
                 } catch (error) {
-                    logError(error, `Achievement Process: ${username}`);
+                    logError(error, `Achievement Process: ${userResult.username}`);
                 }
             }
         } catch (error) {
             logError(error, 'Check Achievements');
         }
     }
+
 
     async announceAchievement(username, achievement) {
         console.log('Attempting to announce achievement:', {
