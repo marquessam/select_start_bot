@@ -16,7 +16,7 @@ class AchievementFeed {
         this.lastRequestTime = 0;
 
         // Check interval
-        this.checkInterval = 10 * 60 * 1000; // 10 minutes
+        this.checkInterval = 5 * 60 * 1000; // 5 minutes
         this.channel = null;
         this.intervalHandle = null;
 
@@ -161,42 +161,54 @@ class AchievementFeed {
     }
 
     async checkNewAchievements() {
-        if (!this.channel) {
-            logError(new Error('No valid channel to post in'), 'Achievement Feed Channel');
-            return;
-        }
+    if (!this.channel) {
+        logError(new Error('No valid channel to post in'), 'Achievement Feed Channel');
+        return;
+    }
 
-        try {
-            const validUsers = await this.database.getValidUsers();
+    console.log('Starting achievement check...');
 
-            for (const username of validUsers) {
-                try {
-                    const recentAchievements = await this.fetchUserRecentAchievements(username);
-                    const previouslyEarned = this.lastAchievements.get(username.toLowerCase()) || new Set();
-                    const currentEarned = new Set();
+    try {
+        const validUsers = await this.database.getValidUsers();
+        console.log(`Checking achievements for ${validUsers.length} users`);
 
-                    for (const achievement of recentAchievements) {
-                        const earnedDate = parseInt(achievement.DateEarned, 10);
-                        
-                        if (earnedDate > 0) {
-                            currentEarned.add(achievement.ID);
+        for (const username of validUsers) {
+            try {
+                console.log(`Checking achievements for user: ${username}`);
+                const recentAchievements = await this.fetchUserRecentAchievements(username);
+                
+                if (!Array.isArray(recentAchievements)) {
+                    console.log(`No achievements found for ${username}`);
+                    continue;
+                }
 
-                            if (!previouslyEarned.has(achievement.ID)) {
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-                                await this.announceAchievement(username, achievement);
-                            }
+                console.log(`Found ${recentAchievements.length} achievements for ${username}`);
+                const previouslyEarned = this.lastAchievements.get(username.toLowerCase()) || new Set();
+                const currentEarned = new Set();
+
+                for (const achievement of recentAchievements) {
+                    const earnedDate = parseInt(achievement.DateEarned, 10);
+                    
+                    if (earnedDate > 0) {
+                        currentEarned.add(achievement.ID);
+
+                        if (!previouslyEarned.has(achievement.ID)) {
+                            console.log(`New achievement found for ${username}: ${achievement.Title}`);
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            await this.announceAchievement(username, achievement);
                         }
                     }
-
-                    this.lastAchievements.set(username.toLowerCase(), currentEarned);
-                } catch (error) {
-                    logError(error, `Achievement Process: ${username}`);
                 }
+
+                this.lastAchievements.set(username.toLowerCase(), currentEarned);
+            } catch (error) {
+                logError(error, `Achievement Process: ${username}`);
             }
-        } catch (error) {
-            logError(error, 'Check Achievements');
         }
+    } catch (error) {
+        logError(error, 'Check Achievements');
     }
+}
 
     async announceAchievement(username, achievement) {
         if (!this.channel || !username || !achievement) return;
