@@ -61,7 +61,17 @@ async function createCoreServices() {
         const commandHandler = new CommandHandler();
         const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
-        const achievementFeed = new AchievementFeed(client, database);
+        
+        // Check if AchievementFeed is a class or object
+        console.log('Achievement Feed type:', typeof AchievementFeed);
+        let achievementFeed;
+        if (typeof AchievementFeed === 'function') {
+            // It's a class, so instantiate it
+            achievementFeed = new AchievementFeed(client, database);
+        } else {
+            // It's an object, so use it directly
+            achievementFeed = AchievementFeed;
+        }
 
         // Set up leaderboard cache
         leaderboardCache.setUserStats(userStats);
@@ -84,6 +94,7 @@ async function createCoreServices() {
     }
 }
 
+// Also modify the initialization part
 async function initializeServices(coreServices) {
     const {
         userTracker,
@@ -98,16 +109,17 @@ async function initializeServices(coreServices) {
     try {
         console.log('Initializing services...');
 
-        // Initialize each service
-        await Promise.all([
-            shadowGame.loadConfig().catch(e => console.error('Shadow Game Init Error:', e)),
-            userTracker.initialize().catch(e => console.error('User Tracker Init Error:', e)),
-            userStats.loadStats(userTracker).catch(e => console.error('User Stats Init Error:', e)),
-            announcer.initialize().catch(e => console.error('Announcer Init Error:', e)),
-            commandHandler.loadCommands(coreServices).catch(e => console.error('Command Handler Init Error:', e)),
-            leaderboardCache.initialize().catch(e => console.error('Leaderboard Cache Init Error:', e)),
-            achievementFeed.initialize().catch(e => console.error('Achievement Feed Init Error:', e))
-        ]);
+        const initPromises = [];
+        
+        if (shadowGame?.loadConfig) initPromises.push(shadowGame.loadConfig().catch(e => console.error('Shadow Game Init Error:', e)));
+        if (userTracker?.initialize) initPromises.push(userTracker.initialize().catch(e => console.error('User Tracker Init Error:', e)));
+        if (userStats?.loadStats) initPromises.push(userStats.loadStats(userTracker).catch(e => console.error('User Stats Init Error:', e)));
+        if (announcer?.initialize) initPromises.push(announcer.initialize().catch(e => console.error('Announcer Init Error:', e)));
+        if (commandHandler?.loadCommands) initPromises.push(commandHandler.loadCommands(coreServices).catch(e => console.error('Command Handler Init Error:', e)));
+        if (leaderboardCache?.initialize) initPromises.push(leaderboardCache.initialize().catch(e => console.error('Leaderboard Cache Init Error:', e)));
+        if (achievementFeed?.initialize) initPromises.push(achievementFeed.initialize().catch(e => console.error('Achievement Feed Init Error:', e)));
+
+        await Promise.all(initPromises);
 
         console.log('All services initialized successfully');
         return coreServices;
