@@ -65,6 +65,7 @@ async function createCoreServices() {
         const commandHandler = new CommandHandler();
         const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
+        // Create an instance of AchievementFeed
         const achievementFeed = new AchievementFeed(client, database);
 
         // Tie userStats into the leaderboard cache
@@ -81,10 +82,10 @@ async function createCoreServices() {
             announcer,
             shadowGame,
             achievementFeed,
-            mobyAPI: MobyAPI
+            mobyAPI
         };
     } catch (error) {
-        ErrorHandler.logError(error, 'Creating Core Services');
+        logError(error, 'Creating Core Services');
         throw error;
     }
 }
