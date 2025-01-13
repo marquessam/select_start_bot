@@ -75,118 +75,108 @@ class AchievementFeed {
         }
     }
 
-    async checkNewAchievements() {
-        if (!this.channel) {
-            logError(new Error('No valid channel to post in'), 'Achievement Feed Channel');
-            return;
-        }
+   async checkNewAchievements() {
+    if (!this.channel) {
+        console.error('No valid channel to post in');
+        return;
+    }
 
-        console.log('Starting achievement check...');
-        try {
-            const recentResults = await raAPI.fetchAllRecentAchievements();
-            console.log(`Checking achievements for ${recentResults.length} users`);
+    console.log('Starting achievement check...');
+    try {
+        const recentResults = await raAPI.fetchAllRecentAchievements();
+        console.log(`Checking achievements for ${recentResults.length} users`);
 
-            for (const userResult of recentResults) {
-                try {
-                    console.log(`Checking achievements for user: ${userResult.username}`);
-                    const recentAchievements = userResult.achievements;
+        const now = Date.now();
+        const ONE_HOUR = 60 * 60 * 1000; // 1 hour in milliseconds
+
+        for (const userResult of recentResults) {
+            try {
+                console.log(`Checking achievements for user: ${userResult.username}`);
+                const recentAchievements = userResult.achievements;
+                
+                if (!Array.isArray(recentAchievements)) {
+                    console.log(`No achievements found for ${userResult.username}`);
+                    continue;
+                }
+
+                console.log(`Found ${recentAchievements.length} achievements for ${userResult.username}`);
+                const usernameKey = userResult.username.toLowerCase();
+
+                for (const achievement of recentAchievements) {
+                    const earnedDate = parseInt(achievement.DateEarned, 10) * 1000; // Convert to milliseconds
+                    const achievementAge = now - earnedDate;
                     
-                    if (!Array.isArray(recentAchievements)) {
-                        console.log(`No achievements found for ${userResult.username}`);
-                        continue;
-                    }
-
-                    console.log(`Found ${recentAchievements.length} achievements for ${userResult.username}`);
-                    const usernameKey = userResult.username.toLowerCase();
-                    const previouslyEarned = this.lastAchievements.get(usernameKey) || new Set();
-                    const currentEarned = new Set();
-
-                    for (const achievement of recentAchievements) {
-                        const earnedDate = parseInt(achievement.DateEarned, 10);
-                        if (earnedDate > 0) {
-                            currentEarned.add(achievement.ID);
-                            if (!previouslyEarned.has(achievement.ID)) {
-                                console.log(`New achievement found for ${userResult.username}: ${achievement.Title}`);
-                                await this.announceAchievement(userResult.username, achievement);
-                            }
+                    // Only announce achievements earned in the last hour
+                    if (achievementAge <= ONE_HOUR) {
+                        const achievementKey = `${usernameKey}-${achievement.ID}`;
+                        if (!this.announcedAchievements.has(achievementKey)) {
+                            console.log(`New achievement found for ${userResult.username}: ${achievement.Title}`);
+                            console.log('Achievement earned at:', new Date(earnedDate).toLocaleString());
+                            await this.announceAchievement(userResult.username, achievement);
                         }
                     }
-                    this.lastAchievements.set(usernameKey, currentEarned);
-                } catch (error) {
-                    logError(error, `Achievement Process: ${userResult.username}`);
                 }
+            } catch (error) {
+                console.error(`Error processing achievements for ${userResult.username}:`, error);
             }
-        } catch (error) {
-            logError(error, 'Check Achievements');
         }
-    }
-
-    async announceAchievement(username, achievement) {
-        console.log('Attempting to announce achievement:', {
-            username,
-            achievementTitle: achievement.Title,
-            achievementID: achievement.ID
-        });
-
-        if (!this.channel || !username || !achievement) {
-            console.log('Missing required data for announcement');
-            return;
-        }
-
-        try {
-            const achievementKey = `${username}-${achievement.ID}`;
-            if (this.announcedAchievements.has(achievementKey)) {
-                console.log('Achievement already announced:', achievementKey);
-                return;
-            }
-
-            const badgeUrl = achievement.BadgeName
-                ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
-                : 'https://media.retroachievements.org/Badge/00000.png';
-
-            const userIconUrl = `https://retroachievements.org/UserPic/${username}.png`;
-            const earnedDate = new Date(parseInt(achievement.DateEarned) * 1000);
-            const achievementUrl = `https://retroachievements.org/achievement/${achievement.ID}`;
-
-            const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle('Achievement Unlocked! 🏆')
-                .setThumbnail(badgeUrl)
-                .setDescription(
-                    `**${username}** earned **[${achievement.Title || 'Achievement'}](${achievementUrl})**\n` +
-                    `*${achievement.Description || 'No description available'}*\n\n` +
-                    `**Game:** ${achievement.GameTitle || achievement.GameName || 'Unknown Game'}\n` +
-                    `**Points:** ${achievement.Points || '0'}`
-                )
-                .setFooter({
-                    text: `Earned at ${earnedDate.toLocaleString()}`,
-                    iconURL: userIconUrl
-                })
-                .setTimestamp();
-
-            console.log('Sending announcement to channel...');
-            await this.channel.send({ embeds: [embed] });
-            console.log('Announcement sent successfully');
-
-            this.announcedAchievements.add(achievementKey);
-
-            // Optional: Clear old announcements to prevent memory buildup
-            if (this.announcedAchievements.size > 1000) {
-                this.announcedAchievements.clear();
-            }
-        } catch (error) {
-            console.error('Failed to announce achievement:', error);
-            logError(error, `Achievement Announce: ${username}`);
-        }
-    }
-
-    stopFeed() {
-        if (this.intervalHandle) {
-            clearInterval(this.intervalHandle);
-            this.intervalHandle = null;
-            console.log('AchievementFeed: Stopped checking for new achievements');
-        }
+    } catch (error) {
+        console.error('Check Achievements Error:', error);
     }
 }
+
+async announceAchievement(username, achievement) {
+    if (!this.channel || !username || !achievement) {
+        console.log('Missing required data for announcement');
+        return;
+    }
+
+    const achievementKey = `${username}-${achievement.ID}`;
+    if (this.announcedAchievements.has(achievementKey)) {
+        console.log('Achievement already announced:', achievementKey);
+        return;
+    }
+
+    try {
+        console.log('Building announcement for:', {
+            username,
+            achievement: achievement.Title,
+            game: achievement.GameTitle || achievement.GameName
+        });
+
+        const badgeUrl = achievement.BadgeName
+            ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
+            : 'https://media.retroachievements.org/Badge/00000.png';
+
+        const userIconUrl = `https://retroachievements.org/UserPic/${username}.png`;
+        const earnedDate = new Date(parseInt(achievement.DateEarned) * 1000);
+        const achievementUrl = `https://retroachievements.org/achievement/${achievement.ID}`;
+
+        const embed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setTitle('Achievement Unlocked! 🏆')
+            .setThumbnail(badgeUrl)
+            .setDescription(
+                `**${username}** earned **[${achievement.Title || 'Achievement'}](${achievementUrl})**\n` +
+                `*${achievement.Description || 'No description available'}*\n\n` +
+                `**Game:** ${achievement.GameTitle || achievement.GameName || 'Unknown Game'}\n` +
+                `**Points:** ${achievement.Points || '0'}`
+            )
+            .setFooter({
+                text: `Earned at ${earnedDate.toLocaleString()}`,
+                iconURL: userIconUrl
+            })
+            .setTimestamp();
+
+        console.log('Sending achievement announcement to channel...');
+        await this.channel.send({ embeds: [embed] });
+        console.log('Successfully announced achievement');
+        
+        this.announcedAchievements.add(achievementKey);
+  } catch (error) {
+            console.error('Failed to announce achievement:', error);
+        }
+    }  // Close announceAchievement method
+}      // Close AchievementFeed class
 
 module.exports = AchievementFeed;
