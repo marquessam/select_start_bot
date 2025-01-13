@@ -7,7 +7,7 @@ const UserTracker = require('./userTracker');
 const Announcer = require('./utils/announcer');
 const createLeaderboardCache = require('./leaderboardCache');
 const ShadowGame = require('./shadowGame');
-const ErrorHandler = require('./utils/errorHandler');
+const { ErrorHandler } = require('./utils/errorHandler');  // Add this line
 const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
 
@@ -65,13 +65,9 @@ async function createCoreServices() {
         const commandHandler = new CommandHandler();
         const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
-        // Create an instance of AchievementFeed
         const achievementFeed = new AchievementFeed(client, database);
 
-        // Tie userStats into the leaderboard cache
         leaderboardCache.setUserStats(userStats);
-
-        // Expose the leaderboard cache globally (if needed by other modules)
         global.leaderboardCache = leaderboardCache;
 
         return {
@@ -85,7 +81,7 @@ async function createCoreServices() {
             mobyAPI
         };
     } catch (error) {
-        logError(error, 'Creating Core Services');
+        ErrorHandler.logError(error, 'Creating Core Services');  // Changed this line
         throw error;
     }
 }
