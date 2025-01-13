@@ -3,8 +3,65 @@ const { logError } = require('./utils/errorHandler');
 const raAPI = require('./raAPI');
 
 class AchievementFeed {
-    // ... (keep constructor and initialize methods the same)
+    constructor(client, database) {
+        this.client = client;
+        this.database = database;
+        this.channelId = process.env.ACHIEVEMENT_FEED_CHANNEL;
+        this.lastAchievements = new Map();
+        
+        // Check interval
+        this.checkInterval = 5 * 60 * 1000; // 5 minutes
+        this.channel = null;
+        this.intervalHandle = null;
 
+        // Discord Rate Limiting
+        this.MAX_ANNOUNCEMENTS = 5;
+        this.TIME_WINDOW_MS = 60 * 1000;
+        this.COOLDOWN_MS = 3 * 1000;
+        
+        this.announcementHistory = {
+            timestamps: [],
+            messageIds: new Set(),
+            lastAnnouncement: null
+        };
+    }
+
+    async initialize() {
+        try {
+            console.log('Initializing Achievement Feed...');
+            const channel = await this.client.channels.fetch(this.channelId);
+            if (!channel) {
+                throw new Error('Achievement Feed channel not found');
+            }
+
+            const permissions = channel.permissionsFor(this.client.user);
+            if (!permissions?.has([
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.SendMessages,
+                PermissionsBitField.Flags.EmbedLinks
+            ])) {
+                throw new Error('Missing required permissions for Achievement Feed channel');
+            }
+
+            this.channel = channel;
+            console.log('Achievement Feed channel found:', this.channelId);
+
+            await this.loadInitialAchievements();
+
+            this.intervalHandle = setInterval(() => {
+                this.checkNewAchievements().catch(err => {
+                    console.error('Achievement Feed Check Error:', err);
+                });
+            }, this.checkInterval);
+
+            console.log('Achievement Feed initialized successfully');
+            return true;
+        } catch (error) {
+            console.error('Achievement Feed Init Error:', error);
+            return false;
+        }
+    }
+    
     async fetchUserRecentAchievements(username) {
         try {
             const params = new URLSearchParams({
