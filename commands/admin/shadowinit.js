@@ -6,7 +6,7 @@ module.exports = {
     description: 'Initialize or reinitialize the shadow game',
     permissions: ['ADMINISTRATOR'],
     
-    async execute(message, args) {
+    async execute(message, args, client, database, services) {  // Add services parameter
         try {
             const shadowGameData = {
                 active: true,
@@ -45,8 +45,7 @@ module.exports = {
                 }
             };
 
-            const { shadowGame } = args.context;
-            await shadowGame.initialize(shadowGameData);
+            await services.shadowGame.initialize(shadowGameData);
 
             await message.channel.send('```ansi\n\x1b[32mShadow game initialized successfully.\nUse !shadowreset to begin the game.\n[Ready for input]█\x1b[0m```');
         } catch (error) {
