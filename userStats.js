@@ -377,9 +377,9 @@ class UserStats {
         }
     }
 
-    /**
+    //**
      * Unified method for handling "beaten game" logic and "mastery" logic.
-     */
+     *//
     async _handleBeatenAndMastery(
         user,
         username,
@@ -428,7 +428,7 @@ if (ruleSet) {
 
             await this.addBonusPoints(
                 username,
-                1,
+                3,
                 `${currentChallenge.gameName} - beaten`
             );
         }
@@ -484,7 +484,7 @@ if (ruleSet) {
 
                 await this.addBonusPoints(
                     username,
-                    5,
+                    3,
                     `${currentChallenge.gameName} - mastery`
                 );
             }
