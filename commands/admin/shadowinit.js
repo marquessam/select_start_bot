@@ -1,4 +1,5 @@
 // commands/admin/shadowinit.js
+const database = require('../../database');
 
 module.exports = {
     name: 'shadowinit',
@@ -6,7 +7,7 @@ module.exports = {
     description: 'Initialize or reinitialize the shadow game',
     permissions: ['ADMINISTRATOR'],
     
-    async execute(message, args, client, database, services) {  // Add services parameter
+    async execute(message, args) {
         try {
             const shadowGameData = {
                 active: true,
@@ -45,7 +46,8 @@ module.exports = {
                 }
             };
 
-            await services.shadowGame.initialize(shadowGameData);
+            // Save directly to database
+            await database.saveShadowGame(shadowGameData);
 
             await message.channel.send('```ansi\n\x1b[32mShadow game initialized successfully.\nUse !shadowreset to begin the game.\n[Ready for input]█\x1b[0m```');
         } catch (error) {
