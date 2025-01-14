@@ -1,3 +1,4 @@
+
 const { EmbedBuilder, PermissionsBitField } = require('discord.js');
 const { logError } = require('./utils/errorHandler');
 const raAPI = require('./raAPI');
