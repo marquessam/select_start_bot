@@ -130,6 +130,8 @@ class Database {
                 "All achievements are eligible",
                 "Progress tracked via retroachievements",
                 "No hacks/save states/cheats allowed",
+                "Any discrepancies, ties, or edge case situations will be judged case by case",
+                "and settled upon in the multiplayer game of each combatant's choosing",
             ],
             points: {
                 first: 6,
