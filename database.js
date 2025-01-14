@@ -134,8 +134,8 @@ class Database {
                 "and settled upon in the multiplayer game of each combatant's choosing",
             ],
             points: {
-                first: 6,
-                second: 4,
+                first: 5,
+                second: 3,
                 third: 2,
             },
             stats: {
