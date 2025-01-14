@@ -76,56 +76,70 @@ class AchievementFeed {
     }
 
     async checkNewAchievements() {
-        if (!this.channel) {
-            console.error('No valid channel to post in');
-            return;
-        }
+    if (!this.channel) {
+        console.error('No valid channel to post in');
+        return;
+    }
 
-        console.log('Starting achievement check...');
-        try {
-            const recentResults = await raAPI.fetchAllRecentAchievements();
-            console.log(`Checking achievements for ${recentResults.length} users`);
+    console.log('Starting achievement check...');
+    try {
+        const recentResults = await raAPI.fetchAllRecentAchievements();
+        console.log(`Checking achievements for ${recentResults.length} users`);
 
-            for (const userResult of recentResults) {
-                try {
-                    console.log(`Checking achievements for user: ${userResult.username}`);
-                    const achievements = userResult.achievements;
-                    
-                    if (!Array.isArray(achievements)) {
-                        console.log(`No achievements found for ${userResult.username}`);
-                        continue;
-                    }
+        for (const userResult of recentResults) {
+            try {
+                console.log(`Checking achievements for user: ${userResult.username}`);
+                const achievements = userResult.achievements;
+                
+                if (!Array.isArray(achievements)) {
+                    console.log(`No achievements found for ${userResult.username}`);
+                    continue;
+                }
 
-                    const username = userResult.username.toLowerCase();
-                    const previousAchievements = this.lastAchievements.get(username) || new Set();
-                    const currentAchievements = new Set(achievements.map(ach => ach.ID));
+                const username = userResult.username.toLowerCase();
+                const previousAchievements = this.lastAchievements.get(username) || new Set();
+                const currentAchievements = new Set(achievements.map(ach => ach.ID));
 
-                    // Find achievements that weren't in the previous set
-                    for (const achievement of achievements) {
-                        if (!previousAchievements.has(achievement.ID)) {
-                            console.log(`New achievement found for ${userResult.username}:`, {
-                                title: achievement.Title,
-                                game: achievement.GameTitle || achievement.GameName
-                            });
+                // Skip announcements during the first check after initialization
+                if (!this.hasInitializedBaseline) {
+                    // Just update the baseline without announcing
+                    this.lastAchievements.set(username, currentAchievements);
+                    continue;
+                }
 
-                            const achievementKey = `${username}-${achievement.ID}`;
-                            if (!this.announcedAchievements.has(achievementKey)) {
-                                await this.announceAchievement(userResult.username, achievement);
-                            }
+                // Find achievements that weren't in the previous set
+                for (const achievement of achievements) {
+                    if (!previousAchievements.has(achievement.ID)) {
+                        console.log(`New achievement found for ${userResult.username}:`, {
+                            title: achievement.Title,
+                            game: achievement.GameTitle || achievement.GameName
+                        });
+
+                        const achievementKey = `${username}-${achievement.ID}`;
+                        if (!this.announcedAchievements.has(achievementKey)) {
+                            await this.announceAchievement(userResult.username, achievement);
                         }
                     }
-
-                    // Update stored achievements for next check
-                    this.lastAchievements.set(username, currentAchievements);
-
-                } catch (error) {
-                    console.error(`Error processing achievements for ${userResult.username}:`, error);
                 }
+
+                // Update stored achievements for next check
+                this.lastAchievements.set(username, currentAchievements);
+
+            } catch (error) {
+                console.error(`Error processing achievements for ${userResult.username}:`, error);
             }
-        } catch (error) {
-            console.error('Check Achievements Error:', error);
         }
+
+        // After first complete check, set the flag true (if not already)
+        if (!this.hasInitializedBaseline) {
+            this.hasInitializedBaseline = true;
+        }
+
+    } catch (error) {
+        console.error('Check Achievements Error:', error);
     }
+}
+
 
     async announceAchievement(username, achievement) {
         if (!this.channel || !username || !achievement) {
