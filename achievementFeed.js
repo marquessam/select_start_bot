@@ -1,7 +1,7 @@
 // achievementFeed.js
-const TerminalEmbed = require('./embedBuilder');
+const TerminalEmbed = require('./utils/embedBuilder');
 const raAPI = require('./raAPI');
-const DataService = require('./dataService');
+const DataService = require('./utils/dataService');
 
 class AchievementFeed {
     constructor(client) {
