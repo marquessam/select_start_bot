@@ -377,9 +377,10 @@ class UserStats {
         }
     }
 
-    //**
-     * Unified method for handling "beaten game" logic and "mastery" logic.
-     *//
+      // -----------------------------
+    // Unified method for handling "beaten game" logic and "mastery" logic.
+   // -----------------------------
+    
     async _handleBeatenAndMastery(
         user,
         username,
