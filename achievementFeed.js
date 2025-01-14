@@ -87,7 +87,7 @@ class AchievementFeed {
         console.log(`Checking achievements for ${recentResults.length} users`);
 
         const now = Date.now();
-        const ONE_HOUR = 60 * 60 * 1000; // 1 hour in milliseconds
+        const TWO_HOURS = 2 * 60 * 60 * 1000; // 2 hours in milliseconds (increased window)
 
         for (const userResult of recentResults) {
             try {
@@ -103,17 +103,46 @@ class AchievementFeed {
                 const usernameKey = userResult.username.toLowerCase();
 
                 for (const achievement of recentAchievements) {
+                    // Log raw achievement data for debugging
+                    console.log('Processing achievement:', {
+                        id: achievement.ID,
+                        title: achievement.Title,
+                        earnedDate: achievement.DateEarned,
+                        timestamp: new Date(parseInt(achievement.DateEarned) * 1000).toLocaleString()
+                    });
+
                     const earnedDate = parseInt(achievement.DateEarned, 10) * 1000; // Convert to milliseconds
                     const achievementAge = now - earnedDate;
                     
-                    // Only announce achievements earned in the last hour
-                    if (achievementAge <= ONE_HOUR) {
+                    console.log('Achievement age check:', {
+                        age: achievementAge / 1000 / 60, // Convert to minutes for readability
+                        maxAge: TWO_HOURS / 1000 / 60,
+                        isRecent: achievementAge <= TWO_HOURS
+                    });
+                    
+                    // Only announce achievements earned in the last two hours
+                    if (achievementAge <= TWO_HOURS) {
                         const achievementKey = `${usernameKey}-${achievement.ID}`;
                         if (!this.announcedAchievements.has(achievementKey)) {
-                            console.log(`New achievement found for ${userResult.username}: ${achievement.Title}`);
-                            console.log('Achievement earned at:', new Date(earnedDate).toLocaleString());
-                            await this.announceAchievement(userResult.username, achievement);
+                            console.log(`New achievement found for ${userResult.username}:`, {
+                                title: achievement.Title,
+                                game: achievement.GameTitle || achievement.GameName,
+                                earnedAt: new Date(earnedDate).toLocaleString()
+                            });
+
+                            try {
+                                await this.announceAchievement(userResult.username, achievement);
+                            } catch (announceError) {
+                                console.error('Failed to announce achievement:', announceError);
+                            }
+                        } else {
+                            console.log(`Achievement ${achievement.Title} already announced for ${userResult.username}`);
                         }
+                    } else {
+                        console.log(`Achievement too old:`, {
+                            title: achievement.Title,
+                            age: Math.round(achievementAge / 1000 / 60) + ' minutes'
+                        });
                     }
                 }
             } catch (error) {
