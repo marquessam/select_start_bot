@@ -1,7 +1,8 @@
 // achievementFeed.js
-const TerminalEmbed = require('./utils/embedBuilder');
+const { EmbedBuilder } = require('discord.js');
 const raAPI = require('./raAPI');
-const DataService = require('./services/dataService');
+const DataService = require('./dataService');
+const { BotError, ErrorHandler } = require('./errorHandler');
 
 class AchievementFeed {
     constructor(client) {
@@ -9,6 +10,14 @@ class AchievementFeed {
         this.feedChannel = process.env.ACHIEVEMENT_FEED_CHANNEL;
         this.lastChecked = new Map();
         this.checkInterval = 5 * 60 * 1000; // Check every 5 minutes
+        this.announcementHistory = {
+            messageIds: new Set(),
+            timestamps: [],
+            lastAnnouncement: null
+        };
+        this.COOLDOWN_MS = 2000; // 2 second cooldown between announcements
+        this.TIME_WINDOW_MS = 60000; // 1 minute window
+        this.MAX_ANNOUNCEMENTS = 30; // Max 30 announcements per minute
     }
 
     async initialize() {
@@ -72,29 +81,75 @@ class AchievementFeed {
     }
 
     async sendAchievementNotification(channel, username, achievement) {
-        try {
-            const profile = await raAPI.fetchUserProfile(username);
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('Achievement Unlocked!')
-                .setTerminalDescription(
-                    `${username} has unlocked an achievement in ${achievement.GameTitle}!`
-                )
-                .addTerminalField(
-                    achievement.Title,
-                    achievement.Description
-                )
-                .addTerminalField(
-                    'Points',
-                    `${achievement.Points} points`
-                )
-                .setTerminalThumbnail(profile.profileImage)
-                .setImage(`https://retroachievements.org${achievement.BadgeURL}`)
-                .setTerminalFooter();
+        if (!channel) {
+            throw new BotError('Channel not available', ErrorHandler.ERROR_TYPES.VALIDATION, 'Announce Achievement');
+        }
+        if (!username || !achievement) {
+            throw new BotError('Missing user or achievement data', ErrorHandler.ERROR_TYPES.VALIDATION, 'Announce Achievement');
+        }
 
-            await channel.send({ embeds: [embed] });
+        try {
+            const achievementKey = `${username}-${achievement.ID}`;
+            if (this.announcementHistory.messageIds.has(achievementKey)) {
+                console.log(`[ACHIEVEMENT FEED] Skipping duplicate achievement announcement: ${achievementKey}`);
+                return;
+            }
+
+            const currentTime = Date.now();
+            if (this.announcementHistory.lastAnnouncement) {
+                const timeSinceLastAnnouncement = currentTime - this.announcementHistory.lastAnnouncement;
+                if (timeSinceLastAnnouncement < this.COOLDOWN_MS) {
+                    await new Promise(resolve => 
+                        setTimeout(resolve, this.COOLDOWN_MS - timeSinceLastAnnouncement)
+                    );
+                }
+            }
+
+            this.announcementHistory.timestamps = this.announcementHistory.timestamps.filter(
+                timestamp => currentTime - timestamp < this.TIME_WINDOW_MS
+            );
+
+            if (this.announcementHistory.timestamps.length >= this.MAX_ANNOUNCEMENTS) {
+                console.warn(`[ACHIEVEMENT FEED] Rate limit hit - queuing announcement for ${username}`);
+                setTimeout(() => this.sendAchievementNotification(channel, username, achievement), 
+                          this.TIME_WINDOW_MS / this.MAX_ANNOUNCEMENTS);
+                return;
+            }
+
+            const badgeUrl = achievement.BadgeName
+                ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
+                : 'https://media.retroachievements.org/Badge/00000.png';
+            const userIconUrl = `https://retroachievements.org/UserPic/${username}.png`;
+
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('Achievement Unlocked! 🏆')
+                .setThumbnail(badgeUrl)
+                .setDescription(
+                    `**${username}** earned **${achievement.Title || 'Achievement'}**\n` +
+                    `*${achievement.Description || 'No description available'}*`
+                )
+                .setFooter({
+                    text: `Points: ${achievement.Points || '0'}`,
+                    iconURL: userIconUrl
+                })
+                .setTimestamp();
+
+            const message = await channel.send({ embeds: [embed] });
+            
+            this.announcementHistory.timestamps.push(currentTime);
+            this.announcementHistory.messageIds.add(achievementKey);
+            this.announcementHistory.lastAnnouncement = currentTime;
+            
+            if (this.announcementHistory.messageIds.size > 1000) {
+                this.announcementHistory.messageIds.clear();
+            }
+
             console.log(`[ACHIEVEMENT FEED] Sent achievement notification for ${username}: ${achievement.Title}`);
+            return message;
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error sending achievement notification:', error);
+            throw error;
         }
     }
 
