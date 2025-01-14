@@ -1,30 +1,48 @@
+// achievementfeed.js
+
 const { EmbedBuilder, PermissionsBitField } = require('discord.js');
-const { logError } = require('./utils/errorHandler');
-const raAPI = require('./raAPI');
+const { fetchLeaderboardData, fetchAllRecentAchievements } = require('./raAPI');
+const { ErrorHandler, BotError } = require('./utils/errorHandler');
+const { withTransaction } = require('./utils/transactions');
+const commonValidators = require('./utils/validators');
 
 class AchievementFeed {
     constructor(client, database) {
         this.client = client;
         this.database = database;
+
         this.channelId = process.env.ACHIEVEMENT_FEED_CHANNEL;
+        this.lastAchievements = new Map(); // key: username, value: set of earned achievement IDs
         
-        // Check interval
-        this.checkInterval = 5 * 60 * 1000; // 5 minutes
+        // Increase check interval to reduce API load
+        this.checkInterval = 10 * 60 * 1000; // 10 minutes
         this.channel = null;
         this.intervalHandle = null;
 
-        // Track last checked achievements for each user
-        this.lastAchievements = new Map();
-        // Track announced achievements to avoid duplicates
-        this.announcedAchievements = new Set();
+        // Enhanced rate limiting
+        this.MAX_ANNOUNCEMENTS = 5;  // Max 5 announcements
+        this.TIME_WINDOW_MS = 60 * 1000;  // per 60 seconds
+        this.COOLDOWN_MS = 3 * 1000;  // 3 second cooldown between announcements
+        
+        // Track announcement history
+        this.announcementHistory = {
+            timestamps: [],
+            messageIds: new Set(),  // Track message IDs to prevent duplicates
+            lastAnnouncement: null  // Track last announcement time
+        };
+
+        // Error tracking
+        this.errorCount = 0;
+        this.lastError = null;
+        this.maxErrors = 5; // Max errors before temporary shutdown
+        this.errorResetInterval = 30 * 60 * 1000; // 30 minutes
     }
 
     async initialize() {
         try {
-            console.log('Initializing Achievement Feed...');
             const channel = await this.client.channels.fetch(this.channelId);
             if (!channel) {
-                throw new Error('Achievement Feed channel not found');
+                throw new BotError('Channel not found', ErrorHandler.ERROR_TYPES.VALIDATION, 'Achievement Feed Init');
             }
 
             const permissions = channel.permissionsFor(this.client.user);
@@ -33,163 +51,304 @@ class AchievementFeed {
                 PermissionsBitField.Flags.SendMessages,
                 PermissionsBitField.Flags.EmbedLinks
             ])) {
-                throw new Error('Missing required permissions for Achievement Feed channel');
+                throw new BotError('Missing required permissions', ErrorHandler.ERROR_TYPES.PERMISSION, 'Achievement Feed Init');
             }
 
             this.channel = channel;
-            console.log('Achievement Feed channel found:', this.channelId);
-
-            // Load initial state
+            // Load initial achievements from challenge data + recent achievements
             await this.loadInitialAchievements();
 
             this.intervalHandle = setInterval(() => {
                 this.checkNewAchievements().catch(err => {
-                    console.error('Achievement Feed Check Error:', err);
+                    this.handleError(err, 'Scheduled Check');
                 });
             }, this.checkInterval);
 
-            console.log('Achievement Feed initialized successfully');
+            console.log('AchievementFeed: Initialized successfully');
             return true;
         } catch (error) {
-            console.error('Achievement Feed Init Error:', error);
+            ErrorHandler.logError(error, 'Achievement Feed Init');
             return false;
         }
     }
 
+    /**
+     * loadInitialAchievements()
+     * Grabs both challenge-based data and recent achievements
+     * to populate the initial "lastAchievements" sets.
+     */
     async loadInitialAchievements() {
         try {
-            console.log('Loading initial achievements state...');
-            const recentResults = await raAPI.fetchAllRecentAchievements();
-            
-            for (const userResult of recentResults) {
-                if (!Array.isArray(userResult.achievements)) continue;
-                
-                const achievementIds = new Set(
-                    userResult.achievements.map(ach => ach.ID)
+            // 1. Fetch the challenge-based data
+            const challengeData = await fetchLeaderboardData();
+            // 2. Fetch recent achievements from all games
+            const recentData = await fetchAllRecentAchievements();
+
+            // Combine the two sets of achievements
+            const combinedUsers = this.mergeChallengeAndRecent(challengeData, recentData);
+
+            // Initialize lastAchievements with earned achievements
+            for (const user of combinedUsers) {
+                if (!user.achievements) continue;
+
+                const earnedAchievementIds = user.achievements
+                    .filter(ach => parseInt(ach.DateEarned, 10) > 0)
+                    .map(ach => ach.ID);
+
+                this.lastAchievements.set(
+                    user.username.toLowerCase(),
+                    new Set(earnedAchievementIds)
                 );
-                this.lastAchievements.set(userResult.username.toLowerCase(), achievementIds);
-                console.log(`Stored ${achievementIds.size} achievement IDs for ${userResult.username}`);
             }
         } catch (error) {
-            console.error('Error loading initial achievements:', error);
+            ErrorHandler.handleAPIError(error, 'Load Initial Achievements');
         }
     }
 
+    /**
+     * checkNewAchievements()
+     * Periodically checks for newly earned achievements from both
+     * challenge-based data and recent achievements across all games.
+     */
     async checkNewAchievements() {
-    if (!this.channel) {
-        console.error('No valid channel to post in');
-        return;
-    }
+        if (!this.channel) {
+            throw new BotError('No valid channel to post in', ErrorHandler.ERROR_TYPES.VALIDATION, 'Achievement Feed Channel');
+        }
 
-    console.log('Starting achievement check...');
-    try {
-        const recentResults = await raAPI.fetchAllRecentAchievements();
-        console.log(`Checking achievements for ${recentResults.length} users`);
+        try {
+            // 1. Fetch challenge data
+            const challengeData = await fetchLeaderboardData();
+            // 2. Fetch all recent achievements
+            const recentData = await fetchAllRecentAchievements();
 
-        for (const userResult of recentResults) {
-            try {
-                console.log(`Checking achievements for user: ${userResult.username}`);
-                const achievements = userResult.achievements;
-                
-                if (!Array.isArray(achievements)) {
-                    console.log(`No achievements found for ${userResult.username}`);
+            if (!challengeData?.leaderboard) {
+                throw new BotError('Invalid leaderboard data received', ErrorHandler.ERROR_TYPES.API, 'Fetch Leaderboard');
+            }
+
+            // 3. Merge user achievements
+            const combinedUsers = this.mergeChallengeAndRecent(challengeData, recentData);
+
+            // 4. Loop through each user to detect newly earned achievements
+            for (const user of combinedUsers) {
+                if (!user.achievements) continue;
+
+                const userKey = user.username.toLowerCase();
+                if (!commonValidators.username(userKey)) {
+                    ErrorHandler.handleValidationError(
+                        new Error('Invalid username format'),
+                        { username: userKey }
+                    );
                     continue;
                 }
 
-                const username = userResult.username.toLowerCase();
-                const previousAchievements = this.lastAchievements.get(username) || new Set();
-                const currentAchievements = new Set(achievements.map(ach => ach.ID));
+                const previouslyEarned = this.lastAchievements.get(userKey) || new Set();
+                const currentEarned = new Set();
 
-                // Skip announcements during the first check after initialization
-                if (!this.hasInitializedBaseline) {
-                    // Just update the baseline without announcing
-                    this.lastAchievements.set(username, currentAchievements);
-                    continue;
-                }
+                for (const ach of user.achievements) {
+                    try {
+                        const earnedDate = parseInt(ach.DateEarned, 10);
+                        
+                        if (earnedDate > 0) {
+                            currentEarned.add(ach.ID);
 
-                // Find achievements that weren't in the previous set
-                for (const achievement of achievements) {
-                    if (!previousAchievements.has(achievement.ID)) {
-                        console.log(`New achievement found for ${userResult.username}:`, {
-                            title: achievement.Title,
-                            game: achievement.GameTitle || achievement.GameName
-                        });
+                            if (!previouslyEarned.has(ach.ID)) {
+                                // Brief delay to avoid spamming
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                                
+                                await withTransaction(this.database, async (session) => {
+                                    await this.announceAchievement(user.username, ach);
 
-                        const achievementKey = `${username}-${achievement.ID}`;
-                        if (!this.announcedAchievements.has(achievementKey)) {
-                            await this.announceAchievement(userResult.username, achievement);
+                                    await this.database.db.collection('achievement_announcements')
+                                        .insertOne({
+                                            username: user.username,
+                                            achievementId: ach.ID,
+                                            timestamp: new Date(),
+                                            announced: true
+                                        }, { session });
+                                });
+                            }
                         }
+                    } catch (achievementError) {
+                        ErrorHandler.handleDatabaseError(
+                            achievementError,
+                            `Process Achievement: ${user.username} - ${ach.ID}`
+                        );
                     }
                 }
 
-                // Update stored achievements for next check
-                this.lastAchievements.set(username, currentAchievements);
+                this.lastAchievements.set(userKey, currentEarned);
+            }
+        } catch (error) {
+            if (error instanceof BotError) {
+                ErrorHandler.logError(error, 'Achievement Feed Check');
+            } else if (error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED') {
+                ErrorHandler.handleAPIError(error, 'RetroAchievements API');
+            } else {
+                ErrorHandler.handleDatabaseError(error, 'Achievement Feed Check');
+            }
 
-            } catch (error) {
-                console.error(`Error processing achievements for ${userResult.username}:`, error);
+            await this.handleError(error, 'Check Achievements');
+        }
+    }
+
+    /**
+     * Merges challenge-based data with all-recent data.
+     * Returns an array of user objects with a single 'achievements' array.
+     */
+    mergeChallengeAndRecent(challengeData, recentData) {
+        // Format: challengeData.leaderboard => [{ username, achievements: [...] }, ...]
+        // recentData => [{ username, achievements: [...] }, ...]
+
+        // Create a map from username to user object
+        const userMap = new Map();
+
+        // 1. Populate from challenge data
+        for (const userObj of challengeData.leaderboard || []) {
+            userMap.set(userObj.username.toLowerCase(), {
+                username: userObj.username,
+                achievements: userObj.achievements || []
+            });
+        }
+
+        // 2. Merge in recent achievements
+        for (const recentUser of recentData) {
+            const key = recentUser.username.toLowerCase();
+            if (!userMap.has(key)) {
+                // If user wasn't in challenge data, add a new entry
+                userMap.set(key, {
+                    username: recentUser.username,
+                    achievements: recentUser.achievements
+                });
+            } else {
+                // Merge achievements with existing
+                const existingData = userMap.get(key);
+                const mergedAchievements = [
+                    ...(existingData.achievements || []),
+                    ...(recentUser.achievements || [])
+                ];
+                userMap.set(key, {
+                    username: recentUser.username,
+                    achievements: mergedAchievements
+                });
             }
         }
 
-        // After first complete check, set the flag true (if not already)
-        if (!this.hasInitializedBaseline) {
-            this.hasInitializedBaseline = true;
-        }
-
-    } catch (error) {
-        console.error('Check Achievements Error:', error);
+        // Convert map back to an array
+        return Array.from(userMap.values());
     }
-}
-
 
     async announceAchievement(username, achievement) {
-        if (!this.channel || !username || !achievement) {
-            console.log('Missing required data for announcement');
-            return;
+        if (!this.channel) {
+            throw new BotError('Channel not available', ErrorHandler.ERROR_TYPES.VALIDATION, 'Announce Achievement');
         }
 
-        const achievementKey = `${username}-${achievement.ID}`;
-        if (this.announcedAchievements.has(achievementKey)) {
-            console.log('Achievement already announced:', achievementKey);
-            return;
+        if (!username || !achievement) {
+            throw new BotError('Missing user or achievement data', ErrorHandler.ERROR_TYPES.VALIDATION, 'Announce Achievement');
         }
 
         try {
-            console.log('Building announcement for:', {
-                username,
-                achievement: achievement.Title,
-                game: achievement.GameTitle || achievement.GameName
-            });
+            const achievementKey = `${username}-${achievement.ID}`;
+            if (this.announcementHistory.messageIds.has(achievementKey)) {
+                console.log(`Skipping duplicate achievement announcement: ${achievementKey}`);
+                return;
+            }
+
+            const currentTime = Date.now();
+            if (this.announcementHistory.lastAnnouncement) {
+                const timeSinceLastAnnouncement = currentTime - this.announcementHistory.lastAnnouncement;
+                if (timeSinceLastAnnouncement < this.COOLDOWN_MS) {
+                    await new Promise(resolve => 
+                        setTimeout(resolve, this.COOLDOWN_MS - timeSinceLastAnnouncement)
+                    );
+                }
+            }
+
+            this.announcementHistory.timestamps = this.announcementHistory.timestamps.filter(
+                timestamp => currentTime - timestamp < this.TIME_WINDOW_MS
+            );
+
+            if (this.announcementHistory.timestamps.length >= this.MAX_ANNOUNCEMENTS) {
+                console.warn(`Rate limit hit - queuing announcement for ${username}`);
+                setTimeout(() => this.announceAchievement(username, achievement), 
+                          this.TIME_WINDOW_MS / this.MAX_ANNOUNCEMENTS);
+                return;
+            }
 
             const badgeUrl = achievement.BadgeName
                 ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
                 : 'https://media.retroachievements.org/Badge/00000.png';
 
             const userIconUrl = `https://retroachievements.org/UserPic/${username}.png`;
-            const achievementUrl = `https://retroachievements.org/achievement/${achievement.ID}`;
+
+            // Include the game name from the achievement object (if available)
+            const gameName = achievement.GameTitle || 'Unknown Game';
 
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
                 .setTitle('Achievement Unlocked! 🏆')
                 .setThumbnail(badgeUrl)
                 .setDescription(
-                    `**${username}** earned **[${achievement.Title || 'Achievement'}](${achievementUrl})**\n` +
+                    `**${username}** earned **${achievement.Title || 'Achievement'}**\n` +
                     `*${achievement.Description || 'No description available'}*\n\n` +
-                    `**Game:** ${achievement.GameTitle || achievement.GameName || 'Unknown Game'}\n` +
-                    `**Points:** ${achievement.Points || '0'}`
+                    `**Game:** ${gameName}`
                 )
                 .setFooter({
-                    text: `Achievement Feed`,
+                    text: `Points: ${achievement.Points || '0'}`,
                     iconURL: userIconUrl
                 })
                 .setTimestamp();
 
-            console.log('Sending achievement announcement to channel...');
-            await this.channel.send({ embeds: [embed] });
-            console.log('Successfully announced achievement');
+            const message = await this.channel.send({ embeds: [embed] });
             
-            this.announcedAchievements.add(achievementKey);
+            this.announcementHistory.timestamps.push(currentTime);
+            this.announcementHistory.messageIds.add(achievementKey);
+            this.announcementHistory.lastAnnouncement = currentTime;
+
+            if (this.announcementHistory.messageIds.size > 1000) {
+                this.announcementHistory.messageIds.clear();
+            }
+
+            return message;
         } catch (error) {
-            console.error('Failed to announce achievement:', error);
+            await this.handleError(error, 'Announce Achievement');
+        }
+    }
+
+    async handleError(error, context) {
+        this.errorCount++;
+        this.lastError = {
+            time: Date.now(),
+            error: error,
+            context: context
+        };
+
+        ErrorHandler.logError(error, `Achievement Feed - ${context}`);
+
+        if (this.errorCount >= this.maxErrors) {
+            console.error('Achievement Feed: Too many errors, temporarily stopping feed');
+            this.stopFeed();
+            
+            setTimeout(() => {
+                console.log('Achievement Feed: Attempting restart after error shutdown');
+                this.errorCount = 0;
+                this.initialize().catch(err => {
+                    console.error('Achievement Feed: Failed to restart:', err);
+                });
+            }, this.errorResetInterval);
+        }
+
+        try {
+            if (this.channel) {
+                const embed = new EmbedBuilder()
+                    .setColor('#FF0000')
+                    .setTitle('Achievement Feed Error')
+                    .setDescription('The achievement feed encountered an error. Some achievements may be delayed.')
+                    .setTimestamp();
+
+                await this.channel.send({ embeds: [embed] });
+            }
+        } catch (notifyError) {
+            console.error('Achievement Feed: Failed to send error notification:', notifyError);
         }
     }
 
@@ -201,5 +360,7 @@ class AchievementFeed {
         }
     }
 }
+
+module.exports = AchievementFeed;
 
 module.exports = AchievementFeed;
