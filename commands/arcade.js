@@ -79,24 +79,9 @@ async function showGameList(message) {
             '!arcade <game number> - View specific game rankings\n' +
             '!arcade reset <game_number> [username] - Reset scores\n' +
             '!arcade rules - Update game rules'
-        );
+        )
+        .setTerminalFooter();
 
-    // Attempt to embed an image for the first game
-    const firstGameName = Object.keys(arcadeData.games)[0];
-    const firstGameData = arcadeData.games[firstGameName];
-    let firstBoxArt = firstGameData?.boxArt;
-    
-    // If there's no box art in the database, fetch from Moby
-    if (!firstBoxArt && firstGameName) {
-        firstBoxArt = await fetchBoxArt(firstGameName);
-    }
-
-    // If we have a box art URL, set it in the embed
-    if (firstBoxArt) {
-        embed.setImage(firstBoxArt);
-    }
-
-    embed.setTerminalFooter();
     await message.channel.send({ embeds: [embed] });
 }
 
