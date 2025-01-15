@@ -23,7 +23,8 @@ const createNominationGraphic = {
                 return;
             }
 
-            const month = new Date().toLocaleString('en-US', { month: 'JANUARY' });
+            // Get current month in uppercase
+            const month = new Date().toLocaleString('en-US', { month: 'long' }).toUpperCase();
             const nominations = await database.getNominations();
             if (!nominations.length) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] No nominations found\n[Ready for input]█\x1b[0m```');
