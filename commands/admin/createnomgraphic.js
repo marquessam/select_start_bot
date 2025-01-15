@@ -60,6 +60,38 @@ const createNominationGraphic = {
         return shuffled.slice(0, Math.min(count, nominations.length));
     },
 
+    sanitizeDescription(description) {
+        if (!description) return '';
+        return description.replace(/<[^>]*>/g, '').trim();
+    },
+
+    async searchAndGetGameData(gameName, mobyAPI) {
+        // Initial search
+        let result = await mobyAPI.searchGames(gameName);
+        
+        // Try fallback for known titles if no results
+        if (!result?.games?.length) {
+            const fallbackQuery = gameName.replace(/\bpokemon\b/i, 'pokémon');
+            if (fallbackQuery !== gameName) {
+                result = await mobyAPI.searchGames(fallbackQuery);
+            }
+        }
+
+        if (!result?.games?.length) return null;
+        return result.games[0];
+    },
+
+    getGameMetadata(gameData) {
+        return {
+            title: gameData.title,
+            description: this.sanitizeDescription(gameData.description),
+            genres: gameData.genres?.map(g => g.genre_name) || [],
+            platforms: gameData.platforms || [],
+            year: gameData.first_release_date?.slice(0, 4) || 'N/A',
+            mobyScore: gameData.moby_score ? Math.round(gameData.moby_score * 10) : null
+        };
+    },
+
     async generateGraphic(nominations, progressMsg, month) {
         const canvas = createCanvas(900, 1200);
         const ctx = canvas.getContext('2d');
@@ -80,7 +112,6 @@ const createNominationGraphic = {
         ctx.fillStyle = '#FFFFFF';
         ctx.fillText('RETRO CHALLENGE', 200, 60);
         
-        // Draw "NOMINEES" in purple
         ctx.fillStyle = PURPLE;
         const nomineesWidth = ctx.measureText('NOMINEES').width;
         ctx.fillText('NOMINEES', canvas.width - nomineesWidth - 20, 60);
@@ -97,58 +128,53 @@ const createNominationGraphic = {
                         .setTerminalFooter()]
                 });
 
-                const searchResult = await mobyAPI.searchGames(nom.game);
-                if (!searchResult?.games?.length) continue;
+                const gameData = await this.searchAndGetGameData(nom.game, mobyAPI);
+                if (!gameData) continue;
 
-                const gameData = await mobyAPI.getGameDetails(searchResult.games[0].game_id);
-                const artwork = await mobyAPI.getGameArtwork(searchResult.games[0].game_id);
-
-                // Alternate background colors
+                const metadata = this.getGameMetadata(gameData);
                 const isYellow = index % 2 === 1;
+
+                // Draw section background
                 ctx.fillStyle = isYellow ? YELLOW : PURPLE;
                 ctx.fillRect(0, yOffset, canvas.width, 220);
 
-                try {
-                    const platformArtwork = artwork?.platforms?.find(p => 
-                        p.platform_name.toLowerCase().includes(nom.platform.toLowerCase())
-                    );
-                    const coverUrl = platformArtwork?.cover_url || artwork?.platforms[0]?.cover_url;
-
-                    if (coverUrl) {
-                        const boxArt = await loadImage(coverUrl);
-                        // Alternate box art position
+                // Try to load box art
+                if (gameData.sample_cover?.image) {
+                    try {
+                        const boxArt = await loadImage(gameData.sample_cover.image);
                         const boxArtX = isYellow ? 20 : canvas.width - 170;
                         ctx.drawImage(boxArt, boxArtX, yOffset + 10, 150, 180);
+                    } catch (err) {
+                        console.error('Error loading box art:', err);
                     }
-                } catch (err) {
-                    console.error('Error loading box art:', err);
                 }
 
                 // Text color and position based on background
                 ctx.fillStyle = isYellow ? '#000000' : '#FFFFFF';
                 const textX = isYellow ? 190 : 20;
+                const textWidth = canvas.width - textX - 190;
 
                 // Game title
                 ctx.font = 'bold 36px Arial';
-                const year = gameData?.first_release_date?.slice(0, 4);
-                const titleText = `${nom.game} (${year || 'N/A'}, ${nom.platform})`;
+                ctx.fillStyle = isYellow ? PURPLE : '#FFFFFF';
+                const titleText = `${metadata.title} (${metadata.year}, ${nom.platform})`;
                 ctx.fillText(titleText, textX, yOffset + 45);
 
                 // Genre and Metacritic
                 ctx.font = 'bold 24px Arial';
-                const genre = gameData?.genres?.[0]?.genre_name || 'Unknown Genre';
-                const metascore = gameData?.moby_score ? Math.round(gameData.moby_score * 10) : '??';
+                ctx.fillStyle = isYellow ? '#000000' : '#FFFFFF';
+                const genre = metadata.genres[0] || 'Unknown Genre';
+                const metascore = metadata.mobyScore || '??';
                 ctx.fillText(`${genre} (Metacritic: ${metascore})`, textX, yOffset + 80);
 
                 // Description
-                let description = gameData?.description || 'A classic retro gaming experience nominated for this month\'s challenge.';
-                description = description.replace(/<[^>]*>/g, '');
-                description = description.length > 300 ? 
-                    description.substring(0, 297) + '...' : 
-                    description;
+                let description = metadata.description || 'A classic retro gaming experience nominated for this month\'s challenge.';
+                if (description.length > 300) {
+                    description = description.substring(0, 297) + '...';
+                }
 
                 ctx.font = '16px Arial';
-                const wrappedDesc = this.wrapText(ctx, description, 650);
+                const wrappedDesc = this.wrapText(ctx, description, textWidth);
                 let textY = yOffset + 110;
                 wrappedDesc.forEach(line => {
                     ctx.fillText(line, textX, textY);
