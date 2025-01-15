@@ -5,12 +5,13 @@ const database = require('../../database');
 
 const PURPLE = '#5C3391';
 const YELLOW = '#FFD700';
+const SPACE_BETWEEN_GAMES = 220; // Consistent spacing
 
 const createNominationGraphic = {
     name: 'createnomgraphic',
     description: 'Create a graphic with random nominations',
 
-    async execute(message, args, { mobyAPI }) {  // Added mobyAPI from context
+    async execute(message, args, { mobyAPI }) {
         try {
             // Check admin permissions
             const hasPermission = message.member && (
@@ -23,7 +24,6 @@ const createNominationGraphic = {
                 return;
             }
 
-            // Get current month in uppercase
             const month = new Date().toLocaleString('en-US', { month: 'long' }).toUpperCase();
             const nominations = await database.getNominations();
             if (!nominations.length) {
@@ -33,18 +33,26 @@ const createNominationGraphic = {
 
             const count = args[0] ? parseInt(args[0]) : 10;
             const selectedNoms = this.getRandomNominations(nominations, count);
+            const processedGames = [];
 
             const progressEmbed = new TerminalEmbed()
                 .setTerminalTitle('GENERATING NOMINATION GRAPHIC')
                 .setTerminalDescription('[PROCESS INITIATED]')
-                .addTerminalField('STATUS', 'Fetching game data from MobyGames API...')
+                .addTerminalField('STATUS', 'Processing nominations...')
                 .setTerminalFooter();
             
             const progressMsg = await message.channel.send({ embeds: [progressEmbed] });
 
+            // Process each game, potentially with user interaction
+            for (const nom of selectedNoms) {
+                const gameData = await this.processGame(message, nom, mobyAPI);
+                if (gameData) {
+                    processedGames.push({ ...nom, ...gameData });
+                }
+            }
+
             try {
-                // Pass mobyAPI to generateGraphic
-                const attachment = await this.generateGraphic(selectedNoms, progressMsg, month, mobyAPI);
+                const attachment = await this.generateGraphic(processedGames, progressMsg, month);
                 await message.channel.send({ files: [attachment] });
             } finally {
                 await progressMsg.delete().catch(console.error);
@@ -56,51 +64,108 @@ const createNominationGraphic = {
         }
     },
 
+    async processGame(message, nom, mobyAPI) {
+        try {
+            // Initial search
+            const searchResult = await mobyAPI.searchGames(nom.game);
+            
+            if (!searchResult?.games?.length) {
+                // No results found, offer manual input
+                return await this.handleManualInput(message, nom);
+            }
+
+            if (searchResult.games.length > 1) {
+                // Multiple results found, let user choose
+                return await this.handleMultipleResults(message, nom, searchResult.games);
+            }
+
+            return this.formatGameData(searchResult.games[0]);
+        } catch (error) {
+            console.error('Error processing game:', error);
+            return await this.handleManualInput(message, nom);
+        }
+    },
+
+    async handleMultipleResults(message, nom, games) {
+        const choices = games.slice(0, 5).map((game, i) => 
+            `${i + 1}. ${game.title} (${game.platforms?.[0]?.platform_name || 'Unknown Platform'})`
+        ).join('\n');
+
+        await message.channel.send(
+            '```ansi\n\x1b[32mMultiple matches found for ' + nom.game + ':\n' +
+            choices + '\n\n' +
+            'Enter a number to select, "M" for manual input, or "S" to skip.\n' +
+            '[Ready for input]█\x1b[0m```'
+        );
+
+        const filter = m => m.author.id === message.author.id;
+        const response = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: 30000
+        });
+
+        if (!response.size) return null;
+        const choice = response.first().content.toLowerCase();
+
+        if (choice === 'm') {
+            return await this.handleManualInput(message, nom);
+        }
+        if (choice === 's') {
+            return null;
+        }
+
+        const index = parseInt(choice) - 1;
+        if (index >= 0 && index < games.length) {
+            return this.formatGameData(games[index]);
+        }
+        return null;
+    },
+
+    async handleManualInput(message, nom) {
+        await message.channel.send(
+            '```ansi\n\x1b[32mEnter game details in this format:\n' +
+            'Description | Genre | Metacritic Score\n' +
+            'Or type "skip" to skip this game.\n' +
+            '[Ready for input]█\x1b[0m```'
+        );
+
+        const filter = m => m.author.id === message.author.id;
+        const response = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: 60000
+        });
+
+        if (!response.size || response.first().content.toLowerCase() === 'skip') {
+            return null;
+        }
+
+        const [description, genre, score] = response.first().content.split('|').map(s => s.trim());
+        return {
+            title: nom.game,
+            description: description || 'No description available.',
+            genre: genre || 'Unknown Genre',
+            mobyScore: score || '??'
+        };
+    },
+
+    formatGameData(game) {
+        return {
+            title: game.title,
+            description: game.description || 'No description available.',
+            genre: game.genres?.[0]?.genre_name || 'Unknown Genre',
+            mobyScore: game.moby_score ? Math.round(game.moby_score * 10) : '??',
+            sample_cover: game.sample_cover
+        };
+    },
+
     getRandomNominations(nominations, count) {
         const shuffled = [...nominations].sort(() => 0.5 - Math.random());
         return shuffled.slice(0, Math.min(count, nominations.length));
     },
 
-    sanitizeDescription(description) {
-        if (!description) return '';
-        return description.replace(/<[^>]*>/g, '').trim();
-    },
-
-    async searchAndGetGameData(gameName, mobyAPI) {
-        try {
-            // Initial search
-            const result = await mobyAPI.searchGames(gameName);
-            
-            if (!result?.games?.length) {
-                const fallbackQuery = gameName.replace(/\bpokemon\b/i, 'pokémon');
-                if (fallbackQuery !== gameName) {
-                    const fallbackResult = await mobyAPI.searchGames(fallbackQuery);
-                    if (fallbackResult?.games?.length) {
-                        return fallbackResult.games[0];
-                    }
-                }
-                return null;
-            }
-
-            return result.games[0];
-        } catch (error) {
-            console.error('Search error:', error);
-            return null;
-        }
-    },
-
-    getGameMetadata(gameData) {
-        return {
-            title: gameData.title,
-            description: this.sanitizeDescription(gameData.description || ''),
-            genres: gameData.genres?.map(g => g.genre_name) || [],
-            platforms: gameData.platforms || [],
-            year: gameData.first_release_date?.slice(0, 4) || 'N/A',
-            mobyScore: gameData.moby_score ? Math.round(gameData.moby_score * 10) : null
-        };
-    },
-
-    async generateGraphic(nominations, progressMsg, month, mobyAPI) {  // Added mobyAPI parameter
+    async generateGraphic(games, progressMsg, month) {
         const canvas = createCanvas(900, 1200);
         const ctx = canvas.getContext('2d');
 
@@ -108,16 +173,14 @@ const createNominationGraphic = {
         ctx.fillStyle = '#2C2C2C';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Header with dark background
+        // Header
         ctx.fillStyle = '#1A1A1A';
         ctx.fillRect(0, 0, canvas.width, 100);
         
         // Draw header text
-        ctx.fillStyle = '#FFFFFF';
         ctx.font = 'bold 48px Arial';
-        ctx.fillText(month, 20, 60);
-        
         ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(month, 20, 60);
         ctx.fillText('RETRO CHALLENGE', 200, 60);
         
         ctx.fillStyle = PURPLE;
@@ -126,79 +189,65 @@ const createNominationGraphic = {
 
         let yOffset = 120;
 
-        for (const [index, nom] of nominations.entries()) {
-            try {
-                await progressMsg.edit({
-                    embeds: [new TerminalEmbed()
-                        .setTerminalTitle('GENERATING NOMINATION GRAPHIC')
-                        .setTerminalDescription('[PROCESS RUNNING]')
-                        .addTerminalField('STATUS', `Processing game ${index + 1}/${nominations.length}: ${nom.game}`)
-                        .setTerminalFooter()]
-                });
+        for (const [index, game] of games.entries()) {
+            const isYellow = index % 2 === 1;
 
-                const gameData = await this.searchAndGetGameData(nom.game, mobyAPI);
-                if (!gameData) {
-                    console.log(`No game data found for: ${nom.game}`);
-                    continue;
+            // Update progress
+            await progressMsg.edit({
+                embeds: [new TerminalEmbed()
+                    .setTerminalTitle('GENERATING NOMINATION GRAPHIC')
+                    .setTerminalDescription('[PROCESS RUNNING]')
+                    .addTerminalField('STATUS', `Processing game ${index + 1}/${games.length}: ${game.title}`)
+                    .setTerminalFooter()]
+            });
+
+            // Background
+            ctx.fillStyle = isYellow ? YELLOW : PURPLE;
+            ctx.fillRect(0, yOffset, canvas.width, SPACE_BETWEEN_GAMES - 20);
+
+            // Box art
+            if (game.sample_cover?.image) {
+                try {
+                    const boxArt = await loadImage(game.sample_cover.image);
+                    const boxArtX = isYellow ? 20 : canvas.width - 170;
+                    ctx.drawImage(boxArt, boxArtX, yOffset + 10, 150, 180);
+                } catch (err) {
+                    console.error('Error loading box art:', err);
                 }
-
-                const metadata = this.getGameMetadata(gameData);
-                const isYellow = index % 2 === 1;
-
-                // Draw section background
-                ctx.fillStyle = isYellow ? YELLOW : PURPLE;
-                ctx.fillRect(0, yOffset, canvas.width, 220);
-
-                // Try to load box art
-                if (gameData.sample_cover?.image) {
-                    try {
-                        const boxArt = await loadImage(gameData.sample_cover.image);
-                        const boxArtX = isYellow ? 20 : canvas.width - 170;
-                        ctx.drawImage(boxArt, boxArtX, yOffset + 10, 150, 180);
-                    } catch (err) {
-                        console.error('Error loading box art:', err);
-                    }
-                }
-
-                // Text color and position based on background
-                ctx.fillStyle = isYellow ? '#000000' : '#FFFFFF';
-                const textX = isYellow ? 190 : 20;
-                const textWidth = canvas.width - textX - 190;
-
-                // Game title
-                ctx.font = 'bold 36px Arial';
-                ctx.fillStyle = isYellow ? PURPLE : '#FFFFFF';
-                const titleText = metadata.year !== 'N/A' ? 
-                    `${metadata.title} (${metadata.year}, ${nom.platform})` :
-                    `${metadata.title} (${nom.platform})`;
-                ctx.fillText(titleText, textX, yOffset + 45);
-
-                // Genre and Metacritic
-                ctx.font = 'bold 24px Arial';
-                ctx.fillStyle = isYellow ? '#000000' : '#FFFFFF';
-                const genre = metadata.genres[0] || 'Unknown Genre';
-                const metascore = metadata.mobyScore || '??';
-                ctx.fillText(`${genre} (Metacritic: ${metascore})`, textX, yOffset + 80);
-
-                // Description
-                let description = metadata.description || 'A classic retro gaming experience nominated for this month\'s challenge.';
-                if (description.length > 300) {
-                    description = description.substring(0, 297) + '...';
-                }
-
-                ctx.font = '16px Arial';
-                const wrappedDesc = this.wrapText(ctx, description, textWidth);
-                let textY = yOffset + 110;
-                wrappedDesc.forEach(line => {
-                    ctx.fillText(line, textX, textY);
-                    textY += 20;
-                });
-
-                yOffset += 220;
-            } catch (error) {
-                console.error(`Error processing game ${nom.game}:`, error);
-                continue;
             }
+
+            // Text position
+            const textX = isYellow ? 190 : 20;
+            const textWidth = canvas.width - 210;
+
+            // Title (in purple for yellow backgrounds, white for purple backgrounds)
+            ctx.font = 'bold 36px Arial';
+            ctx.fillStyle = isYellow ? PURPLE : '#FFFFFF';
+            ctx.fillText(game.title, textX, yOffset + 45);
+            
+            // Platform (in black for yellow backgrounds, white for purple backgrounds)
+            ctx.font = 'bold 24px Arial';
+            ctx.fillStyle = isYellow ? '#000000' : '#FFFFFF';
+            ctx.fillText(`${game.platform} (Metacritic: ${game.mobyScore})`, textX, yOffset + 80);
+
+            // Genre
+            ctx.fillText(game.genre, textX, yOffset + 110);
+
+            // Description
+            let description = game.description;
+            if (description.length > 300) {
+                description = description.substring(0, 297) + '...';
+            }
+
+            ctx.font = '16px Arial';
+            const wrappedDesc = this.wrapText(ctx, description, textWidth);
+            let textY = yOffset + 140;
+            wrappedDesc.forEach(line => {
+                ctx.fillText(line, textX, textY);
+                textY += 20;
+            });
+
+            yOffset += SPACE_BETWEEN_GAMES;
         }
 
         const buffer = canvas.toBuffer('image/png');
