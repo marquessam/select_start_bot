@@ -3,9 +3,11 @@ const { AttachmentBuilder } = require('discord.js');
 const TerminalEmbed = require('../../utils/embedBuilder');
 const database = require('../../database');
 
-const PURPLE = '#5C3391';
-const YELLOW = '#FFD700';
-const SPACE_BETWEEN_GAMES = 220; // Consistent spacing
+const SPACING = {
+    BETWEEN_GAMES: 240,    // Increased from 220
+    GAME_HEIGHT: 200,      // Height of each game section
+    MARGIN: 20            // Margin between sections
+};
 
 const createNominationGraphic = {
     name: 'createnomgraphic',
@@ -124,9 +126,11 @@ const createNominationGraphic = {
 
     async handleManualInput(message, nom) {
         await message.channel.send(
-            '```ansi\n\x1b[32mEnter game details in this format:\n' +
-            'Description | Genre | Metacritic Score\n' +
-            'Or type "skip" to skip this game.\n' +
+            '```ansi\n\x1b[32mEnter details for: ' + nom.game + '\n\n' +
+            'Format: Description | Genre | Metacritic Score\n' +
+            'Example: A classic RPG with turn-based combat | RPG | 85\n\n' +
+            'You have 60 seconds to respond.\n' +
+            'Type "skip" to skip this game.\n' +
             '[Ready for input]█\x1b[0m```'
         );
 
@@ -150,14 +154,16 @@ const createNominationGraphic = {
         };
     },
 
-    formatGameData(game) {
-        return {
-            title: game.title,
-            description: game.description || 'No description available.',
-            genre: game.genres?.[0]?.genre_name || 'Unknown Genre',
-            mobyScore: game.moby_score ? Math.round(game.moby_score * 10) : '??',
-            sample_cover: game.sample_cover
-        };
+    sanitizeDescription(text) {
+        if (!text) return '';
+        // Remove HTML tags
+        text = text.replace(/<[^>]*>/g, '');
+        // Remove multiple spaces
+        text = text.replace(/\s+/g, ' ');
+        // Remove special characters and normalize
+        text = text.replace(/[^\w\s.,!?-]/g, '');
+        // Trim whitespace
+        return text.trim();
     },
 
     getRandomNominations(nominations, count) {
@@ -177,15 +183,18 @@ const createNominationGraphic = {
         ctx.fillStyle = '#1A1A1A';
         ctx.fillRect(0, 0, canvas.width, 100);
         
-        // Draw header text
+        // Draw header text with proper spacing
         ctx.font = 'bold 48px Arial';
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillText(month, 20, 60);
-        ctx.fillText('RETRO CHALLENGE', 200, 60);
+        const headerParts = [
+            { text: month, color: '#FFFFFF', x: 20 },
+            { text: 'RETRO CHALLENGE', color: '#FFFFFF', x: 220 },
+            { text: 'NOMINEES', color: PURPLE, x: 650 }
+        ];
         
-        ctx.fillStyle = PURPLE;
-        const nomineesWidth = ctx.measureText('NOMINEES').width;
-        ctx.fillText('NOMINEES', canvas.width - nomineesWidth - 20, 60);
+        headerParts.forEach(part => {
+            ctx.fillStyle = part.color;
+            ctx.fillText(part.text, part.x, 60);
+        });
 
         let yOffset = 120;
 
