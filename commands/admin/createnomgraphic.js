@@ -2,7 +2,6 @@ const { createCanvas, loadImage } = require('canvas');
 const { AttachmentBuilder } = require('discord.js');
 const TerminalEmbed = require('../../utils/embedBuilder');
 const database = require('../../database');
-const mobyAPI = require('../../mobyAPI');
 
 const PURPLE = '#5C3391';
 const YELLOW = '#FFD700';
@@ -11,7 +10,7 @@ const createNominationGraphic = {
     name: 'createnomgraphic',
     description: 'Create a graphic with random nominations',
 
-    async execute(message, args) {
+    async execute(message, args, { mobyAPI }) {  // Added mobyAPI from context
         try {
             // Check admin permissions
             const hasPermission = message.member && (
@@ -43,7 +42,8 @@ const createNominationGraphic = {
             const progressMsg = await message.channel.send({ embeds: [progressEmbed] });
 
             try {
-                const attachment = await this.generateGraphic(selectedNoms, progressMsg, month);
+                // Pass mobyAPI to generateGraphic
+                const attachment = await this.generateGraphic(selectedNoms, progressMsg, month, mobyAPI);
                 await message.channel.send({ files: [attachment] });
             } finally {
                 await progressMsg.delete().catch(console.error);
@@ -66,25 +66,32 @@ const createNominationGraphic = {
     },
 
     async searchAndGetGameData(gameName, mobyAPI) {
-        // Initial search
-        let result = await mobyAPI.searchGames(gameName);
-        
-        // Try fallback for known titles if no results
-        if (!result?.games?.length) {
-            const fallbackQuery = gameName.replace(/\bpokemon\b/i, 'pokémon');
-            if (fallbackQuery !== gameName) {
-                result = await mobyAPI.searchGames(fallbackQuery);
+        try {
+            // Initial search
+            const result = await mobyAPI.searchGames(gameName);
+            
+            if (!result?.games?.length) {
+                const fallbackQuery = gameName.replace(/\bpokemon\b/i, 'pokémon');
+                if (fallbackQuery !== gameName) {
+                    const fallbackResult = await mobyAPI.searchGames(fallbackQuery);
+                    if (fallbackResult?.games?.length) {
+                        return fallbackResult.games[0];
+                    }
+                }
+                return null;
             }
-        }
 
-        if (!result?.games?.length) return null;
-        return result.games[0];
+            return result.games[0];
+        } catch (error) {
+            console.error('Search error:', error);
+            return null;
+        }
     },
 
     getGameMetadata(gameData) {
         return {
             title: gameData.title,
-            description: this.sanitizeDescription(gameData.description),
+            description: this.sanitizeDescription(gameData.description || ''),
             genres: gameData.genres?.map(g => g.genre_name) || [],
             platforms: gameData.platforms || [],
             year: gameData.first_release_date?.slice(0, 4) || 'N/A',
@@ -92,7 +99,7 @@ const createNominationGraphic = {
         };
     },
 
-    async generateGraphic(nominations, progressMsg, month) {
+    async generateGraphic(nominations, progressMsg, month, mobyAPI) {  // Added mobyAPI parameter
         const canvas = createCanvas(900, 1200);
         const ctx = canvas.getContext('2d');
 
@@ -129,7 +136,10 @@ const createNominationGraphic = {
                 });
 
                 const gameData = await this.searchAndGetGameData(nom.game, mobyAPI);
-                if (!gameData) continue;
+                if (!gameData) {
+                    console.log(`No game data found for: ${nom.game}`);
+                    continue;
+                }
 
                 const metadata = this.getGameMetadata(gameData);
                 const isYellow = index % 2 === 1;
@@ -157,7 +167,9 @@ const createNominationGraphic = {
                 // Game title
                 ctx.font = 'bold 36px Arial';
                 ctx.fillStyle = isYellow ? PURPLE : '#FFFFFF';
-                const titleText = `${metadata.title} (${metadata.year}, ${nom.platform})`;
+                const titleText = metadata.year !== 'N/A' ? 
+                    `${metadata.title} (${metadata.year}, ${nom.platform})` :
+                    `${metadata.title} (${nom.platform})`;
                 ctx.fillText(titleText, textX, yOffset + 45);
 
                 // Genre and Metacritic
