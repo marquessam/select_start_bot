@@ -1,8 +1,8 @@
 const { createCanvas, loadImage } = require('canvas');
 const { AttachmentBuilder } = require('discord.js');
-const TerminalEmbed = require('../utils/embedBuilder');
-const database = require('../database');
-const mobyAPI = require('../mobyAPI');
+const TerminalEmbed = require('../../utils/embedBuilder');
+const database = require('../../database');
+const mobyAPI = require('../../mobyAPI');
 
 const createNominationGraphic = {
     name: 'createnomgraphic',
