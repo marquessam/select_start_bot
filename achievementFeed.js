@@ -1,8 +1,8 @@
 // achievementFeed.js
 const { EmbedBuilder } = require('discord.js');
 const raAPI = require('./raAPI');
-const DataService = require('./services/dataService');
-const { BotError, ErrorHandler } = require('./utils/errorHandler');
+const DataService = require('./dataService');
+const { BotError, ErrorHandler } = require('./errorHandler');
 
 class AchievementFeed {
     constructor(client) {
@@ -45,9 +45,30 @@ class AchievementFeed {
         setInterval(() => this.checkNewAchievements(), this.checkInterval);
     }
 
+    async retryOperation(operation, retries = 3, delay = 5000) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                return await operation();
+            } catch (error) {
+                const isLastAttempt = attempt === retries;
+                const isRetryableError = error.code === 'EAI_AGAIN' || 
+                                       error.name === 'FetchError' ||
+                                       error.code === 'ECONNRESET';
+
+                if (isLastAttempt || !isRetryableError) {
+                    throw error;
+                }
+
+                console.log(`[ACHIEVEMENT FEED] Attempt ${attempt} failed, retrying in ${delay/1000}s:`, error.message);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
     async checkNewAchievements() {
         try {
-            const allAchievements = await raAPI.fetchAllRecentAchievements();
+            const allAchievements = await this.retryOperation(
+                () => raAPI.fetchAllRecentAchievements()
             const channel = await this.client.channels.fetch(this.feedChannel);
             
             if (!channel) {
@@ -81,7 +102,8 @@ class AchievementFeed {
     }
 
     async sendAchievementNotification(channel, username, achievement) {
-        if (!channel) {
+        const sendWithRetry = async () => {
+            if (!channel) {
             throw new BotError('Channel not available', ErrorHandler.ERROR_TYPES.VALIDATION, 'Announce Achievement');
         }
         if (!username || !achievement) {
@@ -147,6 +169,10 @@ class AchievementFeed {
 
             console.log(`[ACHIEVEMENT FEED] Sent achievement notification for ${username}: ${achievement.Title}`);
             return message;
+        };
+
+        try {
+            return await this.retryOperation(sendWithRetry);
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error sending achievement notification:', error);
             throw error;
