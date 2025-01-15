@@ -24,7 +24,9 @@ class AchievementFeed {
         try {
             console.log('[ACHIEVEMENT FEED] Initializing achievement feed...');
             // Get initial achievements for all users to establish baseline
-            const allAchievements = await raAPI.fetchAllRecentAchievements();
+            const allAchievements = await this.retryOperation(async () => {
+                return await raAPI.fetchAllRecentAchievements();
+            });
             
             // Store the latest achievement timestamp for each user
             for (const { username, achievements } of allAchievements) {
@@ -67,8 +69,10 @@ class AchievementFeed {
 
     async checkNewAchievements() {
         try {
-            const allAchievements = await this.retryOperation(
-                () => raAPI.fetchAllRecentAchievements()
+            const allAchievements = await this.retryOperation(async () => {
+                return await raAPI.fetchAllRecentAchievements();
+            });
+            
             const channel = await this.client.channels.fetch(this.feedChannel);
             
             if (!channel) {
@@ -102,73 +106,77 @@ class AchievementFeed {
     }
 
     async sendAchievementNotification(channel, username, achievement) {
-        const sendWithRetry = async () => {
-            if (!channel) {
+        if (!channel) {
             throw new BotError('Channel not available', ErrorHandler.ERROR_TYPES.VALIDATION, 'Announce Achievement');
         }
         if (!username || !achievement) {
             throw new BotError('Missing user or achievement data', ErrorHandler.ERROR_TYPES.VALIDATION, 'Announce Achievement');
         }
 
-        try {
-            const achievementKey = `${username}-${achievement.ID}`;
-            if (this.announcementHistory.messageIds.has(achievementKey)) {
-                console.log(`[ACHIEVEMENT FEED] Skipping duplicate achievement announcement: ${achievementKey}`);
-                return;
-            }
-
-            const currentTime = Date.now();
-            if (this.announcementHistory.lastAnnouncement) {
-                const timeSinceLastAnnouncement = currentTime - this.announcementHistory.lastAnnouncement;
-                if (timeSinceLastAnnouncement < this.COOLDOWN_MS) {
-                    await new Promise(resolve => 
-                        setTimeout(resolve, this.COOLDOWN_MS - timeSinceLastAnnouncement)
-                    );
+        const sendWithRetry = async () => {
+            try {
+                const achievementKey = `${username}-${achievement.ID}`;
+                if (this.announcementHistory.messageIds.has(achievementKey)) {
+                    console.log(`[ACHIEVEMENT FEED] Skipping duplicate achievement announcement: ${achievementKey}`);
+                    return;
                 }
+
+                const currentTime = Date.now();
+                if (this.announcementHistory.lastAnnouncement) {
+                    const timeSinceLastAnnouncement = currentTime - this.announcementHistory.lastAnnouncement;
+                    if (timeSinceLastAnnouncement < this.COOLDOWN_MS) {
+                        await new Promise(resolve => 
+                            setTimeout(resolve, this.COOLDOWN_MS - timeSinceLastAnnouncement)
+                        );
+                    }
+                }
+
+                this.announcementHistory.timestamps = this.announcementHistory.timestamps.filter(
+                    timestamp => currentTime - timestamp < this.TIME_WINDOW_MS
+                );
+
+                if (this.announcementHistory.timestamps.length >= this.MAX_ANNOUNCEMENTS) {
+                    console.warn(`[ACHIEVEMENT FEED] Rate limit hit - queuing announcement for ${username}`);
+                    setTimeout(() => this.sendAchievementNotification(channel, username, achievement), 
+                              this.TIME_WINDOW_MS / this.MAX_ANNOUNCEMENTS);
+                    return;
+                }
+
+                const badgeUrl = achievement.BadgeName
+                    ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
+                    : 'https://media.retroachievements.org/Badge/00000.png';
+                const userIconUrl = `https://retroachievements.org/UserPic/${username}.png`;
+
+                const embed = new EmbedBuilder()
+                    .setColor('#00FF00')
+                    .setTitle(`${achievement.GameTitle || 'Game'} 🏆`)
+                    .setThumbnail(badgeUrl)
+                    .setDescription(
+                        `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
+                        `*${achievement.Description || 'No description available'}*`
+                    )
+                    .setFooter({
+                        text: `Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
+                        iconURL: userIconUrl
+                    })
+                    .setTimestamp();
+
+                const message = await channel.send({ embeds: [embed] });
+                
+                this.announcementHistory.timestamps.push(currentTime);
+                this.announcementHistory.messageIds.add(achievementKey);
+                this.announcementHistory.lastAnnouncement = currentTime;
+                
+                if (this.announcementHistory.messageIds.size > 1000) {
+                    this.announcementHistory.messageIds.clear();
+                }
+
+                console.log(`[ACHIEVEMENT FEED] Sent achievement notification for ${username}: ${achievement.Title}`);
+                return message;
+            } catch (error) {
+                console.error('[ACHIEVEMENT FEED] Error in sendWithRetry:', error);
+                throw error;
             }
-
-            this.announcementHistory.timestamps = this.announcementHistory.timestamps.filter(
-                timestamp => currentTime - timestamp < this.TIME_WINDOW_MS
-            );
-
-            if (this.announcementHistory.timestamps.length >= this.MAX_ANNOUNCEMENTS) {
-                console.warn(`[ACHIEVEMENT FEED] Rate limit hit - queuing announcement for ${username}`);
-                setTimeout(() => this.sendAchievementNotification(channel, username, achievement), 
-                          this.TIME_WINDOW_MS / this.MAX_ANNOUNCEMENTS);
-                return;
-            }
-
-            const badgeUrl = achievement.BadgeName
-                ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
-                : 'https://media.retroachievements.org/Badge/00000.png';
-            const userIconUrl = `https://retroachievements.org/UserPic/${username}.png`;
-
-            const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle(`${achievement.GameTitle || 'Game'} 🏆`)
-                .setThumbnail(badgeUrl)
-                .setDescription(
-                    `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
-                    `*${achievement.Description || 'No description available'}*`
-                )
-                .setFooter({
-                    text: `Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
-                    iconURL: userIconUrl
-                })
-                .setTimestamp();
-
-            const message = await channel.send({ embeds: [embed] });
-            
-            this.announcementHistory.timestamps.push(currentTime);
-            this.announcementHistory.messageIds.add(achievementKey);
-            this.announcementHistory.lastAnnouncement = currentTime;
-            
-            if (this.announcementHistory.messageIds.size > 1000) {
-                this.announcementHistory.messageIds.clear();
-            }
-
-            console.log(`[ACHIEVEMENT FEED] Sent achievement notification for ${username}: ${achievement.Title}`);
-            return message;
         };
 
         try {
