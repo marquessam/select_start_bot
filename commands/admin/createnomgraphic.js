@@ -41,12 +41,17 @@ const createNominationGraphic = {
             
             const progressMsg = await message.channel.send({ embeds: [progressEmbed] });
 
-            // Create the graphic
-            const attachment = await this.generateGraphic(selectedNoms, progressMsg);
-
-            // Send the final graphic
-            await message.channel.send({ files: [attachment] });
-            await progressMsg.delete().catch(console.error);
+            try {
+                // Create the graphic
+                const attachment = await this.generateGraphic(selectedNoms, progressMsg);
+                // Send the final graphic
+                await message.channel.send({ files: [attachment] });
+            } catch (error) {
+                console.error('Error generating graphic:', error);
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to generate graphic\n[Ready for input]█\x1b[0m```');
+            } finally {
+                await progressMsg.delete().catch(console.error);
+            }
 
         } catch (error) {
             console.error('Create Nomination Graphic Error:', error);
@@ -77,7 +82,7 @@ const createNominationGraphic = {
         const titleWidth = ctx.measureText(title).width;
         ctx.fillText(title, (canvas.width - titleWidth) / 2, 60);
 
-        let yOffset = 120;
+        let yOffset = 100;
 
         // Process each nomination
         for (const [index, nom] of nominations.entries()) {
@@ -99,51 +104,63 @@ const createNominationGraphic = {
                 const gameData = await mobyAPI.getGameDetails(searchResult.games[0].game_id);
                 const artwork = await mobyAPI.getGameArtwork(searchResult.games[0].game_id);
 
-                // Draw section background with alternating colors
-                ctx.fillStyle = index % 2 === 0 ? '#FFD700' : '#5C3391';
+                // Draw section background with alternating colors (starting with purple)
+                ctx.fillStyle = index % 2 === 0 ? '#5C3391' : '#FFD700';
                 ctx.fillRect(0, yOffset, canvas.width, 200);
 
-                // Try to load and draw box art
+                // Try to load and draw box art on the left
+                let boxArtLoaded = false;
                 try {
-                    const coverUrl = artwork?.platforms[0]?.cover_url;
+                    let coverUrl = null;
+                    // Try to find a cover for the specific platform first
+                    const platformArtwork = artwork?.platforms?.find(p => 
+                        p.platform_name.toLowerCase().includes(nom.platform.toLowerCase())
+                    );
+                    coverUrl = platformArtwork?.cover_url || artwork?.platforms[0]?.cover_url;
+
                     if (coverUrl) {
                         const boxArt = await loadImage(coverUrl);
-                        // Move box art to the right side
-                        ctx.drawImage(boxArt, canvas.width - 170, yOffset + 10, 150, 180);
+                        ctx.drawImage(boxArt, 20, yOffset + 10, 150, 180);
+                        boxArtLoaded = true;
                     }
                 } catch (err) {
                     console.error('Error loading box art:', err);
                 }
 
+                // Text color based on background
+                ctx.fillStyle = index % 2 === 0 ? '#FFFFFF' : '#000000';
+
                 // Game title and year
-                ctx.fillStyle = index % 2 === 0 ? '#000000' : '#FFFFFF';
                 ctx.font = 'bold 32px Arial';
-                const year = gameData?.first_release_date?.slice(0, 4) || 'N/A';
-                ctx.fillText(`${nom.game} - ${year}`, 20, yOffset + 40);
+                const year = gameData?.first_release_date?.slice(0, 4);
+                const titleText = year && year !== 'N/A' ? 
+                    `${nom.game} - ${year}` : 
+                    nom.game;
+                ctx.fillText(titleText, boxArtLoaded ? 190 : 20, yOffset + 40);
                 
                 // Platform and genre
                 ctx.font = '24px Arial';
                 const genre = gameData?.genres?.[0]?.genre_name || 'Unknown Genre';
-                ctx.fillText(`${nom.platform} - ${genre}`, 20, yOffset + 70);
+                ctx.fillText(`${nom.platform} - ${genre}`, boxArtLoaded ? 190 : 20, yOffset + 70);
 
                 // Clean and truncate description
                 let description = gameData?.description || 'A classic retro gaming experience nominated for this month\'s challenge.';
                 // Remove HTML tags
                 description = description.replace(/<[^>]*>/g, '');
-                // Truncate to ~100 characters with ellipsis
-                description = description.length > 100 ? 
-                    description.substring(0, 97) + '...' : 
+                // Truncate to ~300 characters with ellipsis
+                description = description.length > 300 ? 
+                    description.substring(0, 297) + '...' : 
                     description;
                 
                 ctx.font = '16px Arial';
-                const wrappedDesc = this.wrapText(ctx, description, 650);
+                const wrappedDesc = this.wrapText(ctx, description, boxArtLoaded ? 650 : 860);
                 let textY = yOffset + 100;
                 wrappedDesc.forEach(line => {
-                    ctx.fillText(line, 20, textY);
+                    ctx.fillText(line, boxArtLoaded ? 190 : 20, textY);
                     textY += 20;
                 });
 
-                yOffset += 220;
+                yOffset += 200;
 
             } catch (error) {
                 console.error(`Error processing game ${nom.game}:`, error);
