@@ -68,10 +68,14 @@ const createNominationGraphic = {
         ctx.fillStyle = '#2C2C2C';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Header
+        // Header with dark background
+        ctx.fillStyle = '#1A1A1A';
+        ctx.fillRect(0, 0, canvas.width, 100);
         ctx.fillStyle = '#FFFFFF';
         ctx.font = 'bold 48px Arial';
-        ctx.fillText('MONTHLY RETRO NOMINEES', 20, 60);
+        const title = 'MONTHLY RETRO NOMINEES';
+        const titleWidth = ctx.measureText(title).width;
+        ctx.fillText(title, (canvas.width - titleWidth) / 2, 60);
 
         let yOffset = 120;
 
@@ -95,8 +99,8 @@ const createNominationGraphic = {
                 const gameData = await mobyAPI.getGameDetails(searchResult.games[0].game_id);
                 const artwork = await mobyAPI.getGameArtwork(searchResult.games[0].game_id);
 
-                // Draw section background
-                ctx.fillStyle = '#FFD700';
+                // Draw section background with alternating colors
+                ctx.fillStyle = index % 2 === 0 ? '#FFD700' : '#5C3391';
                 ctx.fillRect(0, yOffset, canvas.width, 200);
 
                 // Try to load and draw box art
@@ -104,29 +108,38 @@ const createNominationGraphic = {
                     const coverUrl = artwork?.platforms[0]?.cover_url;
                     if (coverUrl) {
                         const boxArt = await loadImage(coverUrl);
-                        ctx.drawImage(boxArt, 20, yOffset + 10, 150, 180);
+                        // Move box art to the right side
+                        ctx.drawImage(boxArt, canvas.width - 170, yOffset + 10, 150, 180);
                     }
                 } catch (err) {
                     console.error('Error loading box art:', err);
                 }
 
-                // Game title and platform
-                ctx.fillStyle = '#000000';
+                // Game title and year
+                ctx.fillStyle = index % 2 === 0 ? '#000000' : '#FFFFFF';
                 ctx.font = 'bold 32px Arial';
-                ctx.fillText(`${nom.game}`, 190, yOffset + 40);
+                const year = gameData?.first_release_date?.slice(0, 4) || 'N/A';
+                ctx.fillText(`${nom.game} - ${year}`, 20, yOffset + 40);
+                
+                // Platform and genre
                 ctx.font = '24px Arial';
-                ctx.fillText(`(${nom.platform}, ${gameData?.first_release_date?.slice(0, 4) || 'N/A'})`, 190, yOffset + 70);
+                const genre = gameData?.genres?.[0]?.genre_name || 'Unknown Genre';
+                ctx.fillText(`${nom.platform} - ${genre}`, 20, yOffset + 70);
 
-                // Description from MobyGames or default text
+                // Clean and truncate description
+                let description = gameData?.description || 'A classic retro gaming experience nominated for this month\'s challenge.';
+                // Remove HTML tags
+                description = description.replace(/<[^>]*>/g, '');
+                // Truncate to ~100 characters with ellipsis
+                description = description.length > 100 ? 
+                    description.substring(0, 97) + '...' : 
+                    description;
+                
                 ctx.font = '16px Arial';
-                const description = this.wrapText(
-                    ctx,
-                    gameData?.description || 'A classic retro gaming experience nominated for this month\'s challenge.',
-                    650
-                );
+                const wrappedDesc = this.wrapText(ctx, description, 650);
                 let textY = yOffset + 100;
-                description.forEach(line => {
-                    ctx.fillText(line, 190, textY);
+                wrappedDesc.forEach(line => {
+                    ctx.fillText(line, 20, textY);
                     textY += 20;
                 });
 
