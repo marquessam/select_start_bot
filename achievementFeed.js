@@ -1,8 +1,8 @@
 // achievementFeed.js
 const { EmbedBuilder } = require('discord.js');
 const raAPI = require('./raAPI');
-const DataService = require('./services/dataService');
-const { BotError, ErrorHandler } = require('./utils/errorHandler');
+const DataService = require('./dataService');
+const { BotError, ErrorHandler } = require('./errorHandler');
 
 class AchievementFeed {
     constructor(client) {
@@ -123,14 +123,14 @@ class AchievementFeed {
 
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
-                .setTitle('Achievement Unlocked! 🏆')
+                .setTitle(`${achievement.GameTitle || 'Game'} 🏆`)
                 .setThumbnail(badgeUrl)
                 .setDescription(
-                    `**${username}** earned **${achievement.Title || 'Achievement'}**\n` +
+                    `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
                     `*${achievement.Description || 'No description available'}*`
                 )
                 .setFooter({
-                    text: `Points: ${achievement.Points || '0'}`,
+                    text: `Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
                     iconURL: userIconUrl
                 })
                 .setTimestamp();
