@@ -4,6 +4,9 @@ const TerminalEmbed = require('../../utils/embedBuilder');
 const database = require('../../database');
 const mobyAPI = require('../../mobyAPI');
 
+const PURPLE = '#5C3391';
+const YELLOW = '#FFD700';
+
 const createNominationGraphic = {
     name: 'createnomgraphic',
     description: 'Create a graphic with random nominations',
@@ -21,18 +24,16 @@ const createNominationGraphic = {
                 return;
             }
 
-            // Get current nominations
+            const month = new Date().toLocaleString('en-US', { month: 'JANUARY' });
             const nominations = await database.getNominations();
             if (!nominations.length) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] No nominations found\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
-            // Select random nominations (default 10 or specified amount)
             const count = args[0] ? parseInt(args[0]) : 10;
             const selectedNoms = this.getRandomNominations(nominations, count);
 
-            // Create progress embed
             const progressEmbed = new TerminalEmbed()
                 .setTerminalTitle('GENERATING NOMINATION GRAPHIC')
                 .setTerminalDescription('[PROCESS INITIATED]')
@@ -42,13 +43,8 @@ const createNominationGraphic = {
             const progressMsg = await message.channel.send({ embeds: [progressEmbed] });
 
             try {
-                // Create the graphic
-                const attachment = await this.generateGraphic(selectedNoms, progressMsg);
-                // Send the final graphic
+                const attachment = await this.generateGraphic(selectedNoms, progressMsg, month);
                 await message.channel.send({ files: [attachment] });
-            } catch (error) {
-                console.error('Error generating graphic:', error);
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to generate graphic\n[Ready for input]█\x1b[0m```');
             } finally {
                 await progressMsg.delete().catch(console.error);
             }
@@ -64,8 +60,7 @@ const createNominationGraphic = {
         return shuffled.slice(0, Math.min(count, nominations.length));
     },
 
-    async generateGraphic(nominations, progressMsg) {
-        // Canvas setup
+    async generateGraphic(nominations, progressMsg, month) {
         const canvas = createCanvas(900, 1200);
         const ctx = canvas.getContext('2d');
 
@@ -76,18 +71,24 @@ const createNominationGraphic = {
         // Header with dark background
         ctx.fillStyle = '#1A1A1A';
         ctx.fillRect(0, 0, canvas.width, 100);
+        
+        // Draw header text
         ctx.fillStyle = '#FFFFFF';
         ctx.font = 'bold 48px Arial';
-        const title = 'MONTHLY RETRO NOMINEES';
-        const titleWidth = ctx.measureText(title).width;
-        ctx.fillText(title, (canvas.width - titleWidth) / 2, 60);
+        ctx.fillText(month, 20, 60);
+        
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText('RETRO CHALLENGE', 200, 60);
+        
+        // Draw "NOMINEES" in purple
+        ctx.fillStyle = PURPLE;
+        const nomineesWidth = ctx.measureText('NOMINEES').width;
+        ctx.fillText('NOMINEES', canvas.width - nomineesWidth - 20, 60);
 
-        let yOffset = 100;
+        let yOffset = 120;
 
-        // Process each nomination
         for (const [index, nom] of nominations.entries()) {
             try {
-                // Update progress
                 await progressMsg.edit({
                     embeds: [new TerminalEmbed()
                         .setTerminalTitle('GENERATING NOMINATION GRAPHIC')
@@ -96,79 +97,71 @@ const createNominationGraphic = {
                         .setTerminalFooter()]
                 });
 
-                // Search MobyGames for the game
                 const searchResult = await mobyAPI.searchGames(nom.game);
                 if (!searchResult?.games?.length) continue;
 
-                // Get the most relevant result
                 const gameData = await mobyAPI.getGameDetails(searchResult.games[0].game_id);
                 const artwork = await mobyAPI.getGameArtwork(searchResult.games[0].game_id);
 
-                // Draw section background with alternating colors (starting with purple)
-                ctx.fillStyle = index % 2 === 0 ? '#5C3391' : '#FFD700';
-                ctx.fillRect(0, yOffset, canvas.width, 200);
+                // Alternate background colors
+                const isYellow = index % 2 === 1;
+                ctx.fillStyle = isYellow ? YELLOW : PURPLE;
+                ctx.fillRect(0, yOffset, canvas.width, 220);
 
-                // Try to load and draw box art on the left
-                let boxArtLoaded = false;
                 try {
-                    let coverUrl = null;
-                    // Try to find a cover for the specific platform first
                     const platformArtwork = artwork?.platforms?.find(p => 
                         p.platform_name.toLowerCase().includes(nom.platform.toLowerCase())
                     );
-                    coverUrl = platformArtwork?.cover_url || artwork?.platforms[0]?.cover_url;
+                    const coverUrl = platformArtwork?.cover_url || artwork?.platforms[0]?.cover_url;
 
                     if (coverUrl) {
                         const boxArt = await loadImage(coverUrl);
-                        ctx.drawImage(boxArt, 20, yOffset + 10, 150, 180);
-                        boxArtLoaded = true;
+                        // Alternate box art position
+                        const boxArtX = isYellow ? 20 : canvas.width - 170;
+                        ctx.drawImage(boxArt, boxArtX, yOffset + 10, 150, 180);
                     }
                 } catch (err) {
                     console.error('Error loading box art:', err);
                 }
 
-                // Text color based on background
-                ctx.fillStyle = index % 2 === 0 ? '#FFFFFF' : '#000000';
+                // Text color and position based on background
+                ctx.fillStyle = isYellow ? '#000000' : '#FFFFFF';
+                const textX = isYellow ? 190 : 20;
 
-                // Game title and year
-                ctx.font = 'bold 32px Arial';
+                // Game title
+                ctx.font = 'bold 36px Arial';
                 const year = gameData?.first_release_date?.slice(0, 4);
-                const titleText = year && year !== 'N/A' ? 
-                    `${nom.game} - ${year}` : 
-                    nom.game;
-                ctx.fillText(titleText, boxArtLoaded ? 190 : 20, yOffset + 40);
-                
-                // Platform and genre
-                ctx.font = '24px Arial';
-                const genre = gameData?.genres?.[0]?.genre_name || 'Unknown Genre';
-                ctx.fillText(`${nom.platform} - ${genre}`, boxArtLoaded ? 190 : 20, yOffset + 70);
+                const titleText = `${nom.game} (${year || 'N/A'}, ${nom.platform})`;
+                ctx.fillText(titleText, textX, yOffset + 45);
 
-                // Clean and truncate description
+                // Genre and Metacritic
+                ctx.font = 'bold 24px Arial';
+                const genre = gameData?.genres?.[0]?.genre_name || 'Unknown Genre';
+                const metascore = gameData?.moby_score ? Math.round(gameData.moby_score * 10) : '??';
+                ctx.fillText(`${genre} (Metacritic: ${metascore})`, textX, yOffset + 80);
+
+                // Description
                 let description = gameData?.description || 'A classic retro gaming experience nominated for this month\'s challenge.';
-                // Remove HTML tags
                 description = description.replace(/<[^>]*>/g, '');
-                // Truncate to ~300 characters with ellipsis
                 description = description.length > 300 ? 
                     description.substring(0, 297) + '...' : 
                     description;
-                
+
                 ctx.font = '16px Arial';
-                const wrappedDesc = this.wrapText(ctx, description, boxArtLoaded ? 650 : 860);
-                let textY = yOffset + 100;
+                const wrappedDesc = this.wrapText(ctx, description, 650);
+                let textY = yOffset + 110;
                 wrappedDesc.forEach(line => {
-                    ctx.fillText(line, boxArtLoaded ? 190 : 20, textY);
+                    ctx.fillText(line, textX, textY);
                     textY += 20;
                 });
 
-                yOffset += 200;
-
+                yOffset += 220;
             } catch (error) {
                 console.error(`Error processing game ${nom.game}:`, error);
                 continue;
             }
         }
 
-        // Convert canvas to attachment
         const buffer = canvas.toBuffer('image/png');
         return new AttachmentBuilder(buffer, { name: 'nominations.png' });
     },
