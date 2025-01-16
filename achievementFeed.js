@@ -24,7 +24,7 @@ class AchievementFeed {
                 this.retryOperation(async () => {
                     return await raAPI.fetchAllRecentAchievements();
                 }),
-                database.getLastAchievementTimestamps.bind(database)() // New method needed in database.js
+                database.getLastAchievementTimestamps()
             ]);
             
             // For any users without stored timestamps, use their most recent achievement
@@ -91,7 +91,7 @@ class AchievementFeed {
 
                 const lastCheckedTime = storedTimestamps[username.toLowerCase()] || 0;
                 
-                // Sort achievements by date to ensure chronological order
+                // Sort achievements by date (oldest first)
                 const sortedAchievements = [...achievements].sort(
                     (a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime()
                 );
@@ -103,10 +103,11 @@ class AchievementFeed {
 
                 // Update the timestamp after filtering but before announcing
                 if (newAchievements.length > 0) {
-                    const latestTime = new Date(sortedAchievements[0].Date).getTime();
+                    // Use the newest achievement's time (last in the sorted array)
+                    const latestTime = new Date(sortedAchievements[sortedAchievements.length - 1].Date).getTime();
                     await database.updateLastAchievementTimestamp(username.toLowerCase(), latestTime);
 
-                    // Send achievement notifications in chronological order
+                    // Send achievement notifications in chronological order (oldest first)
                     for (const achievement of newAchievements) {
                         await this.sendAchievementNotification(channel, username, achievement);
                     }
