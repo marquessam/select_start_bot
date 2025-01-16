@@ -23,7 +23,7 @@ class AchievementFeed {
                 this.retryOperation(async () => {
                     return await raAPI.fetchAllRecentAchievements();
                 }),
-                database.getLastAchievementTimestamps() // New method needed in database.js
+                database.getLastAchievementTimestamps.bind(database)() // New method needed in database.js
             ]);
             
             // For any users without stored timestamps, use their most recent achievement
