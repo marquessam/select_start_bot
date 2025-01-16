@@ -860,4 +860,33 @@ class Database {
     }
 }
 
+//
+// ACHIEVEMENTS
+//
+
+async function getLastAchievementTimestamps() {
+    try {
+        const timestamps = await collection.findOne({ _id: 'achievement_timestamps' });
+        return timestamps?.data || {};
+    } catch (error) {
+        console.error('[DATABASE] Error getting achievement timestamps:', error);
+        return {};
+    }
+}
+
+async function updateLastAchievementTimestamp(username, timestamp) {
+    try {
+        await collection.updateOne(
+            { _id: 'achievement_timestamps' },
+            { 
+                $set: { [`data.${username}`]: timestamp }
+            },
+            { upsert: true }
+        );
+    } catch (error) {
+        console.error('[DATABASE] Error updating achievement timestamp:', error);
+        throw error;
+    }
+}
+
 module.exports = new Database();
