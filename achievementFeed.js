@@ -1,14 +1,13 @@
 // achievementFeed.js
 const { EmbedBuilder } = require('discord.js');
 const raAPI = require('./raAPI');
-const DataService = require('./services/dataService');
-const { BotError, ErrorHandler } = require('./utils/errorHandler');
+const DataService = require('./dataService');
+const { BotError, ErrorHandler } = require('./errorHandler');
 
 class AchievementFeed {
     constructor(client) {
         this.client = client;
         this.feedChannel = process.env.ACHIEVEMENT_FEED_CHANNEL;
-        this.lastChecked = new Map();
         this.checkInterval = 5 * 60 * 1000; // Check every 5 minutes
         this.announcementHistory = {
             messageIds: new Set()
@@ -18,15 +17,24 @@ class AchievementFeed {
     async initialize() {
         try {
             console.log('[ACHIEVEMENT FEED] Initializing achievement feed...');
-            // Get initial achievements for all users to establish baseline
-            const allAchievements = await this.retryOperation(async () => {
-                return await raAPI.fetchAllRecentAchievements();
-            });
             
-            // Store the latest achievement timestamp for each user
+            // Get initial achievements and stored timestamps
+            const [allAchievements, storedTimestamps] = await Promise.all([
+                this.retryOperation(async () => {
+                    return await raAPI.fetchAllRecentAchievements();
+                }),
+                database.getLastAchievementTimestamps() // New method needed in database.js
+            ]);
+            
+            // For any users without stored timestamps, use their most recent achievement
             for (const { username, achievements } of allAchievements) {
                 if (achievements && achievements.length > 0) {
-                    this.lastChecked.set(username.toLowerCase(), new Date(achievements[0].Date).getTime());
+                    const lastStoredTime = storedTimestamps[username.toLowerCase()];
+                    if (!lastStoredTime) {
+                        // Store the most recent achievement time as starting point
+                        const mostRecentTime = new Date(achievements[0].Date).getTime();
+                        await database.updateLastAchievementTimestamp(username.toLowerCase(), mostRecentTime);
+                    }
                 }
             }
 
@@ -64,9 +72,12 @@ class AchievementFeed {
 
     async checkNewAchievements() {
         try {
-            const allAchievements = await this.retryOperation(async () => {
-                return await raAPI.fetchAllRecentAchievements();
-            });
+            const [allAchievements, storedTimestamps] = await Promise.all([
+                this.retryOperation(async () => {
+                    return await raAPI.fetchAllRecentAchievements();
+                }),
+                database.getLastAchievementTimestamps()
+            ]);
             
             const channel = await this.client.channels.fetch(this.feedChannel);
             
@@ -75,21 +86,26 @@ class AchievementFeed {
             }
 
             for (const { username, achievements } of allAchievements) {
-                const lastCheckedTime = this.lastChecked.get(username.toLowerCase()) || 0;
+                if (!achievements || achievements.length === 0) continue;
+
+                const lastCheckedTime = storedTimestamps[username.toLowerCase()] || 0;
                 
-                // Filter for new achievements
-                const newAchievements = achievements.filter(ach => 
+                // Sort achievements by date to ensure chronological order
+                const sortedAchievements = [...achievements].sort(
+                    (a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime()
+                );
+                
+                // Filter and announce new achievements
+                const newAchievements = sortedAchievements.filter(ach => 
                     new Date(ach.Date).getTime() > lastCheckedTime
                 );
 
-                // Update last checked time if we have new achievements
+                // Update the timestamp after filtering but before announcing
                 if (newAchievements.length > 0) {
-                    this.lastChecked.set(
-                        username.toLowerCase(), 
-                        new Date(newAchievements[0].Date).getTime()
-                    );
+                    const latestTime = new Date(sortedAchievements[0].Date).getTime();
+                    await database.updateLastAchievementTimestamp(username.toLowerCase(), latestTime);
 
-                    // Send achievement notifications
+                    // Send achievement notifications in chronological order
                     for (const achievement of newAchievements) {
                         await this.sendAchievementNotification(channel, username, achievement);
                     }
@@ -116,10 +132,12 @@ class AchievementFeed {
                     return;
                 }
 
-                const badgeUrl = achievement.BadgeName
-                    ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
-                    : 'https://media.retroachievements.org/Badge/00000.png';
-                const userIconUrl = `https://retroachievements.org/UserPic/${username}.png`;
+                const [badgeUrl, userIconUrl] = await Promise.all([
+                    achievement.BadgeName
+                        ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
+                        : 'https://media.retroachievements.org/Badge/00000.png',
+                    DataService.getRAProfileImage(username)
+                ]);
 
                 const embed = new EmbedBuilder()
                     .setColor('#00FF00')
@@ -131,7 +149,7 @@ class AchievementFeed {
                     )
                     .setFooter({
                         text: `Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
-                        iconURL: userIconUrl
+                        iconURL: userIconUrl || `https://retroachievements.org/UserPic/${username}.png` // Fallback if DataService fails
                     })
                     .setTimestamp();
 
