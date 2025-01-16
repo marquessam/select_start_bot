@@ -110,9 +110,9 @@ class AchievementFeed {
 
         const sendWithRetry = async () => {
             try {
-                const achievementKey = `${username}-${achievement.ID}`;
+                const achievementKey = `${username}-${achievement.ID || achievement.AchievementID || achievement.achievementID || achievement.id || Date.now()}-${achievement.GameTitle}-${achievement.Title}`;
                 if (this.announcementHistory.messageIds.has(achievementKey)) {
-                    console.log(`[ACHIEVEMENT FEED] Skipping duplicate achievement announcement: ${achievementKey}`);
+                    console.log(`[ACHIEVEMENT FEED] Skipping duplicate achievement: ${username} - ${achievement.Title} in ${achievement.GameTitle}`);
                     return;
                 }
 
