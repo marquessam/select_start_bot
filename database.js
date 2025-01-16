@@ -91,6 +91,8 @@ class Database {
             await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
             await this.db.collection('reviews').createIndex({ _id: 1 });
             await this.db.collection('users').createIndex({ username: 1 });
+            await this.db.collection('achievements').createIndex({ _id: 1 }); // Add this line
+        console.log('Indexes created successfully');
             console.log('Indexes created successfully');
         } catch (error) {
             ErrorHandler.logError(error, 'Create Indexes');
