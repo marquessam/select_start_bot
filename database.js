@@ -834,9 +834,6 @@ class Database {
         throw new Error('Failed to retrieve valid games list');
     }
 }
-
-
-
     async getPreviousChallenges() {
         const collection = await this.getCollection('challenges');
         return await fetchData(collection, { _id: 'history' }, {
@@ -844,7 +841,7 @@ class Database {
         }).then(data => data.games || []);
     }
 
-    async addGameToHistory(gameData) {
+   async addGameToHistory(gameData) {
         try {
             const collection = await this.getCollection('challenges');
             await collection.updateOne(
@@ -858,35 +855,37 @@ class Database {
             throw error;
         }
     }
-}
 
-//
-// ACHIEVEMENTS
-//
-
-async function getLastAchievementTimestamps() {
-    try {
-        const timestamps = await collection.findOne({ _id: 'achievement_timestamps' });
-        return timestamps?.data || {};
-    } catch (error) {
-        console.error('[DATABASE] Error getting achievement timestamps:', error);
-        return {};
+    // ===================
+    // Achievement Methods
+    // ===================
+    
+    async getLastAchievementTimestamps() {
+        try {
+            const collection = await this.getCollection('achievements');
+            const timestamps = await collection.findOne({ _id: 'achievement_timestamps' });
+            return timestamps?.data || {};
+        } catch (error) {
+            ErrorHandler.logError(error, 'Get Last Achievement Timestamps');
+            return {};
+        }
     }
-}
 
-async function updateLastAchievementTimestamp(username, timestamp) {
-    try {
-        await collection.updateOne(
-            { _id: 'achievement_timestamps' },
-            { 
-                $set: { [`data.${username}`]: timestamp }
-            },
-            { upsert: true }
-        );
-    } catch (error) {
-        console.error('[DATABASE] Error updating achievement timestamp:', error);
-        throw error;
+    async updateLastAchievementTimestamp(username, timestamp) {
+        try {
+            const collection = await this.getCollection('achievements');
+            await collection.updateOne(
+                { _id: 'achievement_timestamps' },
+                { 
+                    $set: { [`data.${username}`]: timestamp }
+                },
+                { upsert: true }
+            );
+        } catch (error) {
+            ErrorHandler.logError(error, 'Update Last Achievement Timestamp');
+            throw error;
+        }
     }
-}
+} // End of Database class
 
 module.exports = new Database();
