@@ -1,8 +1,8 @@
 // achievementFeed.js
 const { EmbedBuilder } = require('discord.js');
 const raAPI = require('./raAPI');
-const DataService = require('./services/dataService');
-const { BotError, ErrorHandler } = require('./utils/errorHandler');
+const DataService = require('./dataService');
+const { BotError, ErrorHandler } = require('./errorHandler');
 
 class AchievementFeed {
     constructor(client) {
