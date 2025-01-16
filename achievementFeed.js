@@ -1,8 +1,8 @@
 // achievementFeed.js
 const { EmbedBuilder } = require('discord.js');
 const raAPI = require('./raAPI');
-const DataService = require('./services/dataService');
-const { BotError, ErrorHandler } = require('./utils/errorHandler');
+const DataService = require('./dataService');
+const { BotError, ErrorHandler } = require('./errorHandler');
 
 class AchievementFeed {
     constructor(client) {
@@ -11,13 +11,8 @@ class AchievementFeed {
         this.lastChecked = new Map();
         this.checkInterval = 5 * 60 * 1000; // Check every 5 minutes
         this.announcementHistory = {
-            messageIds: new Set(),
-            timestamps: [],
-            lastAnnouncement: null
+            messageIds: new Set()
         };
-        this.COOLDOWN_MS = 2000; // 2 second cooldown between announcements
-        this.TIME_WINDOW_MS = 60000; // 1 minute window
-        this.MAX_ANNOUNCEMENTS = 30; // Max 30 announcements per minute
     }
 
     async initialize() {
@@ -121,27 +116,6 @@ class AchievementFeed {
                     return;
                 }
 
-                const currentTime = Date.now();
-                if (this.announcementHistory.lastAnnouncement) {
-                    const timeSinceLastAnnouncement = currentTime - this.announcementHistory.lastAnnouncement;
-                    if (timeSinceLastAnnouncement < this.COOLDOWN_MS) {
-                        await new Promise(resolve => 
-                            setTimeout(resolve, this.COOLDOWN_MS - timeSinceLastAnnouncement)
-                        );
-                    }
-                }
-
-                this.announcementHistory.timestamps = this.announcementHistory.timestamps.filter(
-                    timestamp => currentTime - timestamp < this.TIME_WINDOW_MS
-                );
-
-                if (this.announcementHistory.timestamps.length >= this.MAX_ANNOUNCEMENTS) {
-                    console.warn(`[ACHIEVEMENT FEED] Rate limit hit - queuing announcement for ${username}`);
-                    setTimeout(() => this.sendAchievementNotification(channel, username, achievement), 
-                              this.TIME_WINDOW_MS / this.MAX_ANNOUNCEMENTS);
-                    return;
-                }
-
                 const badgeUrl = achievement.BadgeName
                     ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
                     : 'https://media.retroachievements.org/Badge/00000.png';
@@ -162,10 +136,7 @@ class AchievementFeed {
                     .setTimestamp();
 
                 const message = await channel.send({ embeds: [embed] });
-                
-                this.announcementHistory.timestamps.push(currentTime);
                 this.announcementHistory.messageIds.add(achievementKey);
-                this.announcementHistory.lastAnnouncement = currentTime;
                 
                 if (this.announcementHistory.messageIds.size > 1000) {
                     this.announcementHistory.messageIds.clear();
