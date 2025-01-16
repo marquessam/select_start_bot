@@ -3,6 +3,7 @@ const { EmbedBuilder } = require('discord.js');
 const raAPI = require('./raAPI');
 const DataService = require('./services/dataService');
 const { BotError, ErrorHandler } = require('./utils/errorHandler');
+const database = require('./database');
 
 class AchievementFeed {
     constructor(client) {
