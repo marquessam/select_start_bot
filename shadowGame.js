@@ -1,5 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const database = require('./database');
+const { fetchLeaderboardData } = require('./raAPI');
+const { withTransaction } = require('./utils/transactions');
 
 class ShadowGame {
     constructor() {
@@ -21,7 +23,13 @@ class ShadowGame {
     async initialize(gameData = null) {
         try {
             if (gameData) {
-                // Initialize with provided data
+                // Initialize default point values
+                if (!gameData.points) {
+                    gameData.points = {
+                        participation: 1,
+                        beaten: 3
+                    };
+                }
                 await database.saveShadowGame(gameData);
             }
             await this.loadConfig();
@@ -108,41 +116,45 @@ class ShadowGame {
 
     async handleInit(message) {
         const shadowGameData = {
-    active: true,
-    currentProgress: 0,
-    puzzles: [
-        {
-            error: "ERROR 0xCT01: Timeline database corrupted\nExpected value 'date.presentday.timeline' not found\nAttempting recovery of time marker...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
-            solution: "!1000AD",
-            completion_message: "[RECOVERED] Present day timeline restored\n[WARNING] Additional timeline anomaly detected in Middle Ages..."
-        },
-        {
-            error: "ERROR 0xCT02: Paradox detected in Middle Ages\nAnomalous dual existence: LEANNE.entity and MARLE.entity\nExpected value 'date.middleages.timeline' not found\nAttempting timeline calibration...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
-            solution: "!600AD",
-            completion_message: "[RECOVERED] Middle Ages timeline stabilized\n[WARNING] Future timeline corruption detected..."
-        },
-        {
-            error: "ERROR 0xCT03: Future systems critical\nLife support failing: DOME_NETWORK.status = CRITICAL\nExpected value 'date.futureapocalypse.timeline' corrupted\nAttempting emergency time sync...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
-            solution: "!2300AD",
-            completion_message: "[RECOVERED] Future timeline synchronized\n[WARNING] Day of Lavos temporal anomaly detected..."
-        },
-        {
-            error: "ERROR 0xCT04: LAVOS.emergence_date corrupted\nCatastrophic event timeline unstable\nExpected value 'date.lavos.timeline' not found\nAttempting temporal stabilization...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
-            solution: "!1999AD",
-            completion_message: "[RECOVERED] Day of Lavos timepoint restored\n[WARNING] Prehistoric data corruption detected..."
-        },
-        {
-            error: "ERROR 0xCT05: Prehistoric database overflow\nAEON.sys temporal boundary exceeded\nExpected value 'prehistory.timeline' not found\nAttempting primitive era recovery...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
-            solution: "!65000000BC",
-            completion_message: "[RECOVERED] Prehistoric era restored\n[SUCCESS] All temporal anomalies resolved\n[ACCESSING HIDDEN DATA...]"
-        }
-    ],
-    finalReward: {
-        gameId: "10024",
-        gameName: "MarioTennis",
-        points: 2
-    }
-};
+            active: true,
+            currentProgress: 0,
+            points: {
+                participation: 1,
+                beaten: 3
+            },
+            puzzles: [
+                {
+                    error: "ERROR 0xCT01: Timeline database corrupted\nExpected value 'date.presentday.timeline' not found\nAttempting recovery of time marker...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
+                    solution: "!1000AD",
+                    completion_message: "[RECOVERED] Present day timeline restored\n[WARNING] Additional timeline anomaly detected in Middle Ages..."
+                },
+                {
+                    error: "ERROR 0xCT02: Paradox detected in Middle Ages\nAnomalous dual existence: LEANNE.entity and MARLE.entity\nExpected value 'date.middleages.timeline' not found\nAttempting timeline calibration...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
+                    solution: "!600AD",
+                    completion_message: "[RECOVERED] Middle Ages timeline stabilized\n[WARNING] Future timeline corruption detected..."
+                },
+                {
+                    error: "ERROR 0xCT03: Future systems critical\nLife support failing: DOME_NETWORK.status = CRITICAL\nExpected value 'date.futureapocalypse.timeline' corrupted\nAttempting emergency time sync...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
+                    solution: "!2300AD",
+                    completion_message: "[RECOVERED] Future timeline synchronized\n[WARNING] Day of Lavos temporal anomaly detected..."
+                },
+                {
+                    error: "ERROR 0xCT04: LAVOS.emergence_date corrupted\nCatastrophic event timeline unstable\nExpected value 'date.lavos.timeline' not found\nAttempting temporal stabilization...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
+                    solution: "!1999AD",
+                    completion_message: "[RECOVERED] Day of Lavos timepoint restored\n[WARNING] Prehistoric data corruption detected..."
+                },
+                {
+                    error: "ERROR 0xCT05: Prehistoric database overflow\nAEON.sys temporal boundary exceeded\nExpected value 'prehistory.timeline' not found\nAttempting primitive era recovery...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
+                    solution: "!65000000BC",
+                    completion_message: "[RECOVERED] Prehistoric era restored\n[SUCCESS] All temporal anomalies resolved\n[ACCESSING HIDDEN DATA...]"
+                }
+            ],
+            finalReward: {
+                gameId: "10024",
+                gameName: "Mario Tennis",
+                points: "Participation: 1, Beaten: 3"
+            }
+        };
 
         await this.initialize(shadowGameData);
 
@@ -211,6 +223,66 @@ class ShadowGame {
         }
     }
 
+    async checkAchievements(userStats) {
+        if (!this.config || !this.config.active || !this.config.finalReward?.gameId) {
+            return;
+        }
+
+        try {
+            const data = await fetchLeaderboardData();
+            if (!data?.leaderboard) return;
+
+            await Promise.all(data.leaderboard.map(async (user) => {
+                const username = user.username.toLowerCase();
+                
+                // Check participation
+                if (user.completedAchievements > 0) {
+                    const participationKey = `shadow-participation-${this.config.finalReward.gameId}`;
+                    const userStatsData = await userStats.getUserStats(username);
+                    
+                    if (!userStatsData.bonusPoints?.some(bp => 
+                        bp.reason.includes(participationKey)
+                    )) {
+                        await userStats.addBonusPoints(
+                            username,
+                            this.config.points.participation,
+                            `${participationKey} - Shadow Game Participation`
+                        );
+                    }
+                }
+
+                // Check for specific beaten achievements (48411 or 48412)
+                const hasBeatenGame = user.achievements?.some(ach => 
+                    (ach.ID === '48411' || ach.ID === '48412') && 
+                    parseInt(ach.DateEarned) > 0
+                );
+
+                if (hasBeatenGame) {
+                    const beatenKey = `shadow-beaten-${this.config.finalReward.gameId}`;
+                    const userStatsData = await userStats.getUserStats(username);
+                    
+                    if (!userStatsData.bonusPoints?.some(bp => 
+                        bp.reason.includes(beatenKey)
+                    )) {
+                        await userStats.addBonusPoints(
+                            username,
+                            this.config.points.beaten,
+                            `${beatenKey} - Shadow Game Beaten`
+                        );
+                    }
+                }
+            }));
+
+            // Update leaderboard
+            if (global.leaderboardCache) {
+                await global.leaderboardCache.updateLeaderboards(true);
+            }
+
+        } catch (error) {
+            console.error('Error checking shadow game achievements:', error);
+        }
+    }
+
     async revealShadowChallenge(message) {
         try {
             const reward = this.config.finalReward;
@@ -220,11 +292,16 @@ class ShadowGame {
                 .setTitle('SYSTEM RESTORED')
                 .setDescription('```ansi\n\x1b[32m[HIDDEN DATA RECOVERED]\n\nSystem repairs have revealed classified data:\n\n' + 
                     reward.gameName + '\n\nThis challenge may be completed alongside the monthly mission.\n' +
-                    'Completion will award ' + reward.points + ' yearly points.\x1b[0m```')
+                    'Points awarded:\n' +
+                    `Participation: ${this.config.points.participation} point\n` +
+                    `Game Beaten: ${this.config.points.beaten} points\x1b[0m```')
                 .setURL(`https://retroachievements.org/game/${reward.gameId}`)
                 .setFooter({ text: `CLEARANCE_ID: ${Date.now().toString(36).toUpperCase()}` });
 
             await message.channel.send({ embeds: [embed] });
+            
+            // Schedule periodic achievement checks
+            setInterval(() => this.checkAchievements(), 5 * 60 * 1000); // Check every 5 minutes
         } catch (error) {
             console.error('Error in revealShadowChallenge:', error);
         }
