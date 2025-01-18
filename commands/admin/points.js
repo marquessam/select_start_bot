@@ -1,4 +1,5 @@
 const TerminalEmbed = require('../../utils/embedBuilder');
+const { commonValidators } = require('../../utils/validators');
 
 module.exports = {
     name: 'points',
