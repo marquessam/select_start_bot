@@ -4,7 +4,7 @@ const { commonValidators } = require('../../utils/validators');
 module.exports = {
     name: 'points',
     description: 'Manage user points system',
-    async execute(message, args, { userStats }) {
+    async execute(message, args) {
         try {
             if (!args.length) {
                 return await showHelp(message);
@@ -14,19 +14,19 @@ module.exports = {
 
             switch(subcommand) {
                 case 'add':
-                    await handleAddPoints(message, subArgs, userStats);
+                    await handleAddPoints(message, subArgs);
                     break;
                 case 'addmulti':
-                    await handleAddMultiPoints(message, subArgs, userStats);
+                    await handleAddMultiPoints(message, subArgs);
                     break;
                 case 'addall':
-                    await handleAddAllPoints(message, subArgs, userStats);
+                    await handleAddAllPoints(message, subArgs);
                     break;
                 case 'reset':
-                    await handleResetPoints(message, subArgs, userStats);
+                    await handleResetPoints(message, subArgs);
                     break;
                 case 'restore':
-                    await handleRestorePoints(message, userStats);
+                    await handleRestorePoints(message);
                     break;
                 default:
                     await showHelp(message);
@@ -53,17 +53,18 @@ async function showHelp(message) {
     await message.channel.send({ embeds: [embed] });
 }
 
-async function handleAddPoints(message, args, userStats) {
+async function handleAddPoints(message, args) {
+    // Check if we have enough arguments
     if (args.length < 3) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !points add <username> <points> <reason>\n[Ready for input]█\x1b[0m```');
         return;
     }
 
-    const username = args[0].toLowerCase();
+    const username = args[0];
     const points = parseInt(args[1]);
     const reason = args.slice(2).join(' ');
 
-    // Validate inputs using new validators
+    // Validate inputs
     if (!commonValidators.username(username)) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid username format\n[Ready for input]█\x1b[0m```');
         return;
@@ -80,13 +81,18 @@ async function handleAddPoints(message, args, userStats) {
     }
 
     try {
+        // Get initial state and force cache refresh
+        const userStats = message.client.userStats;
+        if (!userStats) {
+            throw new Error('User stats service not available');
+        }
+
         const validUsers = await userStats.getAllUsers();
-        if (!validUsers.includes(username)) {
+        if (!validUsers.includes(username.toLowerCase())) {
             await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" not found\n[Ready for input]█\x1b[0m\`\`\``);
             return;
         }
 
-        // Get initial state and force cache refresh
         await userStats.refreshCache();
         const beforeStats = await userStats.getUserStats(username);
         const currentYear = new Date().getFullYear().toString();
@@ -125,6 +131,7 @@ async function handleAddPoints(message, args, userStats) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to add points\n[Ready for input]█\x1b[0m```');
     }
 }
+
 async function handleAddMultiPoints(message, args, userStats) {
     if (args.length < 4) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !points addmulti <points> <reason> <user1> <user2> ...\n[Ready for input]█\x1b[0m```');
