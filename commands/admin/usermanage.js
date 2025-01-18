@@ -14,7 +14,7 @@ module.exports = {
 
             switch(subcommand) {
                 case 'remove':
-                    await handleRemove(message, subArgs);
+                    await handleRemove(message, subArgs, userTracker);
                     break;
                 case 'scan':
                     await handleScan(message, subArgs, userTracker);
@@ -45,25 +45,40 @@ async function showHelp(message) {
     await message.channel.send({ embeds: [embed] });
 }
 
-async function handleRemove(message, args) {
+async function handleRemove(message, args, userTracker) {
     if (!args.length) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Username is required\nUsage: !usermanage remove <username>\n[Ready for input]█\x1b[0m```');
         return;
     }
 
     const username = args[0].toLowerCase();
-    await database.removeValidUser(username);
+    try {
+        const success = await userTracker.removeUser(username);
 
-    const embed = new TerminalEmbed()
-        .setTerminalTitle('USER REMOVED')
-        .setTerminalDescription('[UPDATE COMPLETE]')
-        .addTerminalField('DETAILS', 
-            `USERNAME: ${username}\n` +
-            `STATUS: Removed from database\n` +
-            `TIME: ${new Date().toLocaleTimeString()}`)
-        .setTerminalFooter();
+        if (!success) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] User not found or could not be removed\n[Ready for input]█\x1b[0m```');
+            return;
+        }
 
-    await message.channel.send({ embeds: [embed] });
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('USER REMOVED')
+            .setTerminalDescription('[UPDATE COMPLETE]')
+            .addTerminalField('DETAILS', 
+                `USERNAME: ${username}\n` +
+                `STATUS: Removed from database\n` +
+                `TIME: ${new Date().toLocaleTimeString()}`)
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [embed] });
+
+        // Force cache update if needed
+        if (global.leaderboardCache) {
+            await global.leaderboardCache.updateValidUsers();
+        }
+    } catch (error) {
+        console.error('Error removing user:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to remove user\n[Ready for input]█\x1b[0m```');
+    }
 }
 
 async function handleScan(message, args, userTracker) {
