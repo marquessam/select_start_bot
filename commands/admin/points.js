@@ -1,13 +1,20 @@
 const TerminalEmbed = require('../../utils/embedBuilder');
 const { commonValidators } = require('../../utils/validators');
+const { Collection } = require('discord.js');
+
+// Track active point assignments
+const activeCollectors = new Collection();
 
 module.exports = {
     name: 'points',
     description: 'Manage user points system',
     async execute(message, args, services) {
         try {
-            if (!services || !services.userStats) {
-                throw new Error('User stats service not available');
+            const userStats = services?.userStats;
+            if (!userStats) {
+                console.error('Points Command: userStats service not available');
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Points system unavailable\n[Ready for input]█\x1b[0m```');
+                return;
             }
 
             if (!args.length) {
@@ -16,21 +23,24 @@ module.exports = {
 
             const [subcommand, ...subArgs] = args;
 
-            switch(subcommand) {
+            // Check if there's already an active collector for this user
+            if (activeCollectors.has(message.author.id)) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] You already have an active points command running\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            switch(subcommand.toLowerCase()) {
                 case 'add':
-                    await handleAddPoints(message, subArgs, services.userStats);
+                    await startPointsAdd(message, userStats);
                     break;
                 case 'addmulti':
-                    await handleAddMultiPoints(message, subArgs, services.userStats);
+                    await handleAddMultiPoints(message, subArgs, userStats);
                     break;
                 case 'addall':
-                    await handleAddAllPoints(message, subArgs, services.userStats);
+                    await handleAddAllPoints(message, subArgs, userStats);
                     break;
                 case 'reset':
-                    await handleResetPoints(message, subArgs, services.userStats);
-                    break;
-                case 'restore':
-                    await handleRestorePoints(message, services.userStats);
+                    await handleResetPoints(message, subArgs, userStats);
                     break;
                 default:
                     await showHelp(message);
@@ -47,51 +57,74 @@ async function showHelp(message) {
         .setTerminalTitle('POINTS MANAGEMENT')
         .setTerminalDescription('[COMMAND USAGE]')
         .addTerminalField('AVAILABLE COMMANDS',
-            '!points add <user> <points> <reason>\n' +
+            '!points add - Start interactive point assignment\n' +
             '!points addmulti <points> <reason> <user1> <user2> ...\n' +
             '!points addall <points> <reason>\n' +
-            '!points reset <username>\n' +
-            '!points restore')
+            '!points reset <username>')
         .setTerminalFooter();
 
     await message.channel.send({ embeds: [embed] });
 }
 
-async function handleAddPoints(message, args, userStats) {
-    // Check if we have enough arguments
-    if (args.length < 3) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !points add <username> <points> <reason>\n[Ready for input]█\x1b[0m```');
-        return;
-    }
+async function startPointsAdd(message, userStats) {
+    const filter = m => m.author.id === message.author.id;
+    let username, points, reason;
 
-    const username = args[0];
-    const points = parseInt(args[1]);
-    const reason = args.slice(2).join(' ');
-
-    // Validate inputs
-    if (!commonValidators.username(username)) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid username format\n[Ready for input]█\x1b[0m```');
-        return;
-    }
-
-    if (!commonValidators.points(points)) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid points value (must be between -100 and 100)\n[Ready for input]█\x1b[0m```');
-        return;
-    }
-
-    if (!commonValidators.reason(reason)) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid reason (must be 3-200 characters)\n[Ready for input]█\x1b[0m```');
-        return;
-    }
+    // Create collector for this user
+    activeCollectors.set(message.author.id, true);
 
     try {
-        // Get initial state and force cache refresh
-        const validUsers = await userStats.getAllUsers();
-        if (!validUsers.includes(username.toLowerCase())) {
-            await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" not found\n[Ready for input]█\x1b[0m\`\`\``);
-            return;
+        // Step 1: Get username
+        await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the username:\n[Ready for input]█\x1b[0m```');
+        const usernameResponse = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: 30000,
+            errors: ['time']
+        });
+        username = usernameResponse.first().content.trim();
+
+        // Validate username
+        if (!commonValidators.username(username)) {
+            throw new Error('Invalid username format');
         }
 
+        const validUsers = await userStats.getAllUsers();
+        if (!validUsers.includes(username.toLowerCase())) {
+            throw new Error(`User "${username}" not found`);
+        }
+
+        // Step 2: Get points
+        await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the point amount (-100 to 100):\n[Ready for input]█\x1b[0m```');
+        const pointsResponse = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: 30000,
+            errors: ['time']
+        });
+        points = parseInt(pointsResponse.first().content);
+
+        // Validate points
+        if (!commonValidators.points(points)) {
+            throw new Error('Invalid points value (must be between -100 and 100)');
+        }
+
+        // Step 3: Get reason
+        await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the reason for points:\n[Ready for input]█\x1b[0m```');
+        const reasonResponse = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: 30000,
+            errors: ['time']
+        });
+        reason = reasonResponse.first().content;
+
+        // Validate reason
+        if (!commonValidators.reason(reason)) {
+            throw new Error('Invalid reason (must be 3-200 characters)');
+        }
+
+        // Get initial state and force cache refresh
         await userStats.refreshCache();
         const beforeStats = await userStats.getUserStats(username);
         const currentYear = new Date().getFullYear().toString();
@@ -125,9 +158,16 @@ async function handleAddPoints(message, args, userStats) {
             .setTerminalFooter();
 
         await message.channel.send({ embeds: [embed] });
+
     } catch (error) {
-        console.error('Error in handleAddPoints:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to add points\n[Ready for input]█\x1b[0m```');
+        if (error.message === 'time') {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Command timed out\n[Ready for input]█\x1b[0m```');
+        } else {
+            await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] ${error.message}\n[Ready for input]█\x1b[0m\`\`\``);
+        }
+    } finally {
+        // Clean up collector
+        activeCollectors.delete(message.author.id);
     }
 }
 
@@ -306,61 +346,5 @@ async function handleResetPoints(message, args, userStats) {
     } catch (error) {
         console.error('Error in handleResetPoints:', error);
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to reset points\n[Ready for input]█\x1b[0m```');
-    }
-}
-
-async function handleRestorePoints(message, userStats) {
-    const betaRoleId = '1301710526535041105';
-    const betaRole = message.guild.roles.cache.get(betaRoleId);
-    
-    if (!betaRole) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Beta role not found\n[Ready for input]█\x1b[0m```');
-        return;
-    }
-
-    try {
-        // Force cache refresh before starting
-        await userStats.refreshCache();
-        const betaMembers = betaRole.members;
-        const processedUsers = [];
-        const failedUsers = [];
-
-        for (const [memberId, member] of betaMembers) {
-            try {
-                const username = member.nickname || member.user.username;
-                await userStats.addBonusPoints(username, 1, 'Beta Program Participation');
-                await userStats.saveStats();
-                processedUsers.push(username);
-            } catch (error) {
-                console.error(`Error processing user ${member.user.username}:`, error);
-                failedUsers.push(member.user.username);
-            }
-        }
-
-        // Force final cache refresh and leaderboard update
-        await userStats.refreshCache();
-        if (global.leaderboardCache) {
-            await global.leaderboardCache.updateLeaderboards(true);
-        }
-
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('BETA POINTS RESTORATION')
-            .setTerminalDescription('[PROCESS COMPLETE]')
-            .addTerminalField('SUMMARY', 
-                `Successfully processed: ${processedUsers.length}\n` +
-                `Failed to process: ${failedUsers.length}`);
-
-        if (processedUsers.length > 0) {
-            embed.addTerminalField('POINTS RESTORED TO', processedUsers.join('\n'));
-        }
-        if (failedUsers.length > 0) {
-            embed.addTerminalField('FAILED TO PROCESS', failedUsers.join('\n'));
-        }
-
-        embed.setTerminalFooter();
-        await message.channel.send({ embeds: [embed] });
-    } catch (error) {
-        console.error('Error in handleRestorePoints:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to restore points\n[Ready for input]█\x1b[0m```');
     }
 }
