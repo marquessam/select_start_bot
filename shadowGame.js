@@ -300,17 +300,17 @@ class ShadowGame {
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
                 .setTitle('SYSTEM RESTORED')
-                .setDescription(
-                    '```ansi\n' +
-                    '\x1b[32m[HIDDEN DATA RECOVERED]\n\n' +
-                    'System repairs have revealed classified data:\n\n' + 
-                    reward.gameName + '\n\n' +
-                    'This challenge may be completed alongside the monthly mission.\n' +
-                    'Points awarded:\n' +
-                    `Participation: ${this.config.points.participation} point\n` +
-                    `Game Beaten: ${this.config.points.beaten} points` +
-                    '\x1b[0m```'
-                )
+               .setDescription(
+        '```ansi\n' +
+        '\x1b[32m[HIDDEN DATA RECOVERED]\n\n' +
+        'System repairs have revealed classified data:\n\n' + 
+        `${reward.gameName} (N64)\n\n` +
+        'This challenge may be completed alongside the monthly mission.\n' +
+        'Points awarded:\n' +
+        `Participation: ${this.config.points.participation} point\n` +
+        `Game Beaten: ${this.config.points.beaten} points` +
+        '\x1b[0m```'
+    )
                 .setURL(`https://retroachievements.org/game/${reward.gameId}`)
                 .setFooter({ text: `CLEARANCE_ID: ${Date.now().toString(36).toUpperCase()}` });
 
