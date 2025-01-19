@@ -1,3 +1,4 @@
+// index.js
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const database = require('./database');
@@ -66,16 +67,17 @@ async function createCoreServices() {
         console.log('Achievement Feed type:', typeof AchievementFeed);
         let achievementFeed;
         if (typeof AchievementFeed === 'function') {
-            // It's a class, so instantiate it
             achievementFeed = new AchievementFeed(client, database);
         } else {
-            // It's an object, so use it directly
             achievementFeed = AchievementFeed;
         }
 
         // Set up leaderboard cache
         leaderboardCache.setUserStats(userStats);
         global.leaderboardCache = leaderboardCache;
+
+        // Set global achievement feed for point announcements
+        global.achievementFeed = achievementFeed;
 
         console.log('Core services created successfully');
         return {
@@ -94,7 +96,6 @@ async function createCoreServices() {
     }
 }
 
-// Also modify the initialization part
 async function initializeServices(coreServices) {
     const {
         userTracker,
@@ -136,9 +137,33 @@ async function setupBot() {
         const coreServices = await createCoreServices();
         services = await initializeServices(coreServices);
         console.log('Bot setup completed successfully');
+        return services;
     } catch (error) {
         console.error('Bot Setup Error:', error);
         throw error;
+    }
+}
+
+async function performInitialParticipationCheck(services) {
+    try {
+        console.log('Performing initial participation and achievement check...');
+        
+        if (services?.leaderboardCache) {
+            console.log('Fetching initial leaderboard data...');
+            const leaderboardData = await services.leaderboardCache.updateLeaderboards(true);
+            
+            if (services?.userStats && leaderboardData) {
+                console.log('Processing participation and beaten status...');
+                await services.userStats.updateMonthlyParticipation(leaderboardData);
+                console.log('Initial participation check completed');
+            } else {
+                console.warn('UserStats service or leaderboard data not available');
+            }
+        } else {
+            console.warn('LeaderboardCache service not available');
+        }
+    } catch (error) {
+        console.error('Error in initial participation check:', error);
     }
 }
 
@@ -170,7 +195,10 @@ async function handleMessage(message, services) {
 client.once('ready', async () => {
     try {
         console.log(`Logged in as ${client.user.tag}`);
-        await setupBot();
+        const initializedServices = await setupBot();
+        
+        // Perform initial participation check after setup
+        await performInitialParticipationCheck(initializedServices);
     } catch (error) {
         console.error('Fatal initialization error:', error);
         process.exit(1);
@@ -192,13 +220,19 @@ const updateLeaderboards = async () => {
     if (!services?.leaderboardCache) return;
 
     try {
-        await services.leaderboardCache.updateLeaderboards();
+        const leaderboardData = await services.leaderboardCache.updateLeaderboards(true);
+        
+        // Check participation after each leaderboard update
+        if (services?.userStats && leaderboardData) {
+            await services.userStats.updateMonthlyParticipation(leaderboardData);
+        }
     } catch (error) {
         console.error('Leaderboard Update Error:', error);
         setTimeout(updateLeaderboards, 5 * 60 * 1000);
     }
 };
 
+// Run leaderboard updates every hour
 setInterval(updateLeaderboards, 60 * 60 * 1000);
 
 // Graceful Shutdown
