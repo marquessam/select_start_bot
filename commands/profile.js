@@ -104,8 +104,10 @@ module.exports = {
             ) || [];
 
             const recentBonusPoints = bonusPoints.length > 0 
-                ? bonusPoints.map(bonus => `${bonus.reason}: ${bonus.points} pts`).join('\n')
-                : 'No bonus points';
+    ? bonusPoints.map(bonus => 
+        `${bonus.displayReason || bonus.reason}: ${bonus.points} pts`
+    ).join('\n')
+    : 'No bonus points';
 
             // Calculate ranks
             const yearlyRankText = calculateRank(validatedUser, yearlyLeaderboard, 
