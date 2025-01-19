@@ -6,7 +6,7 @@ const path = require('path');
 const raGameRules = require(path.join(__dirname, 'raGameRules.json'));
 const { withTransaction } = require('./utils/transactions');
 
-// Import our new monthlyGames helpers
+// monthlyGames helpers
 const {
   monthlyGames,
   getActiveGamesForMonth,
@@ -188,64 +188,61 @@ class UserStats {
     //  Points Management
     // =======================
     async addBonusPoints(username, points, reason) {
-    console.log(
-        `[DEBUG] addBonusPoints -> awarding ${points} points to "${username}" for reason: "${reason}"`
-    );
-    try {
-        const cleanUsername = username.trim().toLowerCase();
-        const user = this.cache.stats.users[cleanUsername];
+        console.log(
+            `[DEBUG] addBonusPoints -> awarding ${points} points to "${username}" for reason: "${reason}"`
+        );
+        try {
+            const cleanUsername = username.trim().toLowerCase();
+            const user = this.cache.stats.users[cleanUsername];
 
-        if (!user) {
-            throw new Error(`User ${username} not found`);
-        }
+            if (!user) {
+                throw new Error(`User ${username} not found`);
+            }
 
-        const year = this.currentYear.toString();
+            const year = this.currentYear.toString();
 
-        if (!user.bonusPoints) user.bonusPoints = [];
-        if (!user.yearlyPoints) user.yearlyPoints = {};
+            if (!user.bonusPoints) user.bonusPoints = [];
+            if (!user.yearlyPoints) user.yearlyPoints = {};
 
-        // Use transaction for point allocation
-        await withTransaction(this.database, async (session) => {
-            // Add bonus points
-            user.bonusPoints.push({
-                points,
-                reason,
-                year,
-                date: new Date().toISOString()
+            // Use transaction for point allocation
+            await withTransaction(this.database, async (session) => {
+                // Add bonus points
+                user.bonusPoints.push({
+                    points,
+                    reason,
+                    year,
+                    date: new Date().toISOString()
+                });
+                
+                // Update yearly points
+                user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
+
+                // Save within transaction
+                await this.database.db.collection('userstats').updateOne(
+                    { _id: 'stats' },
+                    { $set: { [`users.${cleanUsername}`]: user } },
+                    { session }
+                );
             });
-            
-            // Update yearly points
-            user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
 
-            // Save within transaction
-            await this.database.db.collection('userstats').updateOne(
-                { _id: 'stats' },
-                { $set: { [`users.${cleanUsername}`]: user } },
-                { session }
-            );
-        });
+            // Update cache
+            this.cache.pendingUpdates.add(cleanUsername);
 
-        // Update cache
-        this.cache.pendingUpdates.add(cleanUsername);
+            // Force an immediate leaderboard update if desired
+            if (global.leaderboardCache) {
+                await global.leaderboardCache.updateLeaderboards();
+            }
 
-        // Force an immediate leaderboard update if desired
-        if (global.leaderboardCache) {
-            await global.leaderboardCache.updateLeaderboards();
+            // Announce the points if feed is available
+            if (global.achievementFeed) {
+                await global.achievementFeed.announcePointsAward(username, points, reason);
+            }
+
+        } catch (error) {
+            ErrorHandler.logError(error, 'Adding Bonus Points');
+            throw error;
         }
-
-        // =========================
-        // NEW: Announce the points
-        // =========================
-        if (global.achievementFeed) {
-            // Call the new method on your feed instance
-            await global.achievementFeed.announcePointsAward(username, points, reason);
-        }
-
-    } catch (error) {
-        ErrorHandler.logError(error, 'Adding Bonus Points');
-        throw error;
     }
-}
 
     async resetUserPoints(username) {
         try {
@@ -361,7 +358,6 @@ class UserStats {
                         const isCurrentMonth = (gameCfg.month === currentYM);
 
                         if (isCurrentMonth) {
-                            // For each check in gameCfg.checks, run the appropriate function
                             if (gameCfg.checks.includes('participation')) {
                                 await this.handleParticipationPoints(user, username, userStats, gameCfg.gameId, gameCfg.gameName);
                             }
@@ -418,12 +414,16 @@ class UserStats {
     async handleParticipationPoints(user, username, userStats, gameId, gameName) {
         console.log(`[DEBUG] handleParticipationPoints -> ${username}, game: ${gameId} - ${gameName}`);
 
+        // Compare parseInt(ach.GameID) === parseInt(gameId)
         const achievementsForGame = (user.achievements ?? []).filter(
-    ach => parseInt(ach.GameID) === parseInt(gameId)
-);
+            ach => parseInt(ach.GameID) === parseInt(gameId)
+        );
+
         console.log(`[DEBUG] Found ${achievementsForGame.length} achievements for gameId ${gameId}. Checking DateEarned...`);
 
-        const hasAchievementsForGame = achievementsForGame.some(a => parseInt(a.DateEarned) > 0);
+        const hasAchievementsForGame = achievementsForGame.some(
+            a => parseInt(a.DateEarned) > 0
+        );
         console.log('[DEBUG] hasAchievementsForGame?', hasAchievementsForGame);
 
         if (hasAchievementsForGame) {
@@ -440,11 +440,6 @@ class UserStats {
 
     // -----------------------------
     // 2) BEATEN
-    // -----------------------------
-    // We use raGameRules to see if there's a "progression" + "winCondition" 
-    // or fallback bit=2. If both pass, we award points. 
-    // You can differentiate how many points for side game vs. main challenge 
-    // by adding more fields to monthlyGames config if you want.
     // -----------------------------
     async handleBeaten(user, username, userStats, gameId, gameName) {
         console.log(`[DEBUG] handleBeaten -> ${username}, game: ${gameId} - ${gameName}`);
@@ -474,13 +469,13 @@ class UserStats {
                 beaten = true;
             }
         } else {
-            // Fallback to bit=2 logic
+            // Fallback: bit=2 logic
             const beatAchievement = user.achievements.find(
-    ach =>
-        parseInt(ach.GameID) === parseInt(gameId) &&
-        (ach.Flags & 2) === 2 &&
-        parseInt(ach.DateEarned) > 0
-);
+                ach =>
+                    parseInt(ach.GameID) === parseInt(gameId) &&
+                    (ach.Flags & 2) === 2 &&
+                    parseInt(ach.DateEarned) > 0
+            );
             if (beatAchievement) {
                 beaten = true;
             }
@@ -503,8 +498,7 @@ class UserStats {
                 }
                 userStats.yearlyStats[currentYear].gamesBeaten += 1;
 
-                // Decide how many points. If you want side games to be 1 and main challenge to be 3, 
-                // you could pass an argument from monthlyGames or detect isMonthlyChallenge. 
+                // E.g. award 1 point for a side game. If main challenge, maybe 3.
                 const pointsToAward = 1; 
                 console.log(`[DEBUG] Awarding ${pointsToAward} beaten points to "${username}" for ${gameName}.`);
                 await this.addBonusPoints(username, pointsToAward, `${gameName} - beaten`);
@@ -515,17 +509,12 @@ class UserStats {
     // -----------------------------
     // 3) MASTERY
     // -----------------------------
-    // Checking if user has earned all achievements for that game 
-    // (or if the game is smaller, you can still do a special ruleSet).
-    // If total == earned => mastery
-    // -----------------------------
     async checkMastery(user, username, userStats, gameId, gameName) {
         console.log(`[DEBUG] checkMastery -> ${username}, game: ${gameId} - ${gameName}`);
 
-        // If your code for mastery is "100% achievements in that game," do this:
         const achievementsForGame = (user.achievements ?? []).filter(
-    a => parseInt(a.GameID) === parseInt(gameId)
-);
+            a => parseInt(a.GameID) === parseInt(gameId)
+        );
         const total = achievementsForGame.length;
         if (total === 0) {
             console.log('[DEBUG] No achievements found for this game in user data; cannot be mastered.');
@@ -547,7 +536,7 @@ class UserStats {
                 console.log(`[DEBUG] Awarding mastery points to "${username}" for ${gameName}.`);
                 userStats.masteryMonths.push(masteryKey);
 
-                // e.g., award 3 points
+                // e.g. award 3 points
                 await this.addBonusPoints(username, 3, `${gameName} - mastery`);
             }
         }
