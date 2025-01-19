@@ -149,7 +149,7 @@ async function performInitialParticipationCheck(services) {
         // Wait a short time to ensure all services are fully initialized
         await new Promise(resolve => setTimeout(resolve, 5000));
         
-        console.log('Performing initial participation and achievement check...');
+        console.log('Performing initial points check...');
         
         if (services?.leaderboardCache) {
             console.log('Fetching initial leaderboard data...');
@@ -161,22 +161,20 @@ async function performInitialParticipationCheck(services) {
                 userCount: data?.leaderboard?.length || 0
             });
             
-            if (services?.userStats && data?.leaderboard) {
-                console.log(`Processing participation and beaten status for ${data.leaderboard.length} users...`);
-                await services.userStats.updateMonthlyParticipation(data);
-                console.log('Initial participation check completed');
+            if (services?.userStats) {
+                console.log(`Processing initial points check for ${data.leaderboard.length} users...`);
+                await services.userStats.recheckAllPoints();
+                console.log('Initial points check completed');
             } else {
-                console.warn('UserStats service not available or leaderboard data invalid:', {
-                    hasUserStats: !!services?.userStats,
-                    hasLeaderboardData: !!data,
-                    hasLeaderboardProperty: !!data?.leaderboard
+                console.warn('UserStats service not available:', {
+                    hasUserStats: !!services?.userStats
                 });
             }
         } else {
             console.warn('LeaderboardCache service not available');
         }
     } catch (error) {
-        console.error('Error in initial participation check:', error);
+        console.error('Error in initial points check:', error);
         console.error('Data state:', {
             hasServices: !!services,
             hasLeaderboardCache: !!services?.leaderboardCache,
@@ -184,6 +182,7 @@ async function performInitialParticipationCheck(services) {
         });
     }
 }
+
 async function handleMessage(message, services) {
     const { userTracker, shadowGame, commandHandler } = services;
     const tasks = [];
