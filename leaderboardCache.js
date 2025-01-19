@@ -74,52 +74,54 @@ class LeaderboardCache {
     }
 
     async updateLeaderboards(force = false) {
-        try {
-            if (!force && !this._shouldUpdate()) {
-                return;
-            }
-
-            console.log('[LEADERBOARD CACHE] Updating leaderboards...');
-
-            // Ensure we have valid users
-            if (this.cache.validUsers.size === 0) {
-                await this.updateValidUsers();
-            }
-
-            // Get yearly leaderboard
-            if (this.userStats) {
-                const currentYear = new Date().getFullYear().toString();
-                const validUsers = Array.from(this.cache.validUsers);
-                
-                this.cache.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(
-                    currentYear,
-                    validUsers
-                );
-            }
-
-            // Get monthly leaderboard
-            try {
-                const monthlyData = await fetchLeaderboardData();
-                this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
-                
-                // Update participation tracking if userStats is available
-                if (this.userStats) {
-                    await this.userStats.updateMonthlyParticipation(monthlyData);
-                }
-            } catch (error) {
-                console.error('[LEADERBOARD CACHE] Error fetching monthly data:', error);
-                if (!this.cache.monthlyLeaderboard.length) {
-                    this.cache.monthlyLeaderboard = [];
-                }
-            }
-
-            this.cache.lastUpdated = Date.now();
-            console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
-        } catch (error) {
-            console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
-            throw error;
+    try {
+        if (!force && !this._shouldUpdate()) {
+            return this.cache.monthlyLeaderboard;
         }
+
+        console.log('[LEADERBOARD CACHE] Updating leaderboards...');
+
+        // Ensure we have valid users
+        if (this.cache.validUsers.size === 0) {
+            await this.updateValidUsers();
+        }
+
+        // Get yearly leaderboard
+        if (this.userStats) {
+            const currentYear = new Date().getFullYear().toString();
+            const validUsers = Array.from(this.cache.validUsers);
+            
+            this.cache.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(
+                currentYear,
+                validUsers
+            );
+        }
+
+        // Get monthly leaderboard
+        try {
+            const monthlyData = await fetchLeaderboardData();
+            this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
+            
+            // Update participation tracking if userStats is available
+            if (this.userStats) {
+                console.log('[LEADERBOARD CACHE] Checking participation and beaten status...');
+                await this.userStats.updateMonthlyParticipation(monthlyData);
+            }
+        } catch (error) {
+            console.error('[LEADERBOARD CACHE] Error fetching monthly data:', error);
+            if (!this.cache.monthlyLeaderboard.length) {
+                this.cache.monthlyLeaderboard = [];
+            }
+        }
+
+        this.cache.lastUpdated = Date.now();
+        console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
+        return this.cache.monthlyLeaderboard;
+    } catch (error) {
+        console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
+        throw error;
     }
+}
 
     _shouldUpdate() {
         return !this.cache.lastUpdated || 
