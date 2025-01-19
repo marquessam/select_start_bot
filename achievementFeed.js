@@ -11,8 +11,11 @@ class AchievementFeed {
         this.feedChannel = process.env.ACHIEVEMENT_FEED_CHANNEL;
         this.checkInterval = 5 * 60 * 1000; // Check every 5 minutes
         this.announcementHistory = {
-            messageIds: new Set()
+            messageIds: new Set(),
+            pointAwards: new Set()  // Track point award announcements
         };
+        this.announcementQueue = [];
+        this.isProcessingQueue = false;
     }
 
     async initialize() {
@@ -62,8 +65,8 @@ class AchievementFeed {
                 const isLastAttempt = attempt === retries;
                 // Check if error is "retryable" (network errors, e.g. DNS or ECONNRESET)
                 const isRetryableError = error.code === 'EAI_AGAIN' || 
-                                         error.name === 'FetchError' ||
-                                         error.code === 'ECONNRESET';
+                                       error.name === 'FetchError' ||
+                                       error.code === 'ECONNRESET';
 
                 if (isLastAttempt || !isRetryableError) {
                     throw error;
@@ -165,7 +168,7 @@ class AchievementFeed {
                     })
                     .setTimestamp();
 
-                const message = await channel.send({ embeds: [embed] });
+                await this.queueAnnouncement(embed);
                 this.announcementHistory.messageIds.add(achievementKey);
                 
                 if (this.announcementHistory.messageIds.size > 1000) {
@@ -173,7 +176,6 @@ class AchievementFeed {
                 }
 
                 console.log(`[ACHIEVEMENT FEED] Sent achievement notification for ${username}: ${achievement.Title}`);
-                return message;
             } catch (error) {
                 console.error('[ACHIEVEMENT FEED] Error in sendWithRetry:', error);
                 throw error;
@@ -188,54 +190,81 @@ class AchievementFeed {
         }
     }
 
-    /**
-     * NEW METHOD:
-     * Announces point awards (participation, beaten, mastery, etc.) 
-     * in the same feed channel.
-     */
+    async queueAnnouncement(embedData) {
+        this.announcementQueue.push(embedData);
+        if (!this.isProcessingQueue) {
+            await this.processAnnouncementQueue();
+        }
+    }
+
+    async processAnnouncementQueue() {
+        if (this.isProcessingQueue || this.announcementQueue.length === 0) return;
+
+        this.isProcessingQueue = true;
+        const channel = await this.client.channels.fetch(this.feedChannel);
+
+        try {
+            while (this.announcementQueue.length > 0) {
+                const embedData = this.announcementQueue.shift();
+                await channel.send({ embeds: [embedData] });
+                // Wait 1 second between announcements to prevent spam
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        } catch (error) {
+            console.error('[ACHIEVEMENT FEED] Error processing announcement queue:', error);
+        } finally {
+            this.isProcessingQueue = false;
+        }
+    }
+
     async announcePointsAward(username, points, reason) {
         try {
+            // Validate channel
             if (!this.feedChannel) {
                 console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
                 return;
             }
 
-            const channel = await this.client.channels.fetch(this.feedChannel);
-            if (!channel) {
-                console.error('[ACHIEVEMENT FEED] Could not fetch feed channel for points announcements');
+            // Create unique key for this points award
+            const awardKey = `${username}-${points}-${reason}-${Date.now()}`;
+            if (this.announcementHistory.pointAwards.has(awardKey)) {
+                console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${awardKey}`);
                 return;
             }
 
-            // Optional: define a unique key if you want to prevent spammy duplicates
-            const messageKey = `${username}-${points}-${reason}-${Date.now()}`;
-            if (this.announcementHistory.messageIds.has(messageKey)) {
-                console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${username}, ${points}, ${reason}`);
-                return;
-            }
-
-            // Build embed
+            // Get user profile image
+            const userProfile = await DataService.getRAProfileImage(username);
+            
+            // Create points award embed
             const embed = new EmbedBuilder()
-                .setColor('#FFFF00')
-                .setTitle('Points Awarded')
-                .setDescription(`**${username}** has been awarded **${points}** point(s)!\n**Reason**: *${reason}*`)
-                .setTimestamp(new Date())
-                .setFooter({ text: 'RetroAchievements Bot' });
+                .setColor('#FFD700')  // Gold color for points
+                .setAuthor({
+                    name: username,
+                    iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
+                    url: `https://retroachievements.org/user/${username}`
+                })
+                .setTitle('🏆 Points Awarded!')
+                .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
+                .setTimestamp();
 
-            const message = await channel.send({ embeds: [embed] });
-            // Track to avoid duplicates
-            this.announcementHistory.messageIds.add(messageKey);
-            if (this.announcementHistory.messageIds.size > 1000) {
-                this.announcementHistory.messageIds.clear();
+            // Queue the announcement
+            await this.queueAnnouncement(embed);
+
+            // Track this announcement
+            this.announcementHistory.pointAwards.add(awardKey);
+
+            // Clean up old point award history if needed
+            if (this.announcementHistory.pointAwards.size > 1000) {
+                this.announcementHistory.pointAwards.clear();
             }
 
-            console.log(`[ACHIEVEMENT FEED] Announced points award for ${username}: ${points} points (${reason})`);
-            return message;
+            console.log(`[ACHIEVEMENT FEED] Queued points announcement for ${username}: ${points} points (${reason})`);
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
         }
     }
 
-    // Optional: a manual trigger
+    // Optional: manual trigger for checking achievements
     async manualCheck() {
         console.log('[ACHIEVEMENT FEED] Manual achievement check initiated');
         await this.checkNewAchievements();
