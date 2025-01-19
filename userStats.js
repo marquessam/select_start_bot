@@ -577,7 +577,7 @@ async handleBeaten(user, username, userStats, gameId, gameName) {
             );
 
             // Award appropriate points based on if it's main challenge or side game
-            const pointsToAward = gameConfig?.isMonthlyChallenge ? 3 : 1;
+            const pointsToAward = gameConfig?.isMonthlyChallenge ? 3 : 3;
             console.log(`[DEBUG] Awarding ${pointsToAward} beaten points to "${username}" for ${gameName}`);
             await this.addBonusPoints(username, pointsToAward, `${gameName} - beaten`);
         } else {
@@ -633,7 +633,7 @@ async handleBeaten(user, username, userStats, gameId, gameName) {
             );
 
             // Award appropriate points based on if it's main challenge or side game
-            const pointsToAward = gameConfig?.isMonthlyChallenge ? 5 : 3;
+            const pointsToAward = gameConfig?.isMonthlyChallenge ? 3;
             await this.addBonusPoints(username, pointsToAward, `${gameName} - mastery`);
         } else {
             console.log(`[DEBUG] ${username} already awarded mastery for ${gameName} this month`);
