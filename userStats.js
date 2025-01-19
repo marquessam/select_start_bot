@@ -181,56 +181,62 @@ class UserStats {
     //  Points Management
     // =======================
     async addBonusPoints(username, points, reason) {
-        console.log(
-            `[DEBUG] addBonusPoints -> awarding ${points} points to "${username}" for reason: "${reason}"`
-        );
-        try {
-            const cleanUsername = username.trim().toLowerCase();
-            const user = this.cache.stats.users[cleanUsername];
+    console.log(
+        `[DEBUG] addBonusPoints -> awarding ${points} points to "${username}" for reason: "${reason}"`
+    );
+    try {
+        const cleanUsername = username.trim().toLowerCase();
+        const user = this.cache.stats.users[cleanUsername];
 
-            if (!user) {
-                throw new Error(`User ${username} not found`);
-            }
-
-            const year = this.currentYear.toString();
-
-            if (!user.bonusPoints) user.bonusPoints = [];
-            if (!user.yearlyPoints) user.yearlyPoints = {};
-
-            // Use transaction for point allocation
-            await withTransaction(this.database, async (session) => {
-                // Add bonus points
-                user.bonusPoints.push({
-                    points,
-                    reason,
-                    year,
-                    date: new Date().toISOString()
-                });
-                
-                // Update yearly points
-                user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
-
-                // Save within transaction
-                await this.database.db.collection('userstats').updateOne(
-                    { _id: 'stats' },
-                    { $set: { [`users.${cleanUsername}`]: user } },
-                    { session }
-                );
-            });
-
-            // Update cache
-            this.cache.pendingUpdates.add(cleanUsername);
-
-            // Announce the points if feed is available
-            if (global.achievementFeed) {
-                await global.achievementFeed.announcePointsAward(username, points, reason);
-            }
-
-        } catch (error) {
-            ErrorHandler.logError(error, 'Adding Bonus Points');
-            throw error;
+        if (!user) {
+            throw new Error(`User ${username} not found`);
         }
+
+        const year = this.currentYear.toString();
+
+        if (!user.bonusPoints) user.bonusPoints = [];
+        if (!user.yearlyPoints) user.yearlyPoints = {};
+
+        // Use transaction for point allocation
+        await withTransaction(this.database, async (session) => {
+            // If we received a reason object with both display and internal versions
+            const displayReason = reason.reason || reason;
+            const internalReason = reason.internalReason || reason;
+            
+            // Add bonus points using internal reason for tracking
+            user.bonusPoints.push({
+                points,
+                reason: internalReason,
+                displayReason: displayReason,  // Store display version for UI
+                year,
+                date: new Date().toISOString()
+            });
+            
+            // Update yearly points
+            user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
+
+            // Save within transaction
+            await this.database.db.collection('userstats').updateOne(
+                { _id: 'stats' },
+                { $set: { [`users.${cleanUsername}`]: user } },
+                { session }
+            );
+        });
+
+        // Update cache
+        this.cache.pendingUpdates.add(cleanUsername);
+
+        // Announce the points using the display reason
+        if (global.achievementFeed) {
+            const displayReason = reason.reason || reason;
+            await global.achievementFeed.announcePointsAward(username, points, displayReason);
+        }
+
+    } catch (error) {
+        ErrorHandler.logError(error, 'Adding Bonus Points');
+        throw error;
     }
+}
 
     async resetUserPoints(username) {
         try {
