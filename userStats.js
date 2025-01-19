@@ -327,12 +327,7 @@ class UserStats {
                     if (userProgress) {
                         // Check and apply all achievement-based points
                         await this.processAchievementPoints(username, userProgress);
-
-                        // Check and apply role-based points if member found
-                        if (member) {
-                            await this.processRolePoints(username, member);
-                        }
-
+    
                         processedUsers.push(username);
                     }
                 } catch (error) {
