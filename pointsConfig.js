@@ -1,21 +1,9 @@
 // pointsConfig.js
 
-//const BETA_MEMBER_ROLE = '1301710526535041105';
-
-//const pointsConfig = {
-    // Role-based points
-    //roles: [
-      //  {
-        //    roleId: BETA_MEMBER_ROLE,
-       //     points: 1,
-       //     reason: 'Beta Member'
-   //     }
- //   ],
-
+const pointsConfig = {
     // Monthly challenges
     monthlyGames: {
-        // Chrono Trigger
-        '319': {
+        "319": {
             points: {
                 participation: 1,
                 beaten: 3,
@@ -27,8 +15,7 @@
             requireAllWinConditions: true,  // Must have ALL win condition achievements
             masteryCheck: true  // This game awards mastery points
         },
-        // Mario Tennis
-        '10024': {
+        "10024": {
             points: {
                 participation: 1,
                 beaten: 3
@@ -44,20 +31,37 @@
 // Point check functions
 const pointChecks = {
     // Check if user has role-based points
-    async checkRolePoints(user, userStats) {
-        const roleChecks = [];
-        for (const roleConfig of pointsConfig.roles) {
-            if (user.roles?.cache.has(roleConfig.roleId)) {
-                const pointKey = `role-${roleConfig.roleId}`;
-                if (!userStats.bonusPoints?.some(bp => bp.reason.includes(pointKey))) {
-                    roleChecks.push({
-                        points: roleConfig.points,
-                        reason: `${roleConfig.reason} (${pointKey})`
-                    });
+    async checkRolePoints(guild, raUsername, userStats) {
+        try {
+            const mapping = await database.getUserMapping(raUsername);
+            if (!mapping) {
+                console.log(`No Discord mapping found for ${raUsername}`);
+                return [];
+            }
+
+            const member = await guild.members.fetch(mapping.discordId);
+            if (!member) {
+                console.log(`Could not find Discord member for ${raUsername}`);
+                return [];
+            }
+
+            const roleChecks = [];
+            for (const roleConfig of pointsConfig.roles) {
+                if (member.roles.cache.has(roleConfig.roleId)) {
+                    const pointKey = `role-${roleConfig.roleId}`;
+                    if (!userStats.bonusPoints?.some(bp => bp.reason.includes(pointKey))) {
+                        roleChecks.push({
+                            points: roleConfig.points,
+                            reason: `${roleConfig.reason} (${pointKey})`
+                        });
+                    }
                 }
             }
+            return roleChecks;
+        } catch (error) {
+            console.error(`Error checking role points for ${raUsername}:`, error);
+            return [];
         }
-        return roleChecks;
     },
 
     // Check game-related points
@@ -113,14 +117,16 @@ const pointChecks = {
             }
         }
 
-        const beatenKey = `beaten-${gameId}`;
-        if (hasBeaten && !userStats.bonusPoints?.some(bp => 
-            bp.reason.includes(beatenKey)
-        )) {
-            points.push({
-                points: gameConfig.points.beaten,
-                reason: `Game Beaten - ${gameId} (${beatenKey})`
-            });
+        if (hasBeaten) {
+            const beatenKey = `beaten-${gameId}`;
+            if (!userStats.bonusPoints?.some(bp => 
+                bp.reason.includes(beatenKey)
+            )) {
+                points.push({
+                    points: gameConfig.points.beaten,
+                    reason: `Game Beaten - ${gameId} (${beatenKey})`
+                });
+            }
         }
 
         // Check mastery if applicable
@@ -147,10 +153,6 @@ const pointChecks = {
     }
 };
 
-module.exports = {
-    pointsConfig,
-    pointChecks
-};
 module.exports = {
     pointsConfig,
     pointChecks
