@@ -1,7 +1,7 @@
+const { Collection } = require('discord.js');
 const TerminalEmbed = require('../../utils/embedBuilder');
 const commonValidators = require('../../utils/validators');
 const DataService = require('../../services/dataService');
-const { Collection } = require('discord.js');
 
 // Track active point assignments
 const activeCollectors = new Collection();
@@ -44,6 +44,12 @@ module.exports = {
                 case 'reset':
                     await handleResetPoints(message, subArgs, userStats);
                     break;
+                case 'resetall':
+                    await handleResetAllPoints(message, userStats);
+                    break;
+                case 'recheck':
+                    await handleRecheckPoints(message, userStats);
+                    break;
                 default:
                     await showHelp(message);
             }
@@ -53,6 +59,22 @@ module.exports = {
         }
     }
 };
+
+async function showHelp(message) {
+    const embed = new TerminalEmbed()
+        .setTerminalTitle('POINTS MANAGEMENT')
+        .setTerminalDescription('[COMMAND USAGE]')
+        .addTerminalField('AVAILABLE COMMANDS',
+            '!points add - Start interactive point assignment\n' +
+            '!points addmulti <points> <reason> <user1> <user2> ...\n' +
+            '!points addall <points> <reason>\n' +
+            '!points reset <username>\n' +
+            '!points resetall - Reset all user points\n' +
+            '!points recheck - Recheck all achievement points')
+        .setTerminalFooter();
+
+    await message.channel.send({ embeds: [embed] });
+}
 
 async function validateUsername(username, userStats) {
     const cleanUsername = username.trim().toLowerCase();
@@ -68,20 +90,6 @@ async function validateUsername(username, userStats) {
     }
 
     return cleanUsername;
-}
-
-async function showHelp(message) {
-    const embed = new TerminalEmbed()
-        .setTerminalTitle('POINTS MANAGEMENT')
-        .setTerminalDescription('[COMMAND USAGE]')
-        .addTerminalField('AVAILABLE COMMANDS',
-            '!points add - Start interactive point assignment\n' +
-            '!points addmulti <points> <reason> <user1> <user2> ...\n' +
-            '!points addall <points> <reason>\n' +
-            '!points reset <username>')
-        .setTerminalFooter();
-
-    await message.channel.send({ embeds: [embed] });
 }
 
 async function startPointsAdd(message, userStats) {
@@ -180,7 +188,6 @@ async function startPointsAdd(message, userStats) {
         }
 
         const userInput = confirmMsg.content.toLowerCase().trim();
-        // Decide how to proceed based on user input
         if (userInput === 'confirm') {
             // Proceed with awarding points
             const userStatsData = await DataService.getUserStats(username);
@@ -214,28 +221,22 @@ async function startPointsAdd(message, userStats) {
                 .setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
-
         } else if (userInput === 'cancel' || userInput === 'abort') {
-            // User explicitly canceled
             throw new Error('Points allocation cancelled by user');
         } else {
-            // Any other input is considered invalid
             throw new Error(
                 `Unrecognized response "${confirmMsg.content}". Please type "confirm" to proceed or "cancel"/"abort" to abort.`
             );
         }
-
     } catch (error) {
         if (error.message === 'time') {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Command timed out\n[Ready for input]█\x1b[0m```');
         } else {
-            // If user cancelled or typed something else, we display that error
             await message.channel.send(
                 `\`\`\`ansi\n\x1b[32m[ERROR] ${error.message}\n[Ready for input]█\x1b[0m\`\`\``
             );
         }
     } finally {
-        // Clean up collector so the user can run commands again
         activeCollectors.delete(message.author.id);
     }
 }
@@ -416,5 +417,79 @@ async function handleResetPoints(message, args, userStats) {
     } catch (error) {
         console.error('Error in handleResetPoints:', error);
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to reset points\n[Ready for input]█\x1b[0m```');
+    }
+}
+
+async function handleResetAllPoints(message, userStats) {
+    try {
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('CONFIRM MASS RESET')
+            .setTerminalDescription('[WARNING: DESTRUCTIVE ACTION]')
+            .addTerminalField('OPERATION',
+                'This will reset ALL user points for the current year.\n' +
+                'This action cannot be undone.')
+            .addTerminalField(
+                'CONFIRMATION',
+                'Type "CONFIRM RESET" to proceed or anything else to cancel'
+            )
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [embed] });
+
+        const filter = m => m.author.id === message.author.id;
+        const collected = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: 30000,
+            errors: ['time']
+        });
+
+        const response = collected.first();
+        if (response.content === 'CONFIRM RESET') {
+            const resetCount = await userStats.resetAllPoints();
+            
+            const confirmEmbed = new TerminalEmbed()
+                .setTerminalTitle('POINTS RESET COMPLETE')
+                .setTerminalDescription('[OPERATION SUCCESSFUL]')
+                .addTerminalField('RESULTS',
+                    `Reset points for ${resetCount} users\n` +
+                    'All yearly points and bonus points have been cleared.')
+                .setTerminalFooter();
+
+            await message.channel.send({ embeds: [confirmEmbed] });
+        } else {
+            await message.channel.send('```ansi\n\x1b[32m[NOTICE] Reset cancelled\n[Ready for input]█\x1b[0m```');
+        }
+    } catch (error) {
+        console.error('Error in handleResetAllPoints:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to reset points\n[Ready for input]█\x1b[0m```');
+    }
+}
+
+async function handleRecheckPoints(message, userStats) {
+    try {
+        await message.channel.send('```ansi\n\x1b[32m[NOTICE] Starting points recheck...\n```');
+
+        const results = await userStats.recheckAllPoints(message.guild);
+
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('POINTS RECHECK COMPLETE')
+            .setTerminalDescription('[OPERATION SUCCESSFUL]')
+            .addTerminalField('RESULTS',
+                `Processed Users: ${results.processed.length}\n` +
+                `Failed Users: ${results.errors.length}`);
+
+        if (results.errors.length > 0) {
+            embed.addTerminalField('ERRORS',
+                results.errors.map(e => 
+                    `${e.username}: ${e.error}`
+                ).join('\n'));
+        }
+
+        embed.setTerminalFooter();
+        await message.channel.send({ embeds: [embed] });
+    } catch (error) {
+        console.error('Error in handleRecheckPoints:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to recheck points\n[Ready for input]█\x1b[0m```');
     }
 }
