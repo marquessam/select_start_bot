@@ -30,6 +30,14 @@ const pointsConfig = {
     }
 };
 
+// Helper function to create point reasons
+function createPointReason(gameName, achievementType, technicalKey) {
+    return {
+        display: `${gameName} - ${achievementType}`, // User-facing reason
+        internal: `${gameName} - ${achievementType} (${technicalKey})` // Internal reason with key
+    };
+}
+
 const pointChecks = {
     async checkGamePoints(username, achievements, gameId, userStats) {
         const gameConfig = pointsConfig.monthlyGames[gameId];
@@ -46,9 +54,11 @@ const pointChecks = {
         if (hasParticipation && !userStats.bonusPoints?.some(bp => 
             bp.reason.includes(participationKey)
         )) {
+            const reason = createPointReason(gameConfig.name, "Participation", participationKey);
             points.push({
                 points: gameConfig.points.participation,
-                reason: `${gameConfig.name} - Participation (${participationKey})`
+                reason: reason.display,
+                internalReason: reason.internal
             });
         }
 
@@ -84,9 +94,11 @@ const pointChecks = {
             if (!userStats.bonusPoints?.some(bp => 
                 bp.reason.includes(beatenKey)
             )) {
+                const reason = createPointReason(gameConfig.name, "Game Beaten", beatenKey);
                 points.push({
                     points: gameConfig.points.beaten,
-                    reason: `${gameConfig.name} - Game Beaten (${beatenKey})`
+                    reason: reason.display,
+                    internalReason: reason.internal
                 });
             }
         }
@@ -104,9 +116,11 @@ const pointChecks = {
             if (hasMastery && !userStats.bonusPoints?.some(bp => 
                 bp.reason.includes(masteryKey)
             )) {
+                const reason = createPointReason(gameConfig.name, "Mastery", masteryKey);
                 points.push({
                     points: gameConfig.points.mastery,
-                    reason: `${gameConfig.name} - Mastery (${masteryKey})`
+                    reason: reason.display,
+                    internalReason: reason.internal
                 });
             }
         }
