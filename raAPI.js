@@ -171,7 +171,7 @@ async function fetchUserProfile(username) {
  */
 async function fetchLeaderboardData() {
     try {
-        // Check cache
+        // Check cache first
         if (cache.leaderboardData && 
             Date.now() - cache.lastLeaderboardUpdate < cache.leaderboardTTL) {
             console.log('[RA API] Returning cached leaderboard data');
@@ -192,11 +192,23 @@ async function fetchLeaderboardData() {
         
         // Fetch all user summaries first (in parallel)
         const userSummaries = await Promise.all(
-            validUsers.map(username => fetchUserSummary(username))
+            validUsers.map(async username => {
+                try {
+                    return await fetchUserSummary(username);
+                } catch (error) {
+                    console.error(`[RA API] Error fetching summary for ${username}:`, error);
+                    return null;
+                }
+            })
         );
 
         // Process each user
         for (const username of validUsers) {
+            if (!username) {
+                console.error('[RA API] Skipping undefined username');
+                continue;
+            }
+
             try {
                 // Get challenge progress
                 const challengeParams = new URLSearchParams({
@@ -210,9 +222,10 @@ async function fetchLeaderboardData() {
                     `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${challengeParams}`
                 );
 
-                // Find user's summary data
+                // Find user's summary data (with safe type checking)
                 const userSummary = userSummaries.find(
-                    s => s?.username.toLowerCase() === username.toLowerCase()
+                    s => s && s.username && username && 
+                        s.username.toLowerCase() === username.toLowerCase()
                 );
 
                 // Process challenge achievements
@@ -260,6 +273,7 @@ async function fetchLeaderboardData() {
                 );
             } catch (error) {
                 console.error(`[RA API] Error fetching data for ${username}:`, error);
+                // Add user with default values on error
                 usersProgress.push({
                     username,
                     profileImage: `https://retroachievements.org/UserPic/${username}.png`,
@@ -278,7 +292,7 @@ async function fetchLeaderboardData() {
 
         const leaderboardData = {
             leaderboard: usersProgress.sort(
-                (a, b) => b.completionPercentage - a.completionPercentage
+                (a, b) => parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage)
             ),
             gameInfo: challenge,
             lastUpdated: new Date().toISOString()
