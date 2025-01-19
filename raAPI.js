@@ -171,13 +171,6 @@ async function fetchUserProfile(username) {
  */
 async function fetchLeaderboardData() {
     try {
-        // Check cache first
-        if (cache.leaderboardData &&
-            Date.now() - cache.lastLeaderboardUpdate < cache.leaderboardTTL) {
-            console.log('[RA API] Returning cached leaderboard data');
-            return cache.leaderboardData;
-        }
-
         console.log('[RA API] Fetching fresh leaderboard data');
 
         const challenge = await database.getCurrentChallenge();
@@ -202,7 +195,10 @@ async function fetchLeaderboardData() {
 
         const usersProgress = [];
 
-        // 2) For each user, fetch challenge info and merge achievements
+        // Define the games we want to check (main challenge and side game)
+        const gamesToCheck = ['319', '10024']; // Chrono Trigger and Mario Tennis
+
+        // 2) For each user, fetch all game data
         for (const username of validUsers) {
             if (!username) {
                 console.error('[RA API] Skipping undefined username');
@@ -210,61 +206,59 @@ async function fetchLeaderboardData() {
             }
 
             try {
-                // Fetch challenge progress (full data for that game)
-                const challengeParams = new URLSearchParams({
-                    z: process.env.RA_USERNAME,
-                    y: process.env.RA_API_KEY,
-                    g: challenge.gameId,
-                    u: username
-                });
-
-                const challengeData = await rateLimiter.makeRequest(
-                    `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${challengeParams}`
-                );
-
                 // Find the user's summary
                 const userSummary = userSummaries.find(
                     s => s && s.username && username &&
                         s.username.toLowerCase() === username.toLowerCase()
                 );
 
-                // 2a) Process the challenge achievements
-                const challengeAchievementsRaw = challengeData.Achievements
-                    ? Object.values(challengeData.Achievements)
-                    : [];
+                let allGameAchievements = [];
 
-                // Map them so each has a GameID
-                const mappedChallengeAchievements = challengeAchievementsRaw.map(ach => ({
-                    ID: ach.ID,
-                    DateEarned: ach.DateEarned,
-                    Flags: ach.Flags,
-                    // crucial: assign the challenge's game ID
-                    GameID: challenge.gameId
-                }));
+                // Fetch data for each game
+                for (const gameId of gamesToCheck) {
+                    const challengeParams = new URLSearchParams({
+                        z: process.env.RA_USERNAME,
+                        y: process.env.RA_API_KEY,
+                        g: gameId,
+                        u: username
+                    });
 
-                // 2b) Map userSummary recent achievements so each has a GameID
+                    const gameData = await rateLimiter.makeRequest(
+                        `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${challengeParams}`
+                    );
+
+                    if (gameData?.Achievements) {
+                        const gameAchievements = Object.values(gameData.Achievements).map(ach => ({
+                            ...ach,
+                            GameID: gameId // Ensure GameID is set correctly
+                        }));
+                        allGameAchievements = [...allGameAchievements, ...gameAchievements];
+                    }
+                }
+
+                // Map userSummary recent achievements
                 const mappedRecents = (userSummary?.recentAchievements || []).map(r => ({
                     ID: parseInt(r.AchievementID),
                     DateEarned: r.Date,
                     Flags: r.Flags ? parseInt(r.Flags) : 0,
-                    // parse the game ID from the RA data
                     GameID: r.GameID ? parseInt(r.GameID) : null
                 }));
 
-                // 2c) Combine them
+                // Combine all achievements
                 const allAchievements = [
-                    ...mappedChallengeAchievements,
+                    ...allGameAchievements,
                     ...mappedRecents
                 ];
 
-                // 2d) For scoreboard: # of achievements in the main challenge
-                const numAchievements = mappedChallengeAchievements.length;
-                const completed = mappedChallengeAchievements.filter(
+                // For main challenge scoreboard display
+                const mainGameAchievements = allGameAchievements.filter(a => a.GameID === challenge.gameId);
+                const numAchievements = mainGameAchievements.length;
+                const completed = mainGameAchievements.filter(
                     ach => parseInt(ach.DateEarned, 10) > 0
                 ).length;
 
-                // Check for beaten game condition
-                const hasBeatenGame = mappedChallengeAchievements.some(ach => {
+                // Check for beaten game condition for main game
+                const hasBeatenGame = mainGameAchievements.some(ach => {
                     const isWinCondition = (ach.Flags & 2) === 2;
                     const isEarned = parseInt(ach.DateEarned, 10) > 0;
                     return isWinCondition && isEarned;
@@ -283,7 +277,7 @@ async function fetchLeaderboardData() {
                         ? ((completed / numAchievements) * 100).toFixed(2)
                         : '0.00',
                     hasBeatenGame: !!hasBeatenGame,
-                    achievements: allAchievements,
+                    achievements: allAchievements, // Include ALL achievements for both games
                     totalPoints: userSummary?.totalPoints || 0,
                     rank: userSummary?.rank || 0,
                     recentAchievements: userSummary?.recentAchievements || [],
@@ -291,12 +285,13 @@ async function fetchLeaderboardData() {
                 });
 
                 console.log(
-                    `[RA API] Fetched progress for ${username}: ` +
-                    `${completed}/${numAchievements} achievements (main challenge)`
+                    `[RA API] Fetched progress for ${username}:`,
+                    `${completed}/${numAchievements} achievements (main challenge)`,
+                    `Total achievements tracked: ${allAchievements.length}`
                 );
             } catch (error) {
                 console.error(`[RA API] Error fetching data for ${username}:`, error);
-                // Fallback user entry
+                // Add fallback entry
                 usersProgress.push({
                     username,
                     profileImage: `https://retroachievements.org/UserPic/${username}.png`,
@@ -314,7 +309,7 @@ async function fetchLeaderboardData() {
             }
         }
 
-        // 3) Build final leaderboard
+        // Build final leaderboard data
         const leaderboardData = {
             leaderboard: usersProgress.sort(
                 (a, b) => parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage)
@@ -322,10 +317,6 @@ async function fetchLeaderboardData() {
             gameInfo: challenge,
             lastUpdated: new Date().toISOString()
         };
-
-        // Cache result
-        cache.leaderboardData = leaderboardData;
-        cache.lastLeaderboardUpdate = Date.now();
 
         console.log(`[RA API] Leaderboard data updated with ${usersProgress.length} users`);
         return leaderboardData;
