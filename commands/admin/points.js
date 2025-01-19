@@ -4,8 +4,12 @@ const { commonValidators } = require('../../utils/validators');
 module.exports = {
     name: 'points',
     description: 'Manage user points system',
-    async execute(message, args) {
+    async execute(message, args, services) {
         try {
+            if (!services || !services.userStats) {
+                throw new Error('User stats service not available');
+            }
+
             if (!args.length) {
                 return await showHelp(message);
             }
@@ -14,19 +18,19 @@ module.exports = {
 
             switch(subcommand) {
                 case 'add':
-                    await handleAddPoints(message, subArgs);
+                    await handleAddPoints(message, subArgs, services.userStats);
                     break;
                 case 'addmulti':
-                    await handleAddMultiPoints(message, subArgs);
+                    await handleAddMultiPoints(message, subArgs, services.userStats);
                     break;
                 case 'addall':
-                    await handleAddAllPoints(message, subArgs);
+                    await handleAddAllPoints(message, subArgs, services.userStats);
                     break;
                 case 'reset':
-                    await handleResetPoints(message, subArgs);
+                    await handleResetPoints(message, subArgs, services.userStats);
                     break;
                 case 'restore':
-                    await handleRestorePoints(message);
+                    await handleRestorePoints(message, services.userStats);
                     break;
                 default:
                     await showHelp(message);
@@ -53,7 +57,7 @@ async function showHelp(message) {
     await message.channel.send({ embeds: [embed] });
 }
 
-async function handleAddPoints(message, args) {
+async function handleAddPoints(message, args, userStats) {
     // Check if we have enough arguments
     if (args.length < 3) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !points add <username> <points> <reason>\n[Ready for input]█\x1b[0m```');
@@ -82,11 +86,6 @@ async function handleAddPoints(message, args) {
 
     try {
         // Get initial state and force cache refresh
-        const userStats = message.client.userStats;
-        if (!userStats) {
-            throw new Error('User stats service not available');
-        }
-
         const validUsers = await userStats.getAllUsers();
         if (!validUsers.includes(username.toLowerCase())) {
             await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" not found\n[Ready for input]█\x1b[0m\`\`\``);
@@ -96,7 +95,7 @@ async function handleAddPoints(message, args) {
         await userStats.refreshCache();
         const beforeStats = await userStats.getUserStats(username);
         const currentYear = new Date().getFullYear().toString();
-        const pointsBefore = beforeStats.yearlyPoints[currentYear] || 0;
+        const pointsBefore = beforeStats?.yearlyPoints?.[currentYear] || 0;
 
         // Add points and force save
         await userStats.addBonusPoints(username, points, reason);
@@ -105,7 +104,7 @@ async function handleAddPoints(message, args) {
         // Verify the update with fresh cache
         await userStats.refreshCache();
         const afterStats = await userStats.getUserStats(username);
-        const pointsAfter = afterStats.yearlyPoints[currentYear] || 0;
+        const pointsAfter = afterStats?.yearlyPoints?.[currentYear] || 0;
 
         // Force leaderboard update
         if (global.leaderboardCache) {
@@ -142,7 +141,7 @@ async function handleAddMultiPoints(message, args, userStats) {
     const reason = args[1];
     const userList = args.slice(2);
 
-    if (isNaN(points)) {
+    if (!commonValidators.points(points)) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid points value\n[Ready for input]█\x1b[0m```');
         return;
     }
@@ -161,7 +160,6 @@ async function handleAddMultiPoints(message, args, userStats) {
         let successfulAdditions = [];
         let failedUsers = [];
 
-        // Process each user and force save after each
         for (const username of userList) {
             try {
                 await userStats.addBonusPoints(username, points, reason);
@@ -187,9 +185,12 @@ async function handleAddMultiPoints(message, args, userStats) {
                 `POINTS PER USER: ${points}\n` +
                 `REASON: ${reason}`);
 
+        if (successfulAdditions.length > 0) {
+            embed.addTerminalField('SUCCESSFUL ALLOCATIONS', successfulAdditions.join('\n'));
+        }
+
         if (failedUsers.length > 0) {
-            embed.addTerminalField('FAILED ALLOCATIONS',
-                failedUsers.join(', '));
+            embed.addTerminalField('FAILED ALLOCATIONS', failedUsers.join('\n'));
         }
 
         embed.setTerminalFooter();
@@ -209,7 +210,7 @@ async function handleAddAllPoints(message, args, userStats) {
     const points = parseInt(args[0]);
     const reason = args.slice(1).join(' ');
 
-    if (isNaN(points)) {
+    if (!commonValidators.points(points)) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid points value\n[Ready for input]█\x1b[0m```');
         return;
     }
@@ -221,7 +222,6 @@ async function handleAddAllPoints(message, args, userStats) {
         let successfulAdditions = 0;
         let failedUsers = [];
 
-        // Process all users
         for (const username of users) {
             try {
                 await userStats.addBonusPoints(username, points, reason);
@@ -248,8 +248,7 @@ async function handleAddAllPoints(message, args, userStats) {
                 `REASON: ${reason}`);
 
         if (failedUsers.length > 0) {
-            embed.addTerminalField('FAILED ALLOCATIONS',
-                failedUsers.join(', '));
+            embed.addTerminalField('FAILED ALLOCATIONS', failedUsers.join('\n'));
         }
 
         embed.setTerminalFooter();
