@@ -146,21 +146,30 @@ async function setupBot() {
 
 async function performInitialParticipationCheck(services) {
     try {
+        // Wait a short time to ensure all services are fully initialized
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
         console.log('Performing initial participation and achievement check...');
         
         if (services?.leaderboardCache) {
             console.log('Fetching initial leaderboard data...');
-            const leaderboardData = await services.leaderboardCache.updateLeaderboards(true);
+            const data = await services.leaderboardCache.updateLeaderboards(true);
             
-            if (services?.userStats && leaderboardData?.leaderboard) {  // Check for leaderboard property
-                console.log(`Processing participation and beaten status for ${leaderboardData.leaderboard.length} users...`);
-                await services.userStats.updateMonthlyParticipation(leaderboardData);
+            console.log('Leaderboard data received:', {
+                hasData: !!data,
+                hasLeaderboard: !!data?.leaderboard,
+                userCount: data?.leaderboard?.length || 0
+            });
+            
+            if (services?.userStats && data?.leaderboard) {
+                console.log(`Processing participation and beaten status for ${data.leaderboard.length} users...`);
+                await services.userStats.updateMonthlyParticipation(data);
                 console.log('Initial participation check completed');
             } else {
                 console.warn('UserStats service not available or leaderboard data invalid:', {
                     hasUserStats: !!services?.userStats,
-                    hasLeaderboardData: !!leaderboardData,
-                    hasLeaderboardProperty: !!leaderboardData?.leaderboard
+                    hasLeaderboardData: !!data,
+                    hasLeaderboardProperty: !!data?.leaderboard
                 });
             }
         } else {
@@ -168,7 +177,6 @@ async function performInitialParticipationCheck(services) {
         }
     } catch (error) {
         console.error('Error in initial participation check:', error);
-        // Log more details about the data state
         console.error('Data state:', {
             hasServices: !!services,
             hasLeaderboardCache: !!services?.leaderboardCache,
@@ -176,7 +184,6 @@ async function performInitialParticipationCheck(services) {
         });
     }
 }
-
 async function handleMessage(message, services) {
     const { userTracker, shadowGame, commandHandler } = services;
     const tasks = [];
