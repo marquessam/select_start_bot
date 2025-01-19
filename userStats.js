@@ -188,62 +188,61 @@ class UserStats {
     //  Points Management
     // =======================
     async addBonusPoints(username, points, reason) {
-        console.log(
-            `[DEBUG] addBonusPoints -> awarding ${points} points to "${username}" for reason: "${reason}"`
-        );
-        try {
-            const cleanUsername = username.trim().toLowerCase();
-            const user = this.cache.stats.users[cleanUsername];
+    console.log(
+        `[DEBUG] addBonusPoints -> awarding ${points} points to "${username}" for reason: "${reason}"`
+    );
+    try {
+        const cleanUsername = username.trim().toLowerCase();
+        const user = this.cache.stats.users[cleanUsername];
 
-            if (!user) {
-                throw new Error(`User ${username} not found`);
-            }
-
-            const year = this.currentYear.toString();
-
-            if (!user.bonusPoints) user.bonusPoints = [];
-            if (!user.yearlyPoints) user.yearlyPoints = {};
-
-            // Use transaction for point allocation
-            await withTransaction(this.database, async (session) => {
-                // Add bonus points
-                user.bonusPoints.push({
-                    points,
-                    reason,
-                    year,
-                    date: new Date().toISOString()
-                });
-                
-                // Update yearly points
-                user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
-
-                // Save within transaction
-                await this.database.db.collection('userstats').updateOne(
-                    { _id: 'stats' },
-                    { $set: { [`users.${cleanUsername}`]: user } },
-                    { session }
-                );
-            });
-
-            // Update cache
-            this.cache.pendingUpdates.add(cleanUsername);
-
-            // Force an immediate leaderboard update if desired
-            if (global.leaderboardCache) {
-                await global.leaderboardCache.updateLeaderboards();
-            }
-
-            // Announce the points if feed is available
-            if (global.achievementFeed) {
-                await global.achievementFeed.announcePointsAward(username, points, reason);
-            }
-
-        } catch (error) {
-            ErrorHandler.logError(error, 'Adding Bonus Points');
-            throw error;
+        if (!user) {
+            throw new Error(`User ${username} not found`);
         }
-    }
 
+        const year = this.currentYear.toString();
+
+        if (!user.bonusPoints) user.bonusPoints = [];
+        if (!user.yearlyPoints) user.yearlyPoints = {};
+
+        // Use transaction for point allocation
+        await withTransaction(this.database, async (session) => {
+            // Add bonus points
+            user.bonusPoints.push({
+                points,
+                reason,
+                year,
+                date: new Date().toISOString()
+            });
+            
+            // Update yearly points
+            user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
+
+            // Save within transaction
+            await this.database.db.collection('userstats').updateOne(
+                { _id: 'stats' },
+                { $set: { [`users.${cleanUsername}`]: user } },
+                { session }
+            );
+        });
+
+        // Update cache
+        this.cache.pendingUpdates.add(cleanUsername);
+
+        // Force an immediate leaderboard update if available
+        if (global.leaderboardCache) {
+            await global.leaderboardCache.updateLeaderboards();
+        }
+
+        // Announce the points if feed is available
+        if (global.achievementFeed) {
+            await global.achievementFeed.announcePointsAward(username, points, reason);
+        }
+
+    } catch (error) {
+        ErrorHandler.logError(error, 'Adding Bonus Points');
+        throw error;
+    }
+}
     async resetUserPoints(username) {
         try {
             const cleanUsername = username.trim().toLowerCase();
