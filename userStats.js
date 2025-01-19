@@ -229,9 +229,9 @@ class UserStats {
         this.cache.pendingUpdates.add(cleanUsername);
 
         // Force an immediate leaderboard update if available
-        if (global.leaderboardCache) {
-            await global.leaderboardCache.updateLeaderboards();
-        }
+       // if (global.leaderboardCache) {
+       //     await global.leaderboardCache.updateLeaderboards();
+       // }
 
         // Announce the points if feed is available
         if (global.achievementFeed) {
