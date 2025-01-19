@@ -2,17 +2,9 @@
 
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const ErrorHandler = require('./utils/errorHandler');
-const path = require('path');
-const raGameRules = require(path.join(__dirname, 'raGameRules.json'));
 const { withTransaction } = require('./utils/transactions');
 const { pointsConfig, pointChecks } = require('./pointsConfig');
-
-// monthlyGames helpers
-const {
-  monthlyGames,
-  getActiveGamesForMonth,
-  getCurrentYearMonth
-} = require('./monthlyGames'); 
+const { fetchLeaderboardData } = require('./raAPI.js');
 
 class UserStats {
     constructor(database) {
@@ -22,7 +14,7 @@ class UserStats {
                 users: {},
                 yearlyStats: {},
                 monthlyStats: {},
-                gamesBeaten: {}, 
+                gamesBeaten: {},
                 achievementStats: {},
                 communityRecords: {}
             },
@@ -34,7 +26,7 @@ class UserStats {
         this.currentYear = new Date().getFullYear();
 
         // Periodic save if pending
-        setInterval(() => this.savePendingUpdates(), 30000); 
+        setInterval(() => this.savePendingUpdates(), 30000);
     }
 
     // =======================
@@ -189,61 +181,57 @@ class UserStats {
     //  Points Management
     // =======================
     async addBonusPoints(username, points, reason) {
-    console.log(
-        `[DEBUG] addBonusPoints -> awarding ${points} points to "${username}" for reason: "${reason}"`
-    );
-    try {
-        const cleanUsername = username.trim().toLowerCase();
-        const user = this.cache.stats.users[cleanUsername];
+        console.log(
+            `[DEBUG] addBonusPoints -> awarding ${points} points to "${username}" for reason: "${reason}"`
+        );
+        try {
+            const cleanUsername = username.trim().toLowerCase();
+            const user = this.cache.stats.users[cleanUsername];
 
-        if (!user) {
-            throw new Error(`User ${username} not found`);
-        }
+            if (!user) {
+                throw new Error(`User ${username} not found`);
+            }
 
-        const year = this.currentYear.toString();
+            const year = this.currentYear.toString();
 
-        if (!user.bonusPoints) user.bonusPoints = [];
-        if (!user.yearlyPoints) user.yearlyPoints = {};
+            if (!user.bonusPoints) user.bonusPoints = [];
+            if (!user.yearlyPoints) user.yearlyPoints = {};
 
-        // Use transaction for point allocation
-        await withTransaction(this.database, async (session) => {
-            // Add bonus points
-            user.bonusPoints.push({
-                points,
-                reason,
-                year,
-                date: new Date().toISOString()
+            // Use transaction for point allocation
+            await withTransaction(this.database, async (session) => {
+                // Add bonus points
+                user.bonusPoints.push({
+                    points,
+                    reason,
+                    year,
+                    date: new Date().toISOString()
+                });
+                
+                // Update yearly points
+                user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
+
+                // Save within transaction
+                await this.database.db.collection('userstats').updateOne(
+                    { _id: 'stats' },
+                    { $set: { [`users.${cleanUsername}`]: user } },
+                    { session }
+                );
             });
-            
-            // Update yearly points
-            user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
 
-            // Save within transaction
-            await this.database.db.collection('userstats').updateOne(
-                { _id: 'stats' },
-                { $set: { [`users.${cleanUsername}`]: user } },
-                { session }
-            );
-        });
+            // Update cache
+            this.cache.pendingUpdates.add(cleanUsername);
 
-        // Update cache
-        this.cache.pendingUpdates.add(cleanUsername);
+            // Announce the points if feed is available
+            if (global.achievementFeed) {
+                await global.achievementFeed.announcePointsAward(username, points, reason);
+            }
 
-        // Force an immediate leaderboard update if available
-       // if (global.leaderboardCache) {
-       //     await global.leaderboardCache.updateLeaderboards();
-       // }
-
-        // Announce the points if feed is available
-        if (global.achievementFeed) {
-            await global.achievementFeed.announcePointsAward(username, points, reason);
+        } catch (error) {
+            ErrorHandler.logError(error, 'Adding Bonus Points');
+            throw error;
         }
-
-    } catch (error) {
-        ErrorHandler.logError(error, 'Adding Bonus Points');
-        throw error;
     }
-}
+
     async resetUserPoints(username) {
         try {
             const cleanUsername = username.trim().toLowerCase();
@@ -275,125 +263,153 @@ class UserStats {
             throw error;
         }
     }
-// Add these imports at the top of userStats.js
-const { pointsConfig, pointChecks } = require('./pointsConfig');
 
-// Add these new methods to the UserStats class
+    async resetAllPoints() {
+        try {
+            const currentYear = this.currentYear.toString();
+            const users = await this.getAllUsers();
 
-async resetAllPoints() {
-    try {
+            for (const username of users) {
+                const user = this.cache.stats.users[username];
+                if (user) {
+                    user.yearlyPoints[currentYear] = 0;
+                    user.bonusPoints = user.bonusPoints.filter(
+                        bonus => bonus.year !== currentYear
+                    );
+                }
+            }
+
+            this.cache.pendingUpdates = new Set(users);
+            await this.saveStats();
+
+            if (global.leaderboardCache) {
+                await global.leaderboardCache.updateLeaderboards(true);
+            }
+
+            return users.length;
+        } catch (error) {
+            console.error('Error resetting all points:', error);
+            throw error;
+        }
+    }
+
+    async recheckAllPoints(guild) {
+        try {
+            const users = await this.getAllUsers();
+            const processedUsers = [];
+            const errors = [];
+
+            const data = await fetchLeaderboardData();
+            if (!data?.leaderboard) {
+                throw new Error('Failed to fetch leaderboard data');
+            }
+
+            for (const username of users) {
+                try {
+                    // Get Discord member if guild provided (for role checks)
+                    let member = null;
+                    if (guild) {
+                        try {
+                            const guildMembers = await guild.members.fetch();
+                            member = guildMembers.find(m => 
+                                m.displayName.toLowerCase() === username.toLowerCase()
+                            );
+                        } catch (e) {
+                            console.warn(`Could not find Discord member for ${username}:`, e);
+                        }
+                    }
+
+                    // Get user progress from leaderboard data
+                    const userProgress = data.leaderboard.find(
+                        u => u.username.toLowerCase() === username.toLowerCase()
+                    );
+
+                    if (userProgress) {
+                        // Check and apply all achievement-based points
+                        await this.processAchievementPoints(username, userProgress);
+
+                        // Check and apply role-based points if member found
+                        if (member) {
+                            await this.processRolePoints(username, member);
+                        }
+
+                        processedUsers.push(username);
+                    }
+                } catch (error) {
+                    console.error(`Error processing ${username}:`, error);
+                    errors.push({ username, error: error.message });
+                }
+            }
+
+            // Force leaderboard update
+            if (global.leaderboardCache) {
+                await global.leaderboardCache.updateLeaderboards(true);
+            }
+
+            return {
+                processed: processedUsers,
+                errors: errors
+            };
+        } catch (error) {
+            console.error('Error in recheckAllPoints:', error);
+            throw error;
+        }
+    }
+
+    async processAchievementPoints(username, userProgress) {
+        const userStats = this.cache.stats.users[username];
+        if (!userStats) return;
+
+        for (const gameId of Object.keys(pointsConfig.monthlyGames)) {
+            const gamePoints = await pointChecks.checkGamePoints(
+                username,
+                userProgress.achievements,
+                gameId,
+                userStats
+            );
+
+            for (const point of gamePoints) {
+                await this.addBonusPoints(
+                    username,
+                    point.points,
+                    point.reason
+                );
+            }
+        }
+
+        // Update achievement stats
         const currentYear = this.currentYear.toString();
-        const users = await this.getAllUsers();
-
-        for (const username of users) {
-            const user = this.cache.stats.users[username];
-            if (user) {
-                user.yearlyPoints[currentYear] = 0;
-                user.bonusPoints = user.bonusPoints.filter(
-                    bonus => bonus.year !== currentYear
-                );
-            }
+        if (!userStats.monthlyAchievements[currentYear]) {
+            userStats.monthlyAchievements[currentYear] = {};
         }
 
-        this.cache.pendingUpdates = new Set(users);
-        await this.saveStats();
+        const monthlyKey = `${currentYear}-${new Date().getMonth()}`;
+        userStats.monthlyAchievements[currentYear][monthlyKey] = userProgress.completedAchievements;
 
-        if (global.leaderboardCache) {
-            await global.leaderboardCache.updateLeaderboards(true);
-        }
+        userStats.yearlyStats[currentYear].totalAchievementsUnlocked =
+            Object.values(userStats.monthlyAchievements[currentYear])
+                .reduce((total, count) => total + count, 0);
 
-        return users.length; // Return number of users reset
-    } catch (error) {
-        console.error('Error resetting all points:', error);
-        throw error;
+        this.cache.pendingUpdates.add(username);
     }
-}
 
-async recheckAllPoints(guild) {
-    try {
-        const users = await this.getAllUsers();
-        const processedUsers = [];
-        const errors = [];
+    async processRolePoints(username, member) {
+        const userStats = this.cache.stats.users[username];
+        if (!userStats) return;
 
-        for (const username of users) {
-            try {
-                // Get Discord member if guild provided (for role checks)
-                let member = null;
-                if (guild) {
-                    try {
-                        const guildMembers = await guild.members.fetch();
-                        member = guildMembers.find(m => 
-                            m.displayName.toLowerCase() === username.toLowerCase()
-                        );
-                    } catch (e) {
-                        console.warn(`Could not find Discord member for ${username}:`, e);
-                    }
-                }
+        const rolePoints = await pointChecks.checkRolePoints(
+            member,
+            userStats
+        );
 
-                // Get user stats and achievements
-                const userStats = await this.getUserStats(username);
-                const data = await fetchLeaderboardData();
-                const userProgress = data.leaderboard.find(
-                    u => u.username.toLowerCase() === username.toLowerCase()
-                );
-
-                if (userProgress && userProgress.achievements) {
-                    // Check all game-related points
-                    for (const gameId of Object.keys(pointsConfig.monthlyGames)) {
-                        const gamePoints = await pointChecks.checkGamePoints(
-                            username,
-                            userProgress.achievements,
-                            gameId,
-                            userStats
-                        );
-
-                        for (const point of gamePoints) {
-                            await this.addBonusPoints(
-                                username,
-                                point.points,
-                                point.reason
-                            );
-                        }
-                    }
-
-                    // Check role-based points if member found
-                    if (member) {
-                        const rolePoints = await pointChecks.checkRolePoints(
-                            member,
-                            userStats
-                        );
-
-                        for (const point of rolePoints) {
-                            await this.addBonusPoints(
-                                username,
-                                point.points,
-                                point.reason
-                            );
-                        }
-                    }
-
-                    processedUsers.push(username);
-                }
-            } catch (error) {
-                console.error(`Error processing ${username}:`, error);
-                errors.push({ username, error: error.message });
-            }
+        for (const point of rolePoints) {
+            await this.addBonusPoints(
+                username,
+                point.points,
+                point.reason
+            );
         }
-
-        // Force leaderboard update
-        if (global.leaderboardCache) {
-            await global.leaderboardCache.updateLeaderboards(true);
-        }
-
-        return {
-            processed: processedUsers,
-            errors: errors
-        };
-    } catch (error) {
-        console.error('Error in recheckAllPoints:', error);
-        throw error;
     }
-}
 
     // =======================
     //   Leaderboard
