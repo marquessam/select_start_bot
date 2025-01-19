@@ -152,18 +152,28 @@ async function performInitialParticipationCheck(services) {
             console.log('Fetching initial leaderboard data...');
             const leaderboardData = await services.leaderboardCache.updateLeaderboards(true);
             
-            if (services?.userStats && leaderboardData) {
-                console.log('Processing participation and beaten status...');
+            if (services?.userStats && leaderboardData?.leaderboard) {  // Check for leaderboard property
+                console.log(`Processing participation and beaten status for ${leaderboardData.leaderboard.length} users...`);
                 await services.userStats.updateMonthlyParticipation(leaderboardData);
                 console.log('Initial participation check completed');
             } else {
-                console.warn('UserStats service or leaderboard data not available');
+                console.warn('UserStats service not available or leaderboard data invalid:', {
+                    hasUserStats: !!services?.userStats,
+                    hasLeaderboardData: !!leaderboardData,
+                    hasLeaderboardProperty: !!leaderboardData?.leaderboard
+                });
             }
         } else {
             console.warn('LeaderboardCache service not available');
         }
     } catch (error) {
         console.error('Error in initial participation check:', error);
+        // Log more details about the data state
+        console.error('Data state:', {
+            hasServices: !!services,
+            hasLeaderboardCache: !!services?.leaderboardCache,
+            hasUserStats: !!services?.userStats
+        });
     }
 }
 
