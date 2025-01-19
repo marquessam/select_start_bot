@@ -418,7 +418,9 @@ class UserStats {
     async handleParticipationPoints(user, username, userStats, gameId, gameName) {
         console.log(`[DEBUG] handleParticipationPoints -> ${username}, game: ${gameId} - ${gameName}`);
 
-        const achievementsForGame = (user.achievements ?? []).filter(a => a.GameID === gameId);
+        const achievementsForGame = (user.achievements ?? []).filter(
+    ach => parseInt(ach.GameID) === parseInt(gameId)
+);
         console.log(`[DEBUG] Found ${achievementsForGame.length} achievements for gameId ${gameId}. Checking DateEarned...`);
 
         const hasAchievementsForGame = achievementsForGame.some(a => parseInt(a.DateEarned) > 0);
@@ -474,11 +476,11 @@ class UserStats {
         } else {
             // Fallback to bit=2 logic
             const beatAchievement = user.achievements.find(
-                ach => 
-                    ach.GameID === gameId &&
-                    (ach.Flags & 2) === 2 &&
-                    parseInt(ach.DateEarned) > 0
-            );
+    ach =>
+        parseInt(ach.GameID) === parseInt(gameId) &&
+        (ach.Flags & 2) === 2 &&
+        parseInt(ach.DateEarned) > 0
+);
             if (beatAchievement) {
                 beaten = true;
             }
@@ -521,7 +523,9 @@ class UserStats {
         console.log(`[DEBUG] checkMastery -> ${username}, game: ${gameId} - ${gameName}`);
 
         // If your code for mastery is "100% achievements in that game," do this:
-        const achievementsForGame = (user.achievements ?? []).filter(a => a.GameID === gameId);
+        const achievementsForGame = (user.achievements ?? []).filter(
+    a => parseInt(a.GameID) === parseInt(gameId)
+);
         const total = achievementsForGame.length;
         if (total === 0) {
             console.log('[DEBUG] No achievements found for this game in user data; cannot be mastered.');
