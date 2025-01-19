@@ -34,7 +34,10 @@ class AchievementFeed {
                     if (!lastStoredTime) {
                         // Store the most recent achievement time as starting point
                         const mostRecentTime = new Date(achievements[0].Date).getTime();
-                        await database.updateLastAchievementTimestamp(username.toLowerCase(), mostRecentTime);
+                        await database.updateLastAchievementTimestamp(
+                            username.toLowerCase(), 
+                            mostRecentTime
+                        );
                     }
                 }
             }
@@ -57,15 +60,19 @@ class AchievementFeed {
                 return await operation();
             } catch (error) {
                 const isLastAttempt = attempt === retries;
+                // Check if error is "retryable" (network errors, e.g. DNS or ECONNRESET)
                 const isRetryableError = error.code === 'EAI_AGAIN' || 
-                                       error.name === 'FetchError' ||
-                                       error.code === 'ECONNRESET';
+                                         error.name === 'FetchError' ||
+                                         error.code === 'ECONNRESET';
 
                 if (isLastAttempt || !isRetryableError) {
                     throw error;
                 }
 
-                console.log(`[ACHIEVEMENT FEED] Attempt ${attempt} failed, retrying in ${delay/1000}s:`, error.message);
+                console.log(
+                    `[ACHIEVEMENT FEED] Attempt ${attempt} failed, retrying in ${delay/1000}s:`, 
+                    error.message
+                );
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
@@ -81,7 +88,6 @@ class AchievementFeed {
             ]);
             
             const channel = await this.client.channels.fetch(this.feedChannel);
-            
             if (!channel) {
                 throw new Error('Achievement feed channel not found');
             }
@@ -96,18 +102,22 @@ class AchievementFeed {
                     (a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime()
                 );
                 
-                // Filter and announce new achievements
+                // Filter new achievements
                 const newAchievements = sortedAchievements.filter(ach => 
                     new Date(ach.Date).getTime() > lastCheckedTime
                 );
 
-                // Update the timestamp after filtering but before announcing
+                // Update timestamp
                 if (newAchievements.length > 0) {
-                    // Use the newest achievement's time (last in the sorted array)
-                    const latestTime = new Date(sortedAchievements[sortedAchievements.length - 1].Date).getTime();
-                    await database.updateLastAchievementTimestamp(username.toLowerCase(), latestTime);
+                    const latestTime = new Date(
+                        sortedAchievements[sortedAchievements.length - 1].Date
+                    ).getTime();
+                    await database.updateLastAchievementTimestamp(
+                        username.toLowerCase(), 
+                        latestTime
+                    );
 
-                    // Send achievement notifications in chronological order (oldest first)
+                    // Announce achievements in chronological order
                     for (const achievement of newAchievements) {
                         await this.sendAchievementNotification(channel, username, achievement);
                     }
@@ -151,7 +161,7 @@ class AchievementFeed {
                     )
                     .setFooter({
                         text: `Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
-                        iconURL: userIconUrl || `https://retroachievements.org/UserPic/${username}.png` // Fallback if DataService fails
+                        iconURL: userIconUrl || `https://retroachievements.org/UserPic/${username}.png` // fallback
                     })
                     .setTimestamp();
 
@@ -178,7 +188,54 @@ class AchievementFeed {
         }
     }
 
-    // Method to manually check achievements (useful for testing or manual updates)
+    /**
+     * NEW METHOD:
+     * Announces point awards (participation, beaten, mastery, etc.) 
+     * in the same feed channel.
+     */
+    async announcePointsAward(username, points, reason) {
+        try {
+            if (!this.feedChannel) {
+                console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
+                return;
+            }
+
+            const channel = await this.client.channels.fetch(this.feedChannel);
+            if (!channel) {
+                console.error('[ACHIEVEMENT FEED] Could not fetch feed channel for points announcements');
+                return;
+            }
+
+            // Optional: define a unique key if you want to prevent spammy duplicates
+            const messageKey = `${username}-${points}-${reason}-${Date.now()}`;
+            if (this.announcementHistory.messageIds.has(messageKey)) {
+                console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${username}, ${points}, ${reason}`);
+                return;
+            }
+
+            // Build embed
+            const embed = new EmbedBuilder()
+                .setColor('#FFFF00')
+                .setTitle('Points Awarded')
+                .setDescription(`**${username}** has been awarded **${points}** point(s)!\n**Reason**: *${reason}*`)
+                .setTimestamp(new Date())
+                .setFooter({ text: 'RetroAchievements Bot' });
+
+            const message = await channel.send({ embeds: [embed] });
+            // Track to avoid duplicates
+            this.announcementHistory.messageIds.add(messageKey);
+            if (this.announcementHistory.messageIds.size > 1000) {
+                this.announcementHistory.messageIds.clear();
+            }
+
+            console.log(`[ACHIEVEMENT FEED] Announced points award for ${username}: ${points} points (${reason})`);
+            return message;
+        } catch (error) {
+            console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
+        }
+    }
+
+    // Optional: a manual trigger
     async manualCheck() {
         console.log('[ACHIEVEMENT FEED] Manual achievement check initiated');
         await this.checkNewAchievements();
