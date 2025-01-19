@@ -2,6 +2,7 @@
 
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const database = require('./database');
+const { monthlyGames, getActiveGamesForMonth, getCurrentYearMonth } = require('./monthlyGames');
 
 // ---------------------------------------
 // Rate limiting setup
@@ -111,11 +112,11 @@ async function fetchUserProfile(username) {
 }
 
 // ---------------------------------------
-// Fetch challenge-based leaderboard data
+// Fetch monthlyGames-based + challenge-based leaderboard data
 // ---------------------------------------
 async function fetchLeaderboardData() {
     try {
-        // Existing cache check
+        // Check if we have recent data in cache
         if (cache.leaderboardData && Date.now() - cache.lastLeaderboardUpdate < cache.leaderboardTTL) {
             console.log('[RA API] Returning cached leaderboard data');
             return cache.leaderboardData;
@@ -128,65 +129,106 @@ async function fetchLeaderboardData() {
             throw new Error('No active challenge found in database');
         }
 
+        // 1) Get all valid users from DB
         const validUsers = await database.getValidUsers();
         console.log(`[RA API] Fetching data for ${validUsers.length} users`);
 
+        // 2) Determine which monthly games are active this month (including side games)
+        const currentMonth = getCurrentYearMonth(); // e.g. "2025-01"
+        const activeGames = getActiveGamesForMonth(); 
+        // e.g. [ {month:'2025-01',gameId:'319', checks:[...],...}, {month:'2025-01',gameId:'10024',...} ]
+
+        // For leaderboard ranking, we'll still treat 'challenge.gameId' as the main scoreboard
+        // but we will fetch the side games so userStats has all achievements for awarding participation.
+        
         const usersProgress = [];
+
         for (const username of validUsers) {
             try {
-                // Fetch challenge progress
-                const challengeParams = new URLSearchParams({
-                    z: process.env.RA_USERNAME,
-                    y: process.env.RA_API_KEY,
-                    g: challenge.gameId,
-                    u: username
-                });
+                // 3) Profile fetch
+                const profile = await fetchUserProfile(username);
 
-                // Fetch recent achievements
+                // 4) Full achievements for each monthly game (current + side)
+                let allGameAchievements = [];
+                for (const gameCfg of activeGames) {
+                    // For each active monthly game, do a full fetch:
+                    const gameParams = new URLSearchParams({
+                        z: process.env.RA_USERNAME,
+                        y: process.env.RA_API_KEY,
+                        g: gameCfg.gameId,
+                        u: username
+                    });
+
+                    let gameData = null;
+                    try {
+                        gameData = await rateLimiter.makeRequest(
+                            `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${gameParams}`
+                        );
+                    } catch (gErr) {
+                        console.error(`[RA API] Error fetching full data for ${username}, gameId=${gameCfg.gameId}`, gErr);
+                    }
+
+                    // Merge achievements
+                    if (gameData && gameData.Achievements) {
+                        const gameAchievements = Object.values(gameData.Achievements);
+                        allGameAchievements.push(...gameAchievements);
+                    }
+                }
+
+                // 5) Also fetch last 50 recents for all other games
                 const recentParams = new URLSearchParams({
                     z: process.env.RA_USERNAME,
                     y: process.env.RA_API_KEY,
                     u: username,
                     c: 50  // Last 50 achievements
                 });
+                let recentAchievements = [];
+                try {
+                    recentAchievements = await rateLimiter.makeRequest(
+                        `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${recentParams}`
+                    );
+                } catch (rErr) {
+                    console.error(`[RA API] Error fetching recent achievements for ${username}:`, rErr);
+                }
+                allGameAchievements.push(...(recentAchievements || []));
 
-                // Make both requests concurrently
-                const [challengeData, profile, recentAchievements] = await Promise.all([
-                    rateLimiter.makeRequest(`https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${challengeParams}`),
-                    fetchUserProfile(username),
-                    rateLimiter.makeRequest(`https://retroachievements.org/API/API_GetUserRecentAchievements.php?${recentParams}`)
-                ]);
+                // 6) Filter duplicates if needed (optional)
+                // For simplicity, we won't deduplicate. Rarely the same achievement appears in both sets.
 
-                // Process challenge achievements
-                const challengeAchievements = challengeData.Achievements ? Object.values(challengeData.Achievements) : [];
-                const numAchievements = challengeAchievements.length;
-                const completed = challengeAchievements.filter(ach => parseInt(ach.DateEarned, 10) > 0).length;
+                // 7) Calculate the scoreboard stats for the MAIN challenge (challenge.gameId)
+                const mainChallengeAchievements = allGameAchievements.filter(a => 
+                    parseInt(a.GameID) === parseInt(challenge.gameId)
+                );
+                const totalAchievements = mainChallengeAchievements.length;
+                const completedAchievements = mainChallengeAchievements.filter(
+                    ach => parseInt(ach.DateEarned, 10) > 0
+                ).length;
+                const completionPercentage = totalAchievements > 0 
+                    ? ((completedAchievements / totalAchievements) * 100).toFixed(2)
+                    : '0.00';
 
-                // Check for beaten game achievement in challenge
-                const hasBeatenGame = challengeAchievements.some(ach => {
+                // Check beaten
+                const hasBeatenGame = mainChallengeAchievements.some(ach => {
                     const isWinCondition = (ach.Flags & 2) === 2;
                     const isEarned = parseInt(ach.DateEarned, 10) > 0;
                     return isWinCondition && isEarned;
                 });
 
-                // Combine achievements for feed
-                const allAchievements = [
-                    ...challengeAchievements,
-                    ...(recentAchievements || [])
-                ];
-
                 usersProgress.push({
                     username,
                     profileImage: profile.profileImage,
                     profileUrl: profile.profileUrl,
-                    completedAchievements: completed,
-                    totalAchievements: numAchievements,
-                    completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : '0.00',
-                    hasBeatenGame: !!hasBeatenGame,
-                    achievements: allAchievements
+                    completedAchievements,
+                    totalAchievements,
+                    completionPercentage,
+                    hasBeatenGame,
+                    achievements: allGameAchievements
                 });
 
-                console.log(`[RA API] Fetched progress for ${username}: ${completed}/${numAchievements} achievements`);
+                console.log(
+                    `[RA API] Fetched progress for ${username}: ` +
+                    `${completedAchievements}/${totalAchievements} achievements (main challenge)`
+                );
             } catch (error) {
                 console.error(`[RA API] Error fetching data for ${username}:`, error);
                 usersProgress.push({
@@ -195,15 +237,20 @@ async function fetchLeaderboardData() {
                     profileUrl: `https://retroachievements.org/user/${username}`,
                     completedAchievements: 0,
                     totalAchievements: 0,
-                    completionPercentage: 0,
+                    completionPercentage: '0.00',
                     hasBeatenGame: false,
                     achievements: []
                 });
             }
         }
 
+        // 8) Sort by completionPercentage (for main challenge scoreboard)
+        const leaderboardSorted = usersProgress.sort(
+            (a,b) => parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage)
+        );
+
         const leaderboardData = {
-            leaderboard: usersProgress.sort((a, b) => b.completionPercentage - a.completionPercentage),
+            leaderboard: leaderboardSorted,
             gameInfo: challenge,
             lastUpdated: new Date().toISOString()
         };
@@ -212,7 +259,9 @@ async function fetchLeaderboardData() {
         cache.lastLeaderboardUpdate = Date.now();
 
         console.log(`[RA API] Leaderboard data updated with ${usersProgress.length} users`);
+
         return leaderboardData;
+
     } catch (error) {
         console.error('[RA API] Error fetching leaderboard data:', error);
         throw error;
@@ -221,7 +270,7 @@ async function fetchLeaderboardData() {
 
 // ---------------------------------------
 // NEW: fetchAllRecentAchievements
-// Fetch each user's recent achievements from ALL games
+// Fetch each user's recent achievements from ALL games (for the feed)
 // ---------------------------------------
 async function fetchAllRecentAchievements() {
     try {
@@ -241,7 +290,9 @@ async function fetchAllRecentAchievements() {
                     c: 50 // last 50 achievements
                 });
 
-                const recentData = await rateLimiter.makeRequest(`https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`);
+                const recentData = await rateLimiter.makeRequest(
+                    `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`
+                );
 
                 allRecentAchievements.push({
                     username,
