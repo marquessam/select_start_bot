@@ -1,3 +1,4 @@
+// leaderboardCache.js
 const { fetchLeaderboardData } = require('./raAPI.js');
 const { ErrorHandler, BotError } = require('./utils/errorHandler');
 const CacheManager = require('./utils/cacheManager');
@@ -73,68 +74,69 @@ class LeaderboardCache {
         return username && this.cache.validUsers.has(username.toLowerCase());
     }
 
-async updateLeaderboards(force = false) {
-    try {
-        if (!force && !this._shouldUpdate()) {
-            return {
-                leaderboard: this.cache.monthlyLeaderboard,
-                lastUpdated: this.cache.lastUpdated
-            };
-        }
-
-        console.log('[LEADERBOARD CACHE] Updating leaderboards...');
-
-        // Ensure we have valid users
-        if (this.cache.validUsers.size === 0) {
-            await this.updateValidUsers();
-        }
-
-        // Get yearly leaderboard
-        if (this.userStats) {
-            const currentYear = new Date().getFullYear().toString();
-            const validUsers = Array.from(this.cache.validUsers);
-            
-            this.cache.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(
-                currentYear,
-                validUsers
-            );
-        }
-
-        // Get monthly leaderboard
+    async updateLeaderboards(force = false) {
         try {
-            const monthlyData = await fetchLeaderboardData();
-            this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
-            
-            // Create return data structure
-            const returnData = {
-                leaderboard: this.cache.monthlyLeaderboard,
-                gameInfo: monthlyData.gameInfo,
-                lastUpdated: new Date().toISOString()
-            };
-            
-            // Update participation tracking if userStats is available
-            if (this.userStats) {
-                console.log('[LEADERBOARD CACHE] Checking participation and beaten status...');
-                await this.userStats.updateMonthlyParticipation(returnData);
+            if (!force && !this._shouldUpdate()) {
+                return {
+                    leaderboard: this.cache.monthlyLeaderboard,
+                    lastUpdated: this.cache.lastUpdated
+                };
             }
 
-            this.cache.lastUpdated = Date.now();
-            console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
+            console.log('[LEADERBOARD CACHE] Updating leaderboards...');
 
-            return returnData;
+            // Ensure we have valid users
+            if (this.cache.validUsers.size === 0) {
+                await this.updateValidUsers();
+            }
+
+            // Get yearly leaderboard
+            if (this.userStats) {
+                const currentYear = new Date().getFullYear().toString();
+                const validUsers = Array.from(this.cache.validUsers);
+                
+                this.cache.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(
+                    currentYear,
+                    validUsers
+                );
+            }
+
+            // Get monthly leaderboard
+            try {
+                const monthlyData = await fetchLeaderboardData();
+                this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
+                
+                // Create return data structure
+                const returnData = {
+                    leaderboard: this.cache.monthlyLeaderboard,
+                    gameInfo: monthlyData.gameInfo,
+                    lastUpdated: new Date().toISOString()
+                };
+                
+                // Trigger point check if userStats is available
+                if (this.userStats) {
+                    console.log('[LEADERBOARD CACHE] Checking points...');
+                    await this.userStats.recheckAllPoints();
+                }
+
+                this.cache.lastUpdated = Date.now();
+                console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
+
+                return returnData;
+            } catch (error) {
+                console.error('[LEADERBOARD CACHE] Error fetching monthly data:', error);
+                // Return empty but valid data structure
+                return {
+                    leaderboard: [],
+                    lastUpdated: new Date().toISOString()
+                };
+            }
         } catch (error) {
-            console.error('[LEADERBOARD CACHE] Error fetching monthly data:', error);
-            // Return empty but valid data structure
-            return {
-                leaderboard: [],
-                lastUpdated: new Date().toISOString()
-            };
+            console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
+            throw error;
         }
-    } catch (error) {
-        console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
-        throw error;
     }
-}
+
     _shouldUpdate() {
         return !this.cache.lastUpdated || 
                (Date.now() - this.cache.lastUpdated) > this.cache.updateInterval;
