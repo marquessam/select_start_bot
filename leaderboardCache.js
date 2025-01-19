@@ -7,6 +7,7 @@ class LeaderboardCache {
     constructor(database) {
         this.database = database;
         this.userStats = null;
+        this._updating = false;
         
         // Initialize cache managers
         this.userCache = new CacheManager({
@@ -74,15 +75,32 @@ class LeaderboardCache {
         return username && this.cache.validUsers.has(username.toLowerCase());
     }
 
-    async updateLeaderboards(force = false) {
-        try {
-            if (!force && !this._shouldUpdate()) {
-                return {
-                    leaderboard: this.cache.monthlyLeaderboard,
-                    lastUpdated: this.cache.lastUpdated
-                };
-            }
+    _shouldUpdate() {
+        return !this.cache.lastUpdated || 
+               (Date.now() - this.cache.lastUpdated) > this.cache.updateInterval;
+    }
 
+    async updateLeaderboards(force = false) {
+        // Check if update is already in progress
+        if (this._updating) {
+            console.log('[LEADERBOARD CACHE] Update already in progress, skipping...');
+            return {
+                leaderboard: this.cache.monthlyLeaderboard,
+                lastUpdated: this.cache.lastUpdated
+            };
+        }
+
+        // Check if update is needed
+        if (!force && !this._shouldUpdate()) {
+            return {
+                leaderboard: this.cache.monthlyLeaderboard,
+                lastUpdated: this.cache.lastUpdated
+            };
+        }
+
+        this._updating = true;
+
+        try {
             console.log('[LEADERBOARD CACHE] Updating leaderboards...');
 
             // Ensure we have valid users
@@ -102,44 +120,40 @@ class LeaderboardCache {
             }
 
             // Get monthly leaderboard
-            try {
-                const monthlyData = await fetchLeaderboardData();
-                this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
-                
-                // Create return data structure
-                const returnData = {
-                    leaderboard: this.cache.monthlyLeaderboard,
-                    gameInfo: monthlyData.gameInfo,
-                    lastUpdated: new Date().toISOString()
-                };
-                
-                // Trigger point check if userStats is available
-                if (this.userStats) {
+            const monthlyData = await fetchLeaderboardData();
+            this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
+            
+            // Create return data structure
+            const returnData = {
+                leaderboard: this.cache.monthlyLeaderboard,
+                gameInfo: monthlyData.gameInfo,
+                lastUpdated: new Date().toISOString()
+            };
+            
+            // One-time point check if userStats is available
+            if (this.userStats && !this._pointCheckInProgress) {
+                this._pointCheckInProgress = true;
+                try {
                     console.log('[LEADERBOARD CACHE] Checking points...');
                     await this.userStats.recheckAllPoints();
+                } finally {
+                    this._pointCheckInProgress = false;
                 }
-
-                this.cache.lastUpdated = Date.now();
-                console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
-
-                return returnData;
-            } catch (error) {
-                console.error('[LEADERBOARD CACHE] Error fetching monthly data:', error);
-                // Return empty but valid data structure
-                return {
-                    leaderboard: [],
-                    lastUpdated: new Date().toISOString()
-                };
             }
+
+            this.cache.lastUpdated = Date.now();
+            console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
+
+            return returnData;
         } catch (error) {
             console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
-            throw error;
+            return {
+                leaderboard: this.cache.monthlyLeaderboard || [],
+                lastUpdated: this.cache.lastUpdated || new Date().toISOString()
+            };
+        } finally {
+            this._updating = false;
         }
-    }
-
-    _shouldUpdate() {
-        return !this.cache.lastUpdated || 
-               (Date.now() - this.cache.lastUpdated) > this.cache.updateInterval;
     }
 
     _constructMonthlyLeaderboard(monthlyData) {
@@ -198,7 +212,7 @@ class LeaderboardCache {
     }
 
     async refreshLeaderboard() {
-        await this.updateLeaderboards(true);
+        return await this.updateLeaderboards(true);
     }
 }
 
