@@ -74,30 +74,45 @@ class LeaderboardCache {
     }
 
     async updateLeaderboards(force = false) {
-        // Check if we actually need to update
-        if (!force && !this._shouldUpdate()) {
-            return;
-        }
-
-        console.log('[LEADERBOARD CACHE] Updating leaderboards...');
-
-        // Ensure we have valid users
-        if (this.cache.validUsers.size === 0) {
-            await this.updateValidUsers();
-        }
-
         try {
-            // Fetch fresh leaderboard data from raAPI
-            const monthlyData = await fetchLeaderboardData();
-            // Construct the monthly leaderboard array
-            this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
-
-            // Let userStats handle participation, beaten, mastery, etc.
-            if (this.userStats) {
-                await this.userStats.updateMonthlyParticipation(monthlyData);
+            if (!force && !this._shouldUpdate()) {
+                return;
             }
 
-            // Mark the update time
+            console.log('[LEADERBOARD CACHE] Updating leaderboards...');
+
+            // Ensure we have valid users
+            if (this.cache.validUsers.size === 0) {
+                await this.updateValidUsers();
+            }
+
+            // Get yearly leaderboard
+            if (this.userStats) {
+                const currentYear = new Date().getFullYear().toString();
+                const validUsers = Array.from(this.cache.validUsers);
+                
+                this.cache.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(
+                    currentYear,
+                    validUsers
+                );
+            }
+
+            // Get monthly leaderboard
+            try {
+                const monthlyData = await fetchLeaderboardData();
+                this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
+                
+                // Update participation tracking if userStats is available
+                if (this.userStats) {
+                    await this.userStats.updateMonthlyParticipation(monthlyData);
+                }
+            } catch (error) {
+                console.error('[LEADERBOARD CACHE] Error fetching monthly data:', error);
+                if (!this.cache.monthlyLeaderboard.length) {
+                    this.cache.monthlyLeaderboard = [];
+                }
+            }
+
             this.cache.lastUpdated = Date.now();
             console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
         } catch (error) {
@@ -107,10 +122,8 @@ class LeaderboardCache {
     }
 
     _shouldUpdate() {
-        return (
-            !this.cache.lastUpdated ||
-            (Date.now() - this.cache.lastUpdated) > this.cache.updateInterval
-        );
+        return !this.cache.lastUpdated || 
+               (Date.now() - this.cache.lastUpdated) > this.cache.updateInterval;
     }
 
     _constructMonthlyLeaderboard(monthlyData) {
@@ -127,7 +140,7 @@ class LeaderboardCache {
                 const user = monthlyData.leaderboard.find(
                     u => u.username.toLowerCase() === participant.toLowerCase()
                 );
-
+                
                 return user || {
                     username: participant,
                     completionPercentage: 0,
@@ -173,7 +186,6 @@ class LeaderboardCache {
     }
 }
 
-// Factory function if you want to create an instance
 function createLeaderboardCache(database) {
     return new LeaderboardCache(database);
 }
