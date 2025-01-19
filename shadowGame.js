@@ -287,6 +287,16 @@ class ShadowGame {
         try {
             const reward = this.config.finalReward;
             
+            // Ensure points structure exists with defaults
+            if (!this.config.points) {
+                this.config.points = {
+                    participation: 1,
+                    beaten: 3
+                };
+                // Save the updated config with points
+                await database.saveShadowGame(this.config);
+            }
+            
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
                 .setTitle('SYSTEM RESTORED')
@@ -310,6 +320,8 @@ class ShadowGame {
             setInterval(() => this.checkAchievements(), 5 * 60 * 1000); // Check every 5 minutes
         } catch (error) {
             console.error('Error in revealShadowChallenge:', error);
+            // Send a fallback message in case of error
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to reveal shadow challenge\n[Ready for input]█\x1b[0m```');
         }
     }
 }
