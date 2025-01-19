@@ -320,14 +320,30 @@ async function fetchAllRecentAchievements() {
         const validUsers = await database.getValidUsers();
         const allRecentAchievements = [];
 
-        // Use user summaries to get recent achievements
         for (const username of validUsers) {
             try {
-                const summary = await fetchUserSummary(username);
-                
+                const params = new URLSearchParams({
+                    z: process.env.RA_USERNAME,
+                    y: process.env.RA_API_KEY,
+                    u: username,
+                    c: 50
+                });
+
+                const url = `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`;
+                const recentData = await rateLimiter.makeRequest(url);
+
+                // Ensure `achievements` is always an array
+                let finalAchievements = [];
+                if (Array.isArray(recentData)) {
+                    finalAchievements = recentData;
+                } else {
+                    // If RA returns an object or null, default to empty array
+                    console.warn(`[RA API] "recentData" was not an array for user: ${username}. Using empty array instead.`);
+                }
+
                 allRecentAchievements.push({
                     username,
-                    achievements: summary?.recentAchievements || []
+                    achievements: finalAchievements
                 });
 
                 console.log(`[RA API] Fetched recent achievements for user: ${username}`);
