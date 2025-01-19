@@ -1,16 +1,16 @@
 // pointsConfig.js
 
-const BETA_MEMBER_ROLE = '1301710526535041105';
+//const BETA_MEMBER_ROLE = '1301710526535041105';
 
-const pointsConfig = {
+//const pointsConfig = {
     // Role-based points
-    roles: [
-        {
-            roleId: BETA_MEMBER_ROLE,
-            points: 1,
-            reason: 'Beta Member'
-        }
-    ],
+    //roles: [
+      //  {
+        //    roleId: BETA_MEMBER_ROLE,
+       //     points: 1,
+       //     reason: 'Beta Member'
+   //     }
+ //   ],
 
     // Monthly challenges
     monthlyGames: {
