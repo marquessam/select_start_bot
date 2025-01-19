@@ -67,7 +67,7 @@ async function showHelp(message) {
 }
 
 async function startPointsAdd(message, userStats) {
-    const filter = m => m.author.id === message.author.id;
+    const filter = m => m.author.id === message.author.id && m.channel.id === message.channel.id;
     let username, points, reason;
 
     // Create collector for this user
@@ -76,13 +76,19 @@ async function startPointsAdd(message, userStats) {
     try {
         // Step 1: Get username
         await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the username:\n[Ready for input]█\x1b[0m```');
-        const usernameResponse = await message.channel.awaitMessages({
+        const usernameMsgs = await message.channel.awaitMessages({
             filter,
             max: 1,
             time: 30000,
             errors: ['time']
         });
-        username = usernameResponse.first().content.trim();
+
+        // Check if we got any messages
+        const usernameMsg = usernameMsgs.first();
+        if (!usernameMsg) {
+            throw new Error('No response received');
+        }
+        username = usernameMsg.content.trim();
 
         // Validate username
         if (!commonValidators.username(username)) {
@@ -96,13 +102,19 @@ async function startPointsAdd(message, userStats) {
 
         // Step 2: Get points
         await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the point amount (-100 to 100):\n[Ready for input]█\x1b[0m```');
-        const pointsResponse = await message.channel.awaitMessages({
+        const pointsMsgs = await message.channel.awaitMessages({
             filter,
             max: 1,
             time: 30000,
             errors: ['time']
         });
-        points = parseInt(pointsResponse.first().content);
+
+        // Check if we got any messages
+        const pointsMsg = pointsMsgs.first();
+        if (!pointsMsg) {
+            throw new Error('No response received');
+        }
+        points = parseInt(pointsMsg.content);
 
         // Validate points
         if (!commonValidators.points(points)) {
@@ -111,17 +123,48 @@ async function startPointsAdd(message, userStats) {
 
         // Step 3: Get reason
         await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the reason for points:\n[Ready for input]█\x1b[0m```');
-        const reasonResponse = await message.channel.awaitMessages({
+        const reasonMsgs = await message.channel.awaitMessages({
             filter,
             max: 1,
             time: 30000,
             errors: ['time']
         });
-        reason = reasonResponse.first().content;
+
+        // Check if we got any messages
+        const reasonMsg = reasonMsgs.first();
+        if (!reasonMsg) {
+            throw new Error('No response received');
+        }
+        reason = reasonMsg.content;
 
         // Validate reason
         if (!commonValidators.reason(reason)) {
             throw new Error('Invalid reason (must be 3-200 characters)');
+        }
+
+        // Final confirmation
+        const confirmEmbed = new TerminalEmbed()
+            .setTerminalTitle('CONFIRM POINTS')
+            .setTerminalDescription('[REVIEW DETAILS]')
+            .addTerminalField('POINTS ALLOCATION', 
+                `USER: ${username}\n` +
+                `POINTS: ${points}\n` +
+                `REASON: ${reason}`)
+            .addTerminalField('INSTRUCTIONS', 'Type "confirm" to proceed or "cancel" to abort')
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [confirmEmbed] });
+
+        const confirmMsgs = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: 30000,
+            errors: ['time']
+        });
+
+        const confirmMsg = confirmMsgs.first();
+        if (!confirmMsg || confirmMsg.content.toLowerCase() !== 'confirm') {
+            throw new Error('Points allocation cancelled');
         }
 
         // Get initial state and force cache refresh
