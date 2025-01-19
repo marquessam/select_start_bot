@@ -31,7 +31,7 @@ module.exports = {
                 return;
             }
 
-            switch(subcommand.toLowerCase()) {
+            switch (subcommand.toLowerCase()) {
                 case 'add':
                     await startPointsAdd(message, userStats);
                     break;
@@ -159,7 +159,10 @@ async function startPointsAdd(message, userStats) {
                 `USER: ${username}\n` +
                 `POINTS: ${points}\n` +
                 `REASON: ${reason}`)
-            .addTerminalField('INSTRUCTIONS', 'Type "confirm" to proceed or "cancel" to abort')
+            .addTerminalField(
+                'INSTRUCTIONS',
+                'Type "confirm" to proceed or "cancel"/"abort" to abort'
+            )
             .setTerminalFooter();
 
         await message.channel.send({ embeds: [confirmEmbed] });
@@ -172,51 +175,67 @@ async function startPointsAdd(message, userStats) {
         });
 
         const confirmMsg = confirmMsgs.first();
-        if (!confirmMsg || confirmMsg.content.toLowerCase() !== 'confirm') {
-            throw new Error('Points allocation cancelled');
+        if (!confirmMsg) {
+            throw new Error('No response received to final confirmation');
         }
 
-        // Process points after confirmation
-        const userStatsData = await DataService.getUserStats(username);
-        const currentYear = new Date().getFullYear().toString();
-        const pointsBefore = userStatsData?.yearlyPoints?.[currentYear] || 0;
+        const userInput = confirmMsg.content.toLowerCase().trim();
+        // Decide how to proceed based on user input
+        if (userInput === 'confirm') {
+            // Proceed with awarding points
+            const userStatsData = await DataService.getUserStats(username);
+            const currentYear = new Date().getFullYear().toString();
+            const pointsBefore = userStatsData?.yearlyPoints?.[currentYear] || 0;
 
-        // Add points and force save
-        await userStats.addBonusPoints(username, points, reason);
-        await userStats.saveStats();
+            // Add points and force save
+            await userStats.addBonusPoints(username, points, reason);
+            await userStats.saveStats();
 
-        // Verify the update
-        const afterStatsData = await DataService.getUserStats(username);
-        const pointsAfter = afterStatsData?.yearlyPoints?.[currentYear] || 0;
+            // Verify the update
+            const afterStatsData = await DataService.getUserStats(username);
+            const pointsAfter = afterStatsData?.yearlyPoints?.[currentYear] || 0;
 
-        // Force leaderboard update
-        if (global.leaderboardCache) {
-            await global.leaderboardCache.updateLeaderboards(true);
+            // Force leaderboard update
+            if (global.leaderboardCache) {
+                await global.leaderboardCache.updateLeaderboards(true);
+            }
+
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('POINTS ALLOCATED')
+                .setTerminalDescription('[TRANSACTION COMPLETE]')
+                .addTerminalField('OPERATION DETAILS', 
+                    `USER: ${username}\n` +
+                    `POINTS: ${points}\n` +
+                    `REASON: ${reason}`)
+                .addTerminalField('VERIFICATION',
+                    `POINTS BEFORE: ${pointsBefore}\n` +
+                    `POINTS AFTER: ${pointsAfter}\n` +
+                    `CHANGE: ${points}`)
+                .setTerminalFooter();
+
+            await message.channel.send({ embeds: [embed] });
+
+        } else if (userInput === 'cancel' || userInput === 'abort') {
+            // User explicitly canceled
+            throw new Error('Points allocation cancelled by user');
+        } else {
+            // Any other input is considered invalid
+            throw new Error(
+                `Unrecognized response "${confirmMsg.content}". Please type "confirm" to proceed or "cancel"/"abort" to abort.`
+            );
         }
-
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('POINTS ALLOCATED')
-            .setTerminalDescription('[TRANSACTION COMPLETE]')
-            .addTerminalField('OPERATION DETAILS', 
-                `USER: ${username}\n` +
-                `POINTS: ${points}\n` +
-                `REASON: ${reason}`)
-            .addTerminalField('VERIFICATION',
-                `POINTS BEFORE: ${pointsBefore}\n` +
-                `POINTS AFTER: ${pointsAfter}\n` +
-                `CHANGE: ${points}`)
-            .setTerminalFooter();
-
-        await message.channel.send({ embeds: [embed] });
 
     } catch (error) {
         if (error.message === 'time') {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Command timed out\n[Ready for input]█\x1b[0m```');
         } else {
-            await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] ${error.message}\n[Ready for input]█\x1b[0m\`\`\``);
+            // If user cancelled or typed something else, we display that error
+            await message.channel.send(
+                `\`\`\`ansi\n\x1b[32m[ERROR] ${error.message}\n[Ready for input]█\x1b[0m\`\`\``
+            );
         }
     } finally {
-        // Clean up collector
+        // Clean up collector so the user can run commands again
         activeCollectors.delete(message.author.id);
     }
 }
