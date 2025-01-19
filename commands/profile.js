@@ -1,16 +1,15 @@
+// profile.js
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
 
 function calculateRank(username, leaderboard, rankMetric) {
-    // First, find the user's value
     const user = leaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
     if (!user || rankMetric(user) === 0) {
         return 'No Rank';
     }
 
-    // Sort and calculate rank only for users with non-zero values
     const sortedLeaderboard = [...leaderboard]
-        .filter(u => rankMetric(u) > 0)  // Only include users with values greater than 0
+        .filter(u => rankMetric(u) > 0)
         .sort((a, b) => rankMetric(b) - rankMetric(a));
 
     let rank = 1;
@@ -27,7 +26,43 @@ function calculateRank(username, leaderboard, rankMetric) {
         }
     }
 
-    return 'No Rank';  // This should never be reached if we found the user above
+    return 'No Rank';
+}
+
+function organizePointsBreakdown(bonusPoints) {
+    const categories = {
+        'Participations': [],
+        'Games Beaten': [],
+        'Games Mastered': [],
+        'Other': []
+    };
+
+    bonusPoints.forEach(point => {
+        const reason = point.displayReason || point.reason;
+        if (reason.includes('Participation')) {
+            categories['Participations'].push(`${reason}: ${point.points} pts`);
+        } else if (reason.includes('Beaten')) {
+            categories['Games Beaten'].push(`${reason}: ${point.points} pts`);
+        } else if (reason.includes('Mastery')) {
+            categories['Games Mastered'].push(`${reason}: ${point.points} pts`);
+        } else {
+            categories['Other'].push(`${reason}: ${point.points} pts`);
+        }
+    });
+
+    return Object.entries(categories)
+        .filter(([_, points]) => points.length > 0)
+        .map(([category, points]) => `${category}:\n${points.join('\n')}`)
+        .join('\n\n');
+}
+
+function calculateYearlyStats(bonusPoints) {
+    return {
+        participations: bonusPoints.filter(p => (p.displayReason || p.reason).includes('Participation')).length,
+        gamesBeaten: bonusPoints.filter(p => (p.displayReason || p.reason).includes('Beaten')).length,
+        gamesMastered: bonusPoints.filter(p => (p.displayReason || p.reason).includes('Mastery')).length,
+        totalPoints: bonusPoints.reduce((sum, p) => sum + p.points, 0)
+    };
 }
 
 async function getInitialUserData(username, userStats) {
@@ -38,7 +73,6 @@ async function getInitialUserData(username, userStats) {
         return null;
     }
 
-    // Ensure user stats are initialized
     if (userStats) {
         await userStats.initializeUserIfNeeded(cleanUsername);
     }
@@ -60,7 +94,6 @@ module.exports = {
             const username = args[0];
             await message.channel.send('```ansi\n\x1b[32m> Accessing user records...\x1b[0m\n```');
 
-            // Initialize and validate user
             const validatedUser = await getInitialUserData(username, userStats);
             if (!validatedUser) {
                 await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" is not a registered participant\n[Ready for input]█\x1b[0m\`\`\``);
@@ -93,9 +126,7 @@ module.exports = {
                 user.username.toLowerCase() === validatedUser
             ) || {
                 points: 0,
-                gamesCompleted: 0,
-                achievementsUnlocked: 0,
-                monthlyParticipations: 0
+                achievementsUnlocked: 0
             };
 
             // Process bonus points
@@ -103,11 +134,8 @@ module.exports = {
                 bonus.year === currentYear
             ) || [];
 
-            const recentBonusPoints = bonusPoints.length > 0 
-    ? bonusPoints.map(bonus => 
-        `${bonus.displayReason || bonus.reason}: ${bonus.points} pts`
-    ).join('\n')
-    : 'No bonus points';
+            const yearlyStats = calculateYearlyStats(bonusPoints);
+            const organizedPoints = organizePointsBreakdown(bonusPoints);
 
             // Calculate ranks
             const yearlyRankText = calculateRank(validatedUser, yearlyLeaderboard, 
@@ -129,12 +157,13 @@ module.exports = {
                 .addTerminalField('RANKINGS',
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
-               .addTerminalField(`${currentYear} STATISTICS`,
-                    `GAMES COMPLETED: ${userStatsData?.yearlyStats?.[currentYear]?.gamesBeaten || 0}\n` +
-                    `ACHIEVEMENTS UNLOCKED: ${yearlyData.achievementsUnlocked || userProgress.completedAchievements || 0}\n` +
-                    `MONTHLY PARTICIPATIONS: ${yearlyData.monthlyParticipations || 0}`)
-                .addTerminalField('POINT BREAKDOWN', recentBonusPoints)
-                .addTerminalField('POINT TOTAL', `${yearlyData.points || 0}`);
+                .addTerminalField(`${currentYear} STATISTICS`,
+                    `ACHIEVEMENTS EARNED: ${yearlyData.achievementsUnlocked || userProgress.completedAchievements || 0}\n` +
+                    `GAMES PARTICIPATED: ${yearlyStats.participations}\n` +
+                    `GAMES BEATEN: ${yearlyStats.gamesBeaten}\n` +
+                    `GAMES MASTERED: ${yearlyStats.gamesMastered}`)
+                .addTerminalField('POINT BREAKDOWN', organizedPoints)
+                .addTerminalField('POINT TOTAL', `${yearlyStats.totalPoints} points`);
 
             if (raProfileImage) {
                 embed.setThumbnail(raProfileImage);
@@ -153,5 +182,5 @@ module.exports = {
             console.error('[PROFILE] Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
         }
-    },
+    }
 };
