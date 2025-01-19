@@ -5,6 +5,7 @@ const ErrorHandler = require('./utils/errorHandler');
 const path = require('path');
 const raGameRules = require(path.join(__dirname, 'raGameRules.json'));
 const { withTransaction } = require('./utils/transactions');
+const { pointsConfig, pointChecks } = require('./pointsConfig');
 
 // monthlyGames helpers
 const {
@@ -274,6 +275,125 @@ class UserStats {
             throw error;
         }
     }
+// Add these imports at the top of userStats.js
+const { pointsConfig, pointChecks } = require('./pointsConfig');
+
+// Add these new methods to the UserStats class
+
+async resetAllPoints() {
+    try {
+        const currentYear = this.currentYear.toString();
+        const users = await this.getAllUsers();
+
+        for (const username of users) {
+            const user = this.cache.stats.users[username];
+            if (user) {
+                user.yearlyPoints[currentYear] = 0;
+                user.bonusPoints = user.bonusPoints.filter(
+                    bonus => bonus.year !== currentYear
+                );
+            }
+        }
+
+        this.cache.pendingUpdates = new Set(users);
+        await this.saveStats();
+
+        if (global.leaderboardCache) {
+            await global.leaderboardCache.updateLeaderboards(true);
+        }
+
+        return users.length; // Return number of users reset
+    } catch (error) {
+        console.error('Error resetting all points:', error);
+        throw error;
+    }
+}
+
+async recheckAllPoints(guild) {
+    try {
+        const users = await this.getAllUsers();
+        const processedUsers = [];
+        const errors = [];
+
+        for (const username of users) {
+            try {
+                // Get Discord member if guild provided (for role checks)
+                let member = null;
+                if (guild) {
+                    try {
+                        const guildMembers = await guild.members.fetch();
+                        member = guildMembers.find(m => 
+                            m.displayName.toLowerCase() === username.toLowerCase()
+                        );
+                    } catch (e) {
+                        console.warn(`Could not find Discord member for ${username}:`, e);
+                    }
+                }
+
+                // Get user stats and achievements
+                const userStats = await this.getUserStats(username);
+                const data = await fetchLeaderboardData();
+                const userProgress = data.leaderboard.find(
+                    u => u.username.toLowerCase() === username.toLowerCase()
+                );
+
+                if (userProgress && userProgress.achievements) {
+                    // Check all game-related points
+                    for (const gameId of Object.keys(pointsConfig.monthlyGames)) {
+                        const gamePoints = await pointChecks.checkGamePoints(
+                            username,
+                            userProgress.achievements,
+                            gameId,
+                            userStats
+                        );
+
+                        for (const point of gamePoints) {
+                            await this.addBonusPoints(
+                                username,
+                                point.points,
+                                point.reason
+                            );
+                        }
+                    }
+
+                    // Check role-based points if member found
+                    if (member) {
+                        const rolePoints = await pointChecks.checkRolePoints(
+                            member,
+                            userStats
+                        );
+
+                        for (const point of rolePoints) {
+                            await this.addBonusPoints(
+                                username,
+                                point.points,
+                                point.reason
+                            );
+                        }
+                    }
+
+                    processedUsers.push(username);
+                }
+            } catch (error) {
+                console.error(`Error processing ${username}:`, error);
+                errors.push({ username, error: error.message });
+            }
+        }
+
+        // Force leaderboard update
+        if (global.leaderboardCache) {
+            await global.leaderboardCache.updateLeaderboards(true);
+        }
+
+        return {
+            processed: processedUsers,
+            errors: errors
+        };
+    } catch (error) {
+        console.error('Error in recheckAllPoints:', error);
+        throw error;
+    }
+}
 
     // =======================
     //   Leaderboard
