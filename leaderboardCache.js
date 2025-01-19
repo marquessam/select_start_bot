@@ -74,29 +74,30 @@ class LeaderboardCache {
     }
 
     async updateLeaderboards(force = false) {
-        try {
-            if (!force && !this._shouldUpdate()) {
-                return;
-            }
+    if (!force && !this._shouldUpdate()) return;
+    
+    console.log('[LEADERBOARD CACHE] Updating leaderboards...');
+    
+    if (this.cache.validUsers.size === 0) {
+        await this.updateValidUsers();
+    }
 
-            console.log('[LEADERBOARD CACHE] Updating leaderboards...');
+    // Now calls the new fetchLeaderboardData
+    try {
+        const monthlyData = await fetchLeaderboardData(); 
+        this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
 
-            // Ensure we have valid users
-            if (this.cache.validUsers.size === 0) {
-                await this.updateValidUsers();
-            }
+        // Then do the monthlyParticipation
+        if (this.userStats) {
+            await this.userStats.updateMonthlyParticipation(monthlyData);
+        }
+    } catch (error) {
+        // handle
+    }
 
-            // Get yearly leaderboard
-            if (this.userStats) {
-                const currentYear = new Date().getFullYear().toString();
-                const validUsers = Array.from(this.cache.validUsers);
-                
-                this.cache.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(
-                    currentYear,
-                    validUsers
-                );
-            }
-
+    this.cache.lastUpdated = Date.now();
+    console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
+}
             // Get monthly leaderboard
             try {
                 const monthlyData = await fetchLeaderboardData();
