@@ -16,9 +16,7 @@ const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
     'DISCORD_TOKEN',
     'ANNOUNCEMENT_CHANNEL_ID',
-    'ACHIEVEMENT_FEED_CHANNEL',
-    'MOBYGAMES_API_KEY',
-    'MOBYGAMES_API_URL'
+    'ACHIEVEMENT_FEED_CHANNEL'
 ];
 
 const client = new Client({
@@ -31,7 +29,6 @@ const client = new Client({
     ]
 });
 
-// Store service references
 let services = null;
 
 async function validateEnvironment() {
@@ -62,21 +59,10 @@ async function createCoreServices() {
         const commandHandler = new CommandHandler();
         const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
-        
-        // Check if AchievementFeed is a class or object
-        console.log('Achievement Feed type:', typeof AchievementFeed);
-        let achievementFeed;
-        if (typeof AchievementFeed === 'function') {
-            achievementFeed = new AchievementFeed(client, database);
-        } else {
-            achievementFeed = AchievementFeed;
-        }
+        const achievementFeed = new AchievementFeed(client, database);
 
-        // Set up leaderboard cache
         leaderboardCache.setUserStats(userStats);
         global.leaderboardCache = leaderboardCache;
-
-        // Set global achievement feed for point announcements
         global.achievementFeed = achievementFeed;
 
         console.log('Core services created successfully');
@@ -110,18 +96,20 @@ async function initializeServices(coreServices) {
     try {
         console.log('Initializing services...');
 
-        const initPromises = [];
-        
-        if (shadowGame?.loadConfig) initPromises.push(shadowGame.loadConfig().catch(e => console.error('Shadow Game Init Error:', e)));
-        if (userTracker?.initialize) initPromises.push(userTracker.initialize().catch(e => console.error('User Tracker Init Error:', e)));
-        if (userStats?.loadStats) initPromises.push(userStats.loadStats(userTracker).catch(e => console.error('User Stats Init Error:', e)));
-        if (announcer?.initialize) initPromises.push(announcer.initialize().catch(e => console.error('Announcer Init Error:', e)));
-        if (commandHandler?.loadCommands) initPromises.push(commandHandler.loadCommands(coreServices).catch(e => console.error('Command Handler Init Error:', e)));
-        if (leaderboardCache?.initialize) initPromises.push(leaderboardCache.initialize().catch(e => console.error('Leaderboard Cache Init Error:', e)));
-        if (achievementFeed?.initialize) initPromises.push(achievementFeed.initialize().catch(e => console.error('Achievement Feed Init Error:', e)));
+        const initPromises = [
+            shadowGame.loadConfig(),
+            userTracker.initialize(),
+            userStats.loadStats(userTracker),
+            announcer.initialize(),
+            commandHandler.loadCommands(coreServices),
+            leaderboardCache.initialize(),
+            achievementFeed.initialize()
+        ].map(promise => promise.catch(error => {
+            console.error('Service initialization error:', error);
+            return null;
+        }));
 
         await Promise.all(initPromises);
-
         console.log('All services initialized successfully');
         return coreServices;
     } catch (error) {
@@ -144,42 +132,16 @@ async function setupBot() {
     }
 }
 
-async function performInitialParticipationCheck(services) {
+async function performInitialPointsCheck(services) {
+    if (!services?.leaderboardCache || !services?.userStats) return;
+
     try {
-        // Wait a short time to ensure all services are fully initialized
         await new Promise(resolve => setTimeout(resolve, 5000));
-        
         console.log('Performing initial points check...');
-        
-        if (services?.leaderboardCache) {
-            console.log('Fetching initial leaderboard data...');
-            const data = await services.leaderboardCache.updateLeaderboards(true);
-            
-            console.log('Leaderboard data received:', {
-                hasData: !!data,
-                hasLeaderboard: !!data?.leaderboard,
-                userCount: data?.leaderboard?.length || 0
-            });
-            
-            if (services?.userStats) {
-                console.log(`Processing initial points check for ${data.leaderboard.length} users...`);
-                await services.userStats.recheckAllPoints();
-                console.log('Initial points check completed');
-            } else {
-                console.warn('UserStats service not available:', {
-                    hasUserStats: !!services?.userStats
-                });
-            }
-        } else {
-            console.warn('LeaderboardCache service not available');
-        }
+        await services.userStats.recheckAllPoints();
+        console.log('Initial points check completed');
     } catch (error) {
         console.error('Error in initial points check:', error);
-        console.error('Data state:', {
-            hasServices: !!services,
-            hasLeaderboardCache: !!services?.leaderboardCache,
-            hasUserStats: !!services?.userStats
-        });
     }
 }
 
@@ -188,23 +150,17 @@ async function handleMessage(message, services) {
     const tasks = [];
 
     if (message.channel.id === process.env.RA_CHANNEL_ID) {
-        tasks.push(
-            userTracker.processMessage(message).catch(e => 
-                console.error('User Tracker Message Processing Error:', e)
-            )
-        );
+        tasks.push(userTracker.processMessage(message));
     }
 
     tasks.push(
-        shadowGame.checkMessage(message).catch(e => 
-            console.error('Shadow Game Message Check Error:', e)
-        ),
-        commandHandler.handleCommand(message, services).catch(e => 
-            console.error('Command Handler Error:', e)
-        )
+        shadowGame.checkMessage(message),
+        commandHandler.handleCommand(message, services)
     );
 
-    await Promise.allSettled(tasks);
+    await Promise.allSettled(tasks.map(task => 
+        task.catch(error => console.error('Message handling error:', error))
+    ));
 }
 
 // Bot Events
@@ -212,9 +168,7 @@ client.once('ready', async () => {
     try {
         console.log(`Logged in as ${client.user.tag}`);
         const initializedServices = await setupBot();
-        
-        // Perform initial participation check after setup
-        await performInitialParticipationCheck(initializedServices);
+        await performInitialPointsCheck(initializedServices);
     } catch (error) {
         console.error('Fatal initialization error:', error);
         process.exit(1);
@@ -223,33 +177,24 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !services) return;
-
-    try {
-        await handleMessage(message, services);
-    } catch (error) {
-        console.error('Message Handler Error:', error);
-    }
+    await handleMessage(message, services).catch(error => 
+        console.error('Message Handler Error:', error)
+    );
 });
 
 // Periodic Tasks
-const updateLeaderboards = async () => {
-    if (!services?.leaderboardCache) return;
+async function updateLeaderboards() {
+    if (!services?.leaderboardCache || !services?.userStats) return;
 
     try {
-        const leaderboardData = await services.leaderboardCache.updateLeaderboards(true);
-        
-        // Check participation after each leaderboard update
-        if (services?.userStats && leaderboardData) {
-            await services.userStats.updateMonthlyParticipation(leaderboardData);
-        }
+        await services.leaderboardCache.updateLeaderboards(true);
+        await services.userStats.recheckAllPoints();
     } catch (error) {
         console.error('Leaderboard Update Error:', error);
-        setTimeout(updateLeaderboards, 5 * 60 * 1000);
     }
-};
+}
 
-// Run leaderboard updates every hour
-setInterval(updateLeaderboards, 60 * 60 * 1000);
+setInterval(updateLeaderboards, 60 * 60 * 1000); // Every hour
 
 // Graceful Shutdown
 const shutdown = async (signal) => {
@@ -275,5 +220,4 @@ process.on('unhandledRejection', (error) => {
     console.error('Unhandled Rejection:', error);
 });
 
-// Start Bot
 client.login(process.env.DISCORD_TOKEN);
