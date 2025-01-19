@@ -73,10 +73,13 @@ class LeaderboardCache {
         return username && this.cache.validUsers.has(username.toLowerCase());
     }
 
-    async updateLeaderboards(force = false) {
+async updateLeaderboards(force = false) {
     try {
         if (!force && !this._shouldUpdate()) {
-            return this.cache.monthlyLeaderboard;
+            return {
+                leaderboard: this.cache.monthlyLeaderboard,
+                lastUpdated: this.cache.lastUpdated
+            };
         }
 
         console.log('[LEADERBOARD CACHE] Updating leaderboards...');
@@ -102,27 +105,36 @@ class LeaderboardCache {
             const monthlyData = await fetchLeaderboardData();
             this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
             
+            // Create return data structure
+            const returnData = {
+                leaderboard: this.cache.monthlyLeaderboard,
+                gameInfo: monthlyData.gameInfo,
+                lastUpdated: new Date().toISOString()
+            };
+            
             // Update participation tracking if userStats is available
             if (this.userStats) {
                 console.log('[LEADERBOARD CACHE] Checking participation and beaten status...');
-                await this.userStats.updateMonthlyParticipation(monthlyData);
+                await this.userStats.updateMonthlyParticipation(returnData);
             }
+
+            this.cache.lastUpdated = Date.now();
+            console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
+
+            return returnData;
         } catch (error) {
             console.error('[LEADERBOARD CACHE] Error fetching monthly data:', error);
-            if (!this.cache.monthlyLeaderboard.length) {
-                this.cache.monthlyLeaderboard = [];
-            }
+            // Return empty but valid data structure
+            return {
+                leaderboard: [],
+                lastUpdated: new Date().toISOString()
+            };
         }
-
-        this.cache.lastUpdated = Date.now();
-        console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
-        return this.cache.monthlyLeaderboard;
     } catch (error) {
         console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
         throw error;
     }
 }
-
     _shouldUpdate() {
         return !this.cache.lastUpdated || 
                (Date.now() - this.cache.lastUpdated) > this.cache.updateInterval;
