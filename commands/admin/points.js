@@ -1,5 +1,6 @@
 const TerminalEmbed = require('../../utils/embedBuilder');
 const { commonValidators } = require('../../utils/validators');
+const DataService = require('../../services/dataService');
 const { Collection } = require('discord.js');
 
 // Track active point assignments
@@ -10,6 +11,7 @@ module.exports = {
     description: 'Manage user points system',
     async execute(message, args, services) {
         try {
+            // Verify userStats service is available
             const userStats = services?.userStats;
             if (!userStats) {
                 console.error('Points Command: userStats service not available');
@@ -52,6 +54,22 @@ module.exports = {
     }
 };
 
+async function validateUsername(username, userStats) {
+    const cleanUsername = username.trim().toLowerCase();
+    const validUsers = await DataService.getValidUsers();
+    
+    if (!validUsers.includes(cleanUsername)) {
+        return null;
+    }
+
+    // Ensure user stats are initialized
+    if (userStats) {
+        await userStats.initializeUserIfNeeded(cleanUsername);
+    }
+
+    return cleanUsername;
+}
+
 async function showHelp(message) {
     const embed = new TerminalEmbed()
         .setTerminalTitle('POINTS MANAGEMENT')
@@ -83,22 +101,17 @@ async function startPointsAdd(message, userStats) {
             errors: ['time']
         });
 
-        // Check if we got any messages
         const usernameMsg = usernameMsgs.first();
         if (!usernameMsg) {
             throw new Error('No response received');
         }
-        username = usernameMsg.content.trim();
 
-        // Validate username
-        if (!commonValidators.username(username)) {
-            throw new Error('Invalid username format');
+        // Validate username using DataService
+        const validatedUsername = await validateUsername(usernameMsg.content, userStats);
+        if (!validatedUsername) {
+            throw new Error(`User "${usernameMsg.content}" not found`);
         }
-
-        const validUsers = await userStats.getAllUsers();
-        if (!validUsers.includes(username.toLowerCase())) {
-            throw new Error(`User "${username}" not found`);
-        }
+        username = validatedUsername;
 
         // Step 2: Get points
         await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the point amount (-100 to 100):\n[Ready for input]█\x1b[0m```');
@@ -109,14 +122,12 @@ async function startPointsAdd(message, userStats) {
             errors: ['time']
         });
 
-        // Check if we got any messages
         const pointsMsg = pointsMsgs.first();
         if (!pointsMsg) {
             throw new Error('No response received');
         }
         points = parseInt(pointsMsg.content);
 
-        // Validate points
         if (!commonValidators.points(points)) {
             throw new Error('Invalid points value (must be between -100 and 100)');
         }
@@ -130,14 +141,12 @@ async function startPointsAdd(message, userStats) {
             errors: ['time']
         });
 
-        // Check if we got any messages
         const reasonMsg = reasonMsgs.first();
         if (!reasonMsg) {
             throw new Error('No response received');
         }
         reason = reasonMsg.content;
 
-        // Validate reason
         if (!commonValidators.reason(reason)) {
             throw new Error('Invalid reason (must be 3-200 characters)');
         }
@@ -167,20 +176,18 @@ async function startPointsAdd(message, userStats) {
             throw new Error('Points allocation cancelled');
         }
 
-        // Get initial state and force cache refresh
-        await userStats.refreshCache();
-        const beforeStats = await userStats.getUserStats(username);
+        // Process points after confirmation
+        const userStatsData = await DataService.getUserStats(username);
         const currentYear = new Date().getFullYear().toString();
-        const pointsBefore = beforeStats?.yearlyPoints?.[currentYear] || 0;
+        const pointsBefore = userStatsData?.yearlyPoints?.[currentYear] || 0;
 
         // Add points and force save
         await userStats.addBonusPoints(username, points, reason);
         await userStats.saveStats();
 
-        // Verify the update with fresh cache
-        await userStats.refreshCache();
-        const afterStats = await userStats.getUserStats(username);
-        const pointsAfter = afterStats?.yearlyPoints?.[currentYear] || 0;
+        // Verify the update
+        const afterStatsData = await DataService.getUserStats(username);
+        const pointsAfter = afterStatsData?.yearlyPoints?.[currentYear] || 0;
 
         // Force leaderboard update
         if (global.leaderboardCache) {
@@ -230,9 +237,7 @@ async function handleAddMultiPoints(message, args, userStats) {
     }
 
     try {
-        // Force cache refresh before starting
-        await userStats.refreshCache();
-        const validUsers = await userStats.getAllUsers();
+        const validUsers = await DataService.getValidUsers();
         const invalidUsers = userList.filter(user => !validUsers.includes(user.toLowerCase()));
         
         if (invalidUsers.length > 0) {
@@ -245,17 +250,21 @@ async function handleAddMultiPoints(message, args, userStats) {
 
         for (const username of userList) {
             try {
-                await userStats.addBonusPoints(username, points, reason);
-                await userStats.saveStats();
-                successfulAdditions.push(username);
+                const validatedUsername = await validateUsername(username, userStats);
+                if (validatedUsername) {
+                    await userStats.addBonusPoints(validatedUsername, points, reason);
+                    await userStats.saveStats();
+                    successfulAdditions.push(validatedUsername);
+                } else {
+                    failedUsers.push(username);
+                }
             } catch (error) {
                 console.error(`Error adding points to ${username}:`, error);
                 failedUsers.push(username);
             }
         }
 
-        // Force final cache refresh and leaderboard update
-        await userStats.refreshCache();
+        // Force leaderboard update
         if (global.leaderboardCache) {
             await global.leaderboardCache.updateLeaderboards(true);
         }
@@ -278,6 +287,7 @@ async function handleAddMultiPoints(message, args, userStats) {
 
         embed.setTerminalFooter();
         await message.channel.send({ embeds: [embed] });
+
     } catch (error) {
         console.error('Error in handleAddMultiPoints:', error);
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to add points\n[Ready for input]█\x1b[0m```');
@@ -299,25 +309,27 @@ async function handleAddAllPoints(message, args, userStats) {
     }
 
     try {
-        // Force cache refresh before starting
-        await userStats.refreshCache();
-        const users = await userStats.getAllUsers();
+        const validUsers = await DataService.getValidUsers();
         let successfulAdditions = 0;
         let failedUsers = [];
 
-        for (const username of users) {
+        for (const username of validUsers) {
             try {
-                await userStats.addBonusPoints(username, points, reason);
-                await userStats.saveStats();
-                successfulAdditions++;
+                const validatedUsername = await validateUsername(username, userStats);
+                if (validatedUsername) {
+                    await userStats.addBonusPoints(validatedUsername, points, reason);
+                    await userStats.saveStats();
+                    successfulAdditions++;
+                } else {
+                    failedUsers.push(username);
+                }
             } catch (error) {
                 console.error(`Error adding points to ${username}:`, error);
                 failedUsers.push(username);
             }
         }
 
-        // Force final cache refresh and leaderboard update
-        await userStats.refreshCache();
+        // Force leaderboard update
         if (global.leaderboardCache) {
             await global.leaderboardCache.updateLeaderboards(true);
         }
@@ -326,7 +338,7 @@ async function handleAddAllPoints(message, args, userStats) {
             .setTerminalTitle('MASS POINTS ALLOCATION')
             .setTerminalDescription('[TRANSACTION COMPLETE]')
             .addTerminalField('OPERATION DETAILS', 
-                `USERS AFFECTED: ${successfulAdditions}/${users.length}\n` +
+                `USERS AFFECTED: ${successfulAdditions}/${validUsers.length}\n` +
                 `POINTS PER USER: ${points}\n` +
                 `REASON: ${reason}`);
 
@@ -348,28 +360,24 @@ async function handleResetPoints(message, args, userStats) {
         return;
     }
 
-    const username = args[0].toLowerCase();
-    
     try {
-        // Force cache refresh and get initial state
-        await userStats.refreshCache();
-        const beforeStats = await userStats.getUserStats(username);
-        if (!beforeStats) {
-            await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${username}" not found\n[Ready for input]█\x1b[0m\`\`\``);
+        const validatedUsername = await validateUsername(args[0], userStats);
+        if (!validatedUsername) {
+            await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] User "${args[0]}" not found\n[Ready for input]█\x1b[0m\`\`\``);
             return;
         }
 
+        const userStatsData = await DataService.getUserStats(validatedUsername);
         const currentYear = new Date().getFullYear().toString();
-        const pointsBeforeReset = beforeStats.yearlyPoints[currentYear] || 0;
+        const pointsBeforeReset = userStatsData?.yearlyPoints?.[currentYear] || 0;
 
         // Reset points and force save
-        await userStats.resetUserPoints(username);
+        await userStats.resetUserPoints(validatedUsername);
         await userStats.saveStats();
 
         // Verify reset with fresh cache
-        await userStats.refreshCache();
-        const afterStats = await userStats.getUserStats(username);
-        const pointsAfterReset = afterStats.yearlyPoints[currentYear] || 0;
+        const afterStatsData = await DataService.getUserStats(validatedUsername);
+        const pointsAfterReset = afterStatsData?.yearlyPoints?.[currentYear] || 0;
 
         // Force leaderboard update
         if (global.leaderboardCache) {
@@ -380,7 +388,7 @@ async function handleResetPoints(message, args, userStats) {
             .setTerminalTitle('POINTS RESET')
             .setTerminalDescription('[OPERATION COMPLETE]')
             .addTerminalField('RESET DETAILS', 
-                `USER: ${username}\n` +
+                `USER: ${validatedUsername}\n` +
                 `POINTS BEFORE RESET: ${pointsBeforeReset}\n` +
                 `POINTS AFTER RESET: ${pointsAfterReset}`)
             .setTerminalFooter();
