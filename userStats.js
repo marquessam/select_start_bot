@@ -441,9 +441,9 @@ class UserStats {
     }
 }
     // -----------------------------
-    // 1) PARTICIPATION
+    // 1) PARTICIPATION/beaten/mastery
     // -----------------------------
- async handleParticipationPoints(user, username, userStats, gameId, gameName) {
+async handleParticipationPoints(user, username, userStats, gameId, gameName) {
     console.log(`[DEBUG] handleParticipationPoints -> ${username}, game: ${gameId} - ${gameName}`);
 
     // Check for any earned achievements with normalized ID comparison
@@ -481,9 +481,7 @@ class UserStats {
         }
     }
 }
-    // -----------------------------
-    // 2) BEATEN
-    // -----------------------------
+
 async handleBeaten(user, username, userStats, gameId, gameName) {
     console.log(`[DEBUG] handleBeaten -> ${username}, game: ${gameId} - ${gameName}`);
     const ruleSet = raGameRules[gameId];
@@ -539,10 +537,10 @@ async handleBeaten(user, username, userStats, gameId, gameName) {
         console.log(`[DEBUG] ${username} beaten status for ${gameName}: ${beaten}`);
     } else {
         // Fallback: bit=2 logic for games without rulesets
-        const beatAchievement = userAchievements.find(
+        const beatAchievement = user.achievements.find(
             ach => ach.gameId === gameId.toString() &&
                   (ach.Flags & 2) === 2 &&
-                  ach.dateEarned > 0
+                  parseInt(ach.DateEarned) > 0
         );
         beaten = !!beatAchievement;
     }
@@ -570,14 +568,8 @@ async handleBeaten(user, username, userStats, gameId, gameName) {
             }
             userStats.yearlyStats[currentYear].gamesBeaten += 1;
 
-            // Find game config to determine points
-            const currentYM = getCurrentYearMonth();
-            const gameConfig = getActiveGamesForMonth().find(cfg => 
-                cfg.gameId === gameId && cfg.month === currentYM
-            );
-
-            // Award appropriate points based on if it's main challenge or side game
-            const pointsToAward = gameConfig?.isMonthlyChallenge ? 3 : 3;
+            // Always award 3 points for beating a game
+            const pointsToAward = 3;
             console.log(`[DEBUG] Awarding ${pointsToAward} beaten points to "${username}" for ${gameName}`);
             await this.addBonusPoints(username, pointsToAward, `${gameName} - beaten`);
         } else {
@@ -585,12 +577,21 @@ async handleBeaten(user, username, userStats, gameId, gameName) {
         }
     }
 }
-  
-    // -----------------------------
-    // 3) MASTERY
-    // -----------------------------
-    async checkMastery(user, username, userStats, gameId, gameName) {
+
+async checkMastery(user, username, userStats, gameId, gameName) {
     console.log(`[DEBUG] checkMastery -> ${username}, game: ${gameId} - ${gameName}`);
+
+    // First check if this is a monthly challenge game
+    const currentYM = getCurrentYearMonth();
+    const gameConfig = getActiveGamesForMonth().find(cfg => 
+        cfg.gameId === gameId && cfg.month === currentYM
+    );
+
+    // Only process mastery for monthly challenge games
+    if (!gameConfig?.isMonthlyChallenge) {
+        console.log(`[DEBUG] ${gameName} is a side game - skipping mastery check`);
+        return;
+    }
 
     // Get all achievements for this game
     const achievementsForGame = user.achievements.filter(
@@ -626,14 +627,8 @@ async handleBeaten(user, username, userStats, gameId, gameName) {
             console.log(`[DEBUG] Awarding mastery points to "${username}" for ${gameName}`);
             userStats.masteryMonths.push(masteryKey);
 
-            // Find game config to determine points
-            const currentYM = getCurrentYearMonth();
-            const gameConfig = getActiveGamesForMonth().find(cfg => 
-                cfg.gameId === gameId && cfg.month === currentYM
-            );
-
-            // Award appropriate points based on if it's main challenge or side game
-            const pointsToAward = gameConfig?.isMonthlyChallenge ? 3;
+            // Always award 3 points for mastery
+            const pointsToAward = 3;
             await this.addBonusPoints(username, pointsToAward, `${gameName} - mastery`);
         } else {
             console.log(`[DEBUG] ${username} already awarded mastery for ${gameName} this month`);
