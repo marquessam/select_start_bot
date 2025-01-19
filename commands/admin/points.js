@@ -1,5 +1,5 @@
 const TerminalEmbed = require('../../utils/embedBuilder');
-const { commonValidators } = require('../../utils/validators');
+const commonValidators = require('../../utils/validators');
 const DataService = require('../../services/dataService');
 const { Collection } = require('discord.js');
 
