@@ -309,13 +309,23 @@ class UserStats {
     // =======================
     // Monthly Participation
     // =======================
-   async updateMonthlyParticipation(data) {
+ async updateMonthlyParticipation(data) {
     try {
-        console.log('[DEBUG] Starting updateMonthlyParticipation...');
+        console.log('[DEBUG] Starting updateMonthlyParticipation...', {
+            hasData: !!data,
+            hasLeaderboard: !!data?.leaderboard
+        });
+
+        // Validate input data
+        if (!data || !data.leaderboard || !Array.isArray(data.leaderboard)) {
+            console.error('[DEBUG] Invalid leaderboard data:', data);
+            return;
+        }
 
         const currentYear = this.currentYear.toString();
         const participants = data.leaderboard.filter(
-            user => user.completedAchievements > 0
+            user => user && typeof user.completedAchievements === 'number' && 
+            user.completedAchievements > 0
         );
 
         console.log(
@@ -326,74 +336,100 @@ class UserStats {
         const activeGameConfigs = getActiveGamesForMonth();
         const currentYM = getCurrentYearMonth();
 
-        console.log('[DEBUG] Active Game Configs:', activeGameConfigs);
+        console.log('[DEBUG] Active Game Configs:', JSON.stringify(activeGameConfigs, null, 2));
 
+        // Process each participant
         for (const user of participants) {
-            const username = user.username.toLowerCase();
-            console.log(`[DEBUG] Processing user "${username}" with ${user.completedAchievements} achievements.`);
-
-            // Ensure user stats exist
-            if (!this.cache.stats.users[username]) {
-                await this.initializeUserIfNeeded(username);
-            }
-            const userStats = this.cache.stats.users[username];
-            if (!userStats) continue;
-
-            // Initialize yearlyStats if needed
-            if (!userStats.yearlyStats[currentYear]) {
-                userStats.yearlyStats[currentYear] = {
-                    monthlyParticipations: 0,
-                    totalAchievementsUnlocked: 0,
-                    gamesBeaten: 0
-                };
-            }
-
-            // Track points awarded this month to avoid duplicates
-            const monthlyParticipationKey = `${currentYM}-participation`;
-            userStats.participationTracking = userStats.participationTracking || {};
-            
-            // Process each active game
-            for (const gameCfg of activeGameConfigs) {
-                const gameKey = `${monthlyParticipationKey}-${gameCfg.gameId}`;
-                
-                // Skip if we've already awarded participation for this game this month
-                if (userStats.participationTracking[gameKey]) continue;
-
-                // Check if user has any achievements for this game
-                const gameAchievements = user.achievements.filter(
-                    ach => parseInt(ach.GameID) === parseInt(gameCfg.gameId)
-                );
-                
-                const hasProgress = gameAchievements.some(
-                    ach => parseInt(ach.DateEarned) > 0
-                );
-
-                if (hasProgress) {
-                    console.log(`[DEBUG] Awarding participation point to "${username}" for ${gameCfg.gameName}`);
-                    await this.addBonusPoints(username, 1, `${gameCfg.gameName} - participation`);
-                    userStats.participationTracking[gameKey] = true;
-                    
-                    if (typeof userStats.yearlyStats[currentYear].monthlyParticipations !== 'number') {
-                        userStats.yearlyStats[currentYear].monthlyParticipations = 0;
-                    }
-                    userStats.yearlyStats[currentYear].monthlyParticipations += 1;
+            try {
+                const username = user.username?.toLowerCase();
+                if (!username) {
+                    console.warn('[DEBUG] Skipping user with invalid username:', user);
+                    continue;
                 }
-            }
 
-            // Update monthly achievements count
-            if (!userStats.monthlyAchievements[currentYear]) {
-                userStats.monthlyAchievements[currentYear] = {};
-            }
-            const monthlyKey = `${currentYear}-${new Date().getMonth()}`;
-            const prevVal = userStats.monthlyAchievements[currentYear][monthlyKey];
-            if (prevVal !== user.completedAchievements) {
-                userStats.monthlyAchievements[currentYear][monthlyKey] = user.completedAchievements;
-                userStats.yearlyStats[currentYear].totalAchievementsUnlocked =
-                    Object.values(userStats.monthlyAchievements[currentYear])
-                        .reduce((total, count) => total + count, 0);
-            }
+                console.log(`[DEBUG] Processing user "${username}":`);
+                console.log(`- Total Achievements: ${user.completedAchievements}/${user.totalAchievements}`);
+                console.log(`- Has Beaten Game: ${user.hasBeatenGame}`);
+                
+                // Ensure user stats exist
+                if (!this.cache.stats.users[username]) {
+                    await this.initializeUserIfNeeded(username);
+                }
+                const userStats = this.cache.stats.users[username];
+                if (!userStats) {
+                    console.warn(`[DEBUG] Could not initialize stats for user: ${username}`);
+                    continue;
+                }
 
-            this.cache.pendingUpdates.add(username);
+                // Initialize yearlyStats if needed
+                if (!userStats.yearlyStats[currentYear]) {
+                    userStats.yearlyStats[currentYear] = {
+                        monthlyParticipations: 0,
+                        totalAchievementsUnlocked: 0,
+                        gamesBeaten: 0
+                    };
+                }
+
+                // Log achievement IDs for debugging
+                if (user.achievements) {
+                    const earnedAchievements = user.achievements.filter(
+                        ach => parseInt(ach.DateEarned) > 0
+                    );
+                    console.log(`- Earned Achievement IDs: ${earnedAchievements.map(a => a.ID).join(', ')}`);
+                }
+
+                // Track points awarded this month to avoid duplicates
+                const monthlyParticipationKey = `${currentYM}-participation`;
+                userStats.participationTracking = userStats.participationTracking || {};
+                
+                // Process each active game
+                for (const gameCfg of activeGameConfigs) {
+                    const gameKey = `${monthlyParticipationKey}-${gameCfg.gameId}`;
+                    
+                    // Skip if we've already awarded participation for this game this month
+                    if (userStats.participationTracking[gameKey]) {
+                        console.log(`[DEBUG] Already awarded participation for ${gameCfg.gameName} to ${username}`);
+                        continue;
+                    }
+
+                    // Check if user has any achievements for this game
+                    const gameAchievements = user.achievements?.filter(
+                        ach => ach && parseInt(ach.GameID) === parseInt(gameCfg.gameId)
+                    ) || [];
+                    
+                    const hasProgress = gameAchievements.some(
+                        ach => parseInt(ach.DateEarned) > 0
+                    );
+
+                    if (hasProgress) {
+                        console.log(`[DEBUG] Awarding participation point to "${username}" for ${gameCfg.gameName}`);
+                        await this.addBonusPoints(username, 1, `${gameCfg.gameName} - participation`);
+                        userStats.participationTracking[gameKey] = true;
+                        
+                        if (typeof userStats.yearlyStats[currentYear].monthlyParticipations !== 'number') {
+                            userStats.yearlyStats[currentYear].monthlyParticipations = 0;
+                        }
+                        userStats.yearlyStats[currentYear].monthlyParticipations += 1;
+                    }
+                }
+
+                // Update monthly achievements count
+                if (!userStats.monthlyAchievements[currentYear]) {
+                    userStats.monthlyAchievements[currentYear] = {};
+                }
+                const monthlyKey = `${currentYear}-${new Date().getMonth()}`;
+                const prevVal = userStats.monthlyAchievements[currentYear][monthlyKey];
+                if (prevVal !== user.completedAchievements) {
+                    userStats.monthlyAchievements[currentYear][monthlyKey] = user.completedAchievements;
+                    userStats.yearlyStats[currentYear].totalAchievementsUnlocked =
+                        Object.values(userStats.monthlyAchievements[currentYear])
+                            .reduce((total, count) => total + count, 0);
+                }
+
+                this.cache.pendingUpdates.add(username);
+            } catch (error) {
+                console.error(`[DEBUG] Error processing user ${user?.username}:`, error);
+            }
         }
 
         await this.saveStats();
