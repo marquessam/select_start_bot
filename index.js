@@ -1,4 +1,3 @@
-// index.js
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const database = require('./database');
@@ -136,6 +135,7 @@ async function performInitialPointsCheck(services) {
     if (!services?.leaderboardCache || !services?.userStats) return;
 
     try {
+        // Delay a bit so everything else loads first
         await new Promise(resolve => setTimeout(resolve, 5000));
         console.log('Performing initial points check...');
         await services.userStats.recheckAllPoints();
@@ -188,13 +188,19 @@ async function updateLeaderboards() {
 
     try {
         await services.leaderboardCache.updateLeaderboards(true);
-        await services.userStats.recheckAllPoints();
+
+        // =======================
+        // COMMENTED OUT:
+        // Remove or comment out this extra call to avoid awarding points twice:
+        // await services.userStats.recheckAllPoints();
+        // =======================
     } catch (error) {
         console.error('Leaderboard Update Error:', error);
     }
 }
 
-setInterval(updateLeaderboards, 60 * 60 * 1000); // Every hour
+// Set the update interval for leaderboards (1 hour)
+setInterval(updateLeaderboards, 60 * 60 * 1000);
 
 // Graceful Shutdown
 const shutdown = async (signal) => {
