@@ -127,8 +127,8 @@ module.exports = {
                 .addTerminalField('RANKINGS',
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
-                .addTerminalField(`${currentYear} STATISTICS`,
-                    `GAMES COMPLETED: ${yearlyData.gamesCompleted || 0}\n` +
+               .addTerminalField(`${currentYear} STATISTICS`,
+                    `GAMES COMPLETED: ${userStatsData?.yearlyStats?.[currentYear]?.gamesBeaten || 0}\n` +
                     `ACHIEVEMENTS UNLOCKED: ${yearlyData.achievementsUnlocked || userProgress.completedAchievements || 0}\n` +
                     `MONTHLY PARTICIPATIONS: ${yearlyData.monthlyParticipations || 0}`)
                 .addTerminalField('POINT BREAKDOWN', recentBonusPoints)
