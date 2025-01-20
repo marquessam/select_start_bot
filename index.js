@@ -53,6 +53,7 @@ async function createCoreServices() {
     try {
         console.log('Creating core services...');
         
+        // Create services in specific order
         const userStats = new UserStats(database);
         const userTracker = new UserTracker(database, userStats);
         const leaderboardCache = createLeaderboardCache(database);
@@ -61,6 +62,7 @@ async function createCoreServices() {
         const shadowGame = new ShadowGame();
         const achievementFeed = new AchievementFeed(client, database);
 
+        // Set interdependencies
         leaderboardCache.setUserStats(userStats);
         global.leaderboardCache = leaderboardCache;
         global.achievementFeed = achievementFeed;
@@ -96,20 +98,28 @@ async function initializeServices(coreServices) {
     try {
         console.log('Initializing services...');
 
-        const initPromises = [
-            shadowGame.loadConfig(),
-            userTracker.initialize(),
-            userStats.loadStats(userTracker),
-            announcer.initialize(),
-            commandHandler.loadCommands(coreServices),
-            leaderboardCache.initialize(),
-            achievementFeed.initialize()
-        ].map(promise => promise.catch(error => {
-            console.error('Service initialization error:', error);
-            return null;
-        }));
+        // Initialize in sequence, waiting for each to complete
+        await userTracker.initialize();
+        console.log('UserTracker initialized');
 
-        await Promise.all(initPromises);
+        await userStats.loadStats(userTracker);
+        console.log('UserStats initialized');
+
+        await shadowGame.loadConfig();
+        console.log('ShadowGame initialized');
+
+        await announcer.initialize();
+        console.log('Announcer initialized');
+
+        await commandHandler.loadCommands(coreServices);
+        console.log('CommandHandler initialized');
+
+        await leaderboardCache.initialize();
+        console.log('LeaderboardCache initialized');
+
+        await achievementFeed.initialize();
+        console.log('AchievementFeed initialized');
+
         console.log('All services initialized successfully');
         return coreServices;
     } catch (error) {
@@ -141,19 +151,34 @@ async function coordinateUpdate(services, force = false) {
     }
 
     try {
+        // Wait for any pending operations to complete
+        if (services.userStats.isInitializing || !services.userStats.initializationComplete) {
+            console.log('[UPDATE] Waiting for UserStats initialization...');
+            while (services.userStats.isInitializing || !services.userStats.initializationComplete) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+
         // Get fresh leaderboard data (includes achievements)
         const leaderboardData = await services.leaderboardCache.updateLeaderboards(force);
-        
+        console.log('[UPDATE] Leaderboard data updated');
+
         if (!leaderboardData?.leaderboard) {
             console.log('[UPDATE] No leaderboard data available');
             return;
         }
 
-        // Process points
+        // Process points and wait for completion
         await services.userStats.recheckAllPoints();
+        console.log('[UPDATE] Points checked and processed');
         
+        // Wait for any pending saves
+        await services.userStats.saveStats();
+        console.log('[UPDATE] Stats saved');
+
         // One final refresh of leaderboards to show new points
         await services.leaderboardCache.refreshLeaderboard();
+        console.log('[UPDATE] Final leaderboard refresh complete');
         
         console.log('[UPDATE] Coordinated update complete');
     } catch (error) {
