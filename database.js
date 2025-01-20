@@ -232,52 +232,76 @@ class Database {
         }
     }
 
-    async addUserBonusPoints(username, points, reason) {
-        try {
-            console.log(`[DATABASE] Adding bonus points for ${username}: ${points} points for ${reason}`);
-            
-            const collection = await this.getCollection('userstats');
-            const stats = await collection.findOne({ _id: 'stats' });
-            
-            if (!stats?.users?.[username]) {
-                console.warn(`[DATABASE] User ${username} not found in stats`);
-                return false;
-            }
-            
-            const year = new Date().getFullYear().toString();
-            if (!stats.users[username].bonusPoints) {
-                stats.users[username].bonusPoints = [];
-            }
-            if (!stats.users[username].yearlyPoints) {
-                stats.users[username].yearlyPoints = {};
-            }
-
-            // Add bonus points
-            stats.users[username].bonusPoints.push({
-                points,
-                reason,
-                year,
-                date: new Date().toISOString()
-            });
-            
-            // Update yearly points
-            const currentYearPoints = stats.users[username].yearlyPoints[year] || 0;
-            stats.users[username].yearlyPoints[year] = currentYearPoints + points;
-
-            await collection.updateOne(
-                { _id: 'stats' },
-                { $set: { [`users.${username}`]: stats.users[username] } }
-            );
-
-            return true;
-        } catch (error) {
-            console.error('[DATABASE] Error adding bonus points:', error);
-            if (ErrorHandler && ErrorHandler.logError) {
-                ErrorHandler.logError(error, 'Adding Bonus Points');
-            }
-            throw error;
+   async addUserBonusPoints(username, points, reason) {
+    try {
+        console.log(`[DATABASE] Adding bonus points for ${username}: ${points} points for ${reason}`);
+        
+        const collection = await this.getCollection('userstats');
+        const stats = await collection.findOne({ _id: 'stats' });
+        
+        if (!stats?.users?.[username]) {
+            console.warn(`[DATABASE] User ${username} not found in stats`);
+            return false;
         }
+        
+        const year = new Date().getFullYear().toString();
+        if (!stats.users[username].bonusPoints) {
+            stats.users[username].bonusPoints = [];
+        }
+        if (!stats.users[username].yearlyPoints) {
+            stats.users[username].yearlyPoints = {};
+        }
+
+        // Create a normalized version of the reason for comparison
+        const normalizedReason = (reason.internalReason || reason.reason || reason)
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        // Check for existing points with the same reason this year
+        const existingPoints = stats.users[username].bonusPoints.find(bp => {
+            const existingReason = (bp.internalReason || bp.reason || '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+            return bp.year === year && existingReason === normalizedReason;
+        });
+
+        if (existingPoints) {
+            console.log(`[DATABASE] Duplicate points prevented for ${username}: ${normalizedReason}`);
+            return false;
+        }
+
+        // Add bonus points using internal reason for tracking
+        const displayReason = reason.reason || reason;
+        const internalReason = reason.internalReason || reason;
+        
+        stats.users[username].bonusPoints.push({
+            points,
+            reason: internalReason,
+            displayReason: displayReason,
+            year,
+            date: new Date().toISOString()
+        });
+        
+        // Update yearly points
+        stats.users[username].yearlyPoints[year] = (stats.users[username].yearlyPoints[year] || 0) + points;
+
+        await collection.updateOne(
+            { _id: 'stats' },
+            { $set: { [`users.${username}`]: stats.users[username] } }
+        );
+
+        console.log(`[DATABASE] Successfully added ${points} points to ${username} for reason: ${normalizedReason}`);
+        return true;
+    } catch (error) {
+        console.error('[DATABASE] Error adding bonus points:', error);
+        if (ErrorHandler && ErrorHandler.logError) {
+            ErrorHandler.logError(error, 'Adding Bonus Points');
+        }
+        throw error;
     }
+}
 
     async getUserBonusPoints(username) {
         try {
