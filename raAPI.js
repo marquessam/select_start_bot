@@ -64,24 +64,38 @@ const cache = {
     leaderboardData: null,
     summaryTTL: 300000,     // 5 minutes
     profileTTL: 3600000,    // 1 hour
-    leaderboardTTL: 300000, // 5 minutes
-    lastLeaderboardUpdate: 0
+    leaderboardTTL: 600000, // 10 minutes (match update interval)
+    lastLeaderboardUpdate: 0,
+
+    shouldUpdate(type, timestamp) {
+        const ttl = this[`${type}TTL`];
+        return !timestamp || (Date.now() - timestamp > ttl);
+    },
+
+    setCache(type, key, data) {
+        this[type].set(key.toLowerCase(), {
+            data,
+            timestamp: Date.now()
+        });
+    },
+
+    getCache(type, key) {
+        const cached = this[type].get(key.toLowerCase());
+        if (cached && !this.shouldUpdate(type, cached.timestamp)) {
+            return cached.data;
+        }
+        return null;
+    }
 };
 
 // ---------------------------------------
 // API Functions
 // ---------------------------------------
-
-/**
- * Fetch a user's summary data from RetroAchievements
- */
 async function fetchUserSummary(username) {
     try {
-        // Check cache first
-        const cachedSummary = cache.userSummaries.get(username.toLowerCase());
-        if (cachedSummary && (Date.now() - cachedSummary.timestamp < cache.summaryTTL)) {
-            return cachedSummary.data;
-        }
+        // Check cache
+        const cached = cache.getCache('userSummaries', username);
+        if (cached) return cached;
 
         const params = new URLSearchParams({
             z: process.env.RA_USERNAME,
@@ -106,10 +120,7 @@ async function fetchUserSummary(username) {
         };
 
         // Update cache
-        cache.userSummaries.set(username.toLowerCase(), {
-            data: summary,
-            timestamp: Date.now()
-        });
+        cache.setCache('userSummaries', username, summary);
 
         return summary;
     } catch (error) {
@@ -118,16 +129,11 @@ async function fetchUserSummary(username) {
     }
 }
 
-/**
- * Fetch a user's profile information
- */
 async function fetchUserProfile(username) {
     try {
-        // Check cache first
-        const cachedProfile = cache.userProfiles.get(username.toLowerCase());
-        if (cachedProfile && (Date.now() - cachedProfile.timestamp < cache.profileTTL)) {
-            return cachedProfile.data;
-        }
+        // Check cache
+        const cached = cache.getCache('userProfiles', username);
+        if (cached) return cached;
 
         const summary = await fetchUserSummary(username);
         if (!summary) {
@@ -147,15 +153,11 @@ async function fetchUserProfile(username) {
         };
 
         // Update cache
-        cache.userProfiles.set(username.toLowerCase(), {
-            data: profile,
-            timestamp: Date.now()
-        });
+        cache.setCache('userProfiles', username, profile);
 
         return profile;
     } catch (error) {
         console.error(`[RA API] Error fetching user profile for ${username}:`, error);
-        // Return default profile on error
         return {
             username,
             profileImage: `https://retroachievements.org/UserPic/${username}.png`,
@@ -166,11 +168,14 @@ async function fetchUserProfile(username) {
     }
 }
 
-/**
- * Fetch leaderboard data including challenge progress
- */
-async function fetchLeaderboardData() {
+async function fetchLeaderboardData(force = false) {
     try {
+        // Check cache unless force update
+        if (!force && cache.leaderboardData && !cache.shouldUpdate('leaderboard', cache.lastLeaderboardUpdate)) {
+            console.log('[RA API] Returning cached leaderboard data');
+            return cache.leaderboardData;
+        }
+
         console.log('[RA API] Fetching fresh leaderboard data');
 
         const challenge = await database.getCurrentChallenge();
@@ -181,7 +186,6 @@ async function fetchLeaderboardData() {
         const validUsers = await database.getValidUsers();
         console.log(`[RA API] Fetching data for ${validUsers.length} users`);
 
-        // 1) Fetch all user summaries first (in parallel)
         const userSummaries = await Promise.all(
             validUsers.map(async username => {
                 try {
@@ -194,11 +198,8 @@ async function fetchLeaderboardData() {
         );
 
         const usersProgress = [];
-
-        // Define the games we want to check (main challenge and side game)
         const gamesToCheck = ['319', '10024']; // Chrono Trigger and Mario Tennis
 
-        // 2) For each user, fetch all game data
         for (const username of validUsers) {
             if (!username) {
                 console.error('[RA API] Skipping undefined username');
@@ -206,7 +207,6 @@ async function fetchLeaderboardData() {
             }
 
             try {
-                // Find the user's summary
                 const userSummary = userSummaries.find(
                     s => s && s.username && username &&
                         s.username.toLowerCase() === username.toLowerCase()
@@ -214,7 +214,6 @@ async function fetchLeaderboardData() {
 
                 let allGameAchievements = [];
 
-                // Fetch data for each game
                 for (const gameId of gamesToCheck) {
                     const challengeParams = new URLSearchParams({
                         z: process.env.RA_USERNAME,
@@ -230,13 +229,12 @@ async function fetchLeaderboardData() {
                     if (gameData?.Achievements) {
                         const gameAchievements = Object.values(gameData.Achievements).map(ach => ({
                             ...ach,
-                            GameID: gameId // Ensure GameID is set correctly
+                            GameID: gameId
                         }));
                         allGameAchievements = [...allGameAchievements, ...gameAchievements];
                     }
                 }
 
-                // Map userSummary recent achievements
                 const mappedRecents = (userSummary?.recentAchievements || []).map(r => ({
                     ID: parseInt(r.AchievementID),
                     DateEarned: r.Date,
@@ -244,27 +242,20 @@ async function fetchLeaderboardData() {
                     GameID: r.GameID ? parseInt(r.GameID) : null
                 }));
 
-                // Combine all achievements
-                const allAchievements = [
-                    ...allGameAchievements,
-                    ...mappedRecents
-                ];
+                const allAchievements = [...allGameAchievements, ...mappedRecents];
 
-                // For main challenge scoreboard display
                 const mainGameAchievements = allGameAchievements.filter(a => a.GameID === challenge.gameId);
                 const numAchievements = mainGameAchievements.length;
                 const completed = mainGameAchievements.filter(
                     ach => parseInt(ach.DateEarned, 10) > 0
                 ).length;
 
-                // Check for beaten game condition for main game
                 const hasBeatenGame = mainGameAchievements.some(ach => {
                     const isWinCondition = (ach.Flags & 2) === 2;
                     const isEarned = parseInt(ach.DateEarned, 10) > 0;
                     return isWinCondition && isEarned;
                 });
 
-                // Summarize user data
                 usersProgress.push({
                     username,
                     profileImage: userSummary?.userPic
@@ -277,7 +268,7 @@ async function fetchLeaderboardData() {
                         ? ((completed / numAchievements) * 100).toFixed(2)
                         : '0.00',
                     hasBeatenGame: !!hasBeatenGame,
-                    achievements: allAchievements, // Include ALL achievements for both games
+                    achievements: allAchievements,
                     totalPoints: userSummary?.totalPoints || 0,
                     rank: userSummary?.rank || 0,
                     recentAchievements: userSummary?.recentAchievements || [],
@@ -291,7 +282,6 @@ async function fetchLeaderboardData() {
                 );
             } catch (error) {
                 console.error(`[RA API] Error fetching data for ${username}:`, error);
-                // Add fallback entry
                 usersProgress.push({
                     username,
                     profileImage: `https://retroachievements.org/UserPic/${username}.png`,
@@ -309,7 +299,6 @@ async function fetchLeaderboardData() {
             }
         }
 
-        // Build final leaderboard data
         const leaderboardData = {
             leaderboard: usersProgress.sort(
                 (a, b) => parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage)
@@ -317,6 +306,10 @@ async function fetchLeaderboardData() {
             gameInfo: challenge,
             lastUpdated: new Date().toISOString()
         };
+
+        // Update cache
+        cache.leaderboardData = leaderboardData;
+        cache.lastLeaderboardUpdate = Date.now();
 
         console.log(`[RA API] Leaderboard data updated with ${usersProgress.length} users`);
         return leaderboardData;
@@ -326,9 +319,6 @@ async function fetchLeaderboardData() {
     }
 }
 
-/**
- * Fetch all recent achievements for all users
- */
 async function fetchAllRecentAchievements() {
     try {
         console.log('[RA API] Fetching ALL recent achievements for each user...');
@@ -348,7 +338,6 @@ async function fetchAllRecentAchievements() {
                 const url = `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`;
                 const recentData = await rateLimiter.makeRequest(url);
 
-                // Ensure `achievements` is always an array
                 let finalAchievements = [];
                 if (Array.isArray(recentData)) {
                     finalAchievements = recentData;
@@ -378,9 +367,6 @@ async function fetchAllRecentAchievements() {
     }
 }
 
-/**
- * Clear all caches
- */
 function clearCaches() {
     cache.userSummaries.clear();
     cache.userProfiles.clear();
