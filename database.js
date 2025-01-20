@@ -236,28 +236,35 @@ class Database {
         }
     }
    
-    async addUserBonusPoints(username, bonusPoint) {
-        try {
-            const collection = await this.getCollection('userstats');
+  async addUserBonusPoints(username, bonusPoint) {
+    try {
+        const collection = await this.getCollection('userstats');
 
-            // Use a unique identifier to prevent duplicates
-            const technicalKey = bonusPoint.technicalKey || `${bonusPoint.pointType}-${bonusPoint.gameId}`;
+        // Use $addToSet with a unique technicalKey to prevent duplicates
+        await collection.updateOne(
+            { _id: 'stats' },
+            {
+                $addToSet: { [`users.${username}.bonusPoints`]: { technicalKey: bonusPoint.technicalKey } },
+                $inc: { [`users.${username}.yearlyPoints.${new Date().getFullYear()}`]: bonusPoint.points }
+            },
+            { upsert: true }
+        );
 
-            await collection.updateOne(
-                { _id: 'stats' },
-                {
-                    $addToSet: { [`users.${username}.bonusPoints`]: { ...bonusPoint, technicalKey } },
-                    $inc: { [`users.${username}.yearlyPoints.${new Date().getFullYear()}`]: bonusPoint.points }
-                },
-                { upsert: true }
-            );
+        // Now push the full bonusPoint if it's not already present
+        await collection.updateOne(
+            { _id: 'stats', [`users.${username}.bonusPoints.technicalKey`]: { $ne: bonusPoint.technicalKey } },
+            {
+                $push: { [`users.${username}.bonusPoints`]: bonusPoint }
+            },
+            { upsert: true }
+        );
 
-            console.log(`[DB] Added bonus point for ${username}:`, bonusPoint);
-        } catch (error) {
-            ErrorHandler.logError(error, 'Add User Bonus Points');
-            throw error;
-        }
+        console.log(`[DB] Added bonus point for ${username}:`, bonusPoint);
+    } catch (error) {
+        ErrorHandler.logError(error, 'Add User Bonus Points');
+        throw error;
     }
+}
 
     /**
      * Retrieves a user's bonus points.
