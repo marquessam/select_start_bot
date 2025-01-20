@@ -1,7 +1,7 @@
 // pointsConfig.js
 
+// Points configuration for all games
 const pointsConfig = {
-    // Monthly challenges
     monthlyGames: {
         "319": {
             name: "Chrono Trigger",
@@ -30,99 +30,121 @@ const pointsConfig = {
     }
 };
 
-// Helper function to create point reasons
+// Helper functions
+function hasReceivedPoints(userStats, gameId, pointType) {
+    if (!userStats.bonusPoints) return false;
+    
+    const pointKey = `${pointType}-${gameId}`;
+    return userStats.bonusPoints.some(bp => {
+        // Check both internal and display reasons
+        const checkReason = bp.internalReason || bp.reason;
+        return checkReason.includes(pointKey);
+    });
+}
+
 function createPointReason(gameName, achievementType, technicalKey) {
     return {
-        display: `${gameName} - ${achievementType}`, // User-facing reason
-        internal: `${gameName} - ${achievementType} (${technicalKey})` // Internal reason with key
+        display: `${gameName} - ${achievementType}`,
+        internal: `${gameName} - ${achievementType} (${technicalKey})`
     };
 }
 
 const pointChecks = {
     async checkGamePoints(username, achievements, gameId, userStats) {
+        console.log(`[POINTS] Checking ${username}'s points for game ${gameId}`);
+        
         const gameConfig = pointsConfig.monthlyGames[gameId];
-        if (!gameConfig) return [];
+        if (!gameConfig) {
+            console.log(`[POINTS] No config found for game ${gameId}`);
+            return [];
+        }
 
         const points = [];
-        const gameAchievements = achievements.filter(a => 
-            a.GameID === gameId || a.GameID === parseInt(gameId)
-        );
+        const gameAchievements = achievements.filter(a => {
+            const achievementGameId = String(a.GameID || a.gameId);
+            return achievementGameId === String(gameId);
+        });
+
+        console.log(`[POINTS] Found ${gameAchievements.length} achievements for game ${gameId}`);
 
         // Check participation
         const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
-        const participationKey = `participation-${gameId}`;
-        if (hasParticipation && !userStats.bonusPoints?.some(bp => 
-            bp.reason.includes(participationKey)
-        )) {
+        if (hasParticipation && !hasReceivedPoints(userStats, gameId, 'participation')) {
+            const participationKey = `participation-${gameId}`;
             const reason = createPointReason(gameConfig.name, "Participation", participationKey);
             points.push({
                 points: gameConfig.points.participation,
                 reason: reason.display,
                 internalReason: reason.internal
             });
+            console.log(`[POINTS] Adding participation point for ${username}`);
         }
 
-        // Check beaten condition
-        let hasBeaten = true;
+        // Check beaten status
+        if (!hasReceivedPoints(userStats, gameId, 'beaten')) {
+            let hasBeaten = true;
 
-        if (gameConfig.requireProgression && gameConfig.progression) {
-            hasBeaten = gameConfig.progression.every(achId =>
-                gameAchievements.some(a => 
-                    parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
-                )
-            );
-        }
-
-        if (hasBeaten) {
-            if (gameConfig.requireAllWinConditions) {
-                hasBeaten = gameConfig.winCondition.every(achId =>
-                    gameAchievements.some(a => 
-                        parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
-                    )
-                );
-            } else {
-                hasBeaten = gameConfig.winCondition.some(achId =>
+            // Check progression achievements if required
+            if (gameConfig.requireProgression && gameConfig.progression) {
+                hasBeaten = gameConfig.progression.every(achId =>
                     gameAchievements.some(a => 
                         parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
                     )
                 );
             }
-        }
 
-        if (hasBeaten) {
-            const beatenKey = `beaten-${gameId}`;
-            if (!userStats.bonusPoints?.some(bp => 
-                bp.reason.includes(beatenKey)
-            )) {
+            // Check win conditions
+            if (hasBeaten) {
+                if (gameConfig.requireAllWinConditions) {
+                    hasBeaten = gameConfig.winCondition.every(achId =>
+                        gameAchievements.some(a => 
+                            parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
+                        )
+                    );
+                } else {
+                    hasBeaten = gameConfig.winCondition.some(achId =>
+                        gameAchievements.some(a => 
+                            parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
+                        )
+                    );
+                }
+            }
+
+            if (hasBeaten) {
+                const beatenKey = `beaten-${gameId}`;
                 const reason = createPointReason(gameConfig.name, "Game Beaten", beatenKey);
                 points.push({
                     points: gameConfig.points.beaten,
                     reason: reason.display,
                     internalReason: reason.internal
                 });
+                console.log(`[POINTS] Adding beaten points for ${username}`);
             }
         }
 
         // Check mastery if applicable
-        if (gameConfig.masteryCheck) {
+        if (gameConfig.masteryCheck && !hasReceivedPoints(userStats, gameId, 'mastery')) {
             const totalAchievements = gameAchievements.length;
             const earnedAchievements = gameAchievements.filter(a => 
                 parseInt(a.DateEarned) > 0
             ).length;
             
-            const hasMastery = totalAchievements > 0 && totalAchievements === earnedAchievements;
-            const masteryKey = `mastery-${gameId}`;
-            
-            if (hasMastery && !userStats.bonusPoints?.some(bp => 
-                bp.reason.includes(masteryKey)
-            )) {
+            if (totalAchievements > 0 && totalAchievements === earnedAchievements) {
+                const masteryKey = `mastery-${gameId}`;
                 const reason = createPointReason(gameConfig.name, "Mastery", masteryKey);
                 points.push({
                     points: gameConfig.points.mastery,
                     reason: reason.display,
                     internalReason: reason.internal
                 });
+                console.log(`[POINTS] Adding mastery points for ${username}`);
             }
+        }
+
+        if (points.length > 0) {
+            console.log(`[POINTS] Total points awarded to ${username} for game ${gameId}:`, 
+                points.map(p => `${p.reason}: ${p.points}`).join(', ')
+            );
         }
 
         return points;
