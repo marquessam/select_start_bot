@@ -103,7 +103,7 @@ const pointChecks = {
                 points: gameConfig.points.participation,
                 reason: reason.display,
                 internalReason: reason.internal,
-                technicalKey: participationKey, // Add technicalKey explicitly
+                technicalKey: participationKey,
                 pointType: 'participation',
                 gameId
             });
