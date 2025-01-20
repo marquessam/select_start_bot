@@ -231,7 +231,85 @@ class Database {
             return [];
         }
     }
+    
+async cleanupDuplicatePoints() {
+    try {
+        console.log('[DATABASE] Starting duplicate points cleanup...');
+        const collection = await this.getCollection('userstats');
+        const stats = await collection.findOne({ _id: 'stats' });
+        const year = new Date().getFullYear().toString();
+        
+        let totalDuplicatesRemoved = 0;
+        let usersAffected = 0;
+        const cleanupResults = [];
 
+        for (const [username, userData] of Object.entries(stats.users)) {
+            if (!userData.bonusPoints) continue;
+
+            const seenPoints = new Map(); // reason -> first occurrence
+            const duplicates = [];
+            let yearlyPointsAdjustment = 0;
+
+            // Sort points by date to keep earliest entries
+            const sortedPoints = [...userData.bonusPoints].sort((a, b) => 
+                new Date(a.date) - new Date(b.date)
+            );
+
+            for (const bonusPoint of sortedPoints) {
+                if (bonusPoint.year !== year) continue;
+
+                const normalizedReason = (bonusPoint.internalReason || bonusPoint.reason || '')
+                    .toLowerCase()
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                if (seenPoints.has(normalizedReason)) {
+                    duplicates.push(bonusPoint);
+                    yearlyPointsAdjustment -= bonusPoint.points;
+                } else {
+                    seenPoints.set(normalizedReason, bonusPoint);
+                }
+            }
+
+            if (duplicates.length > 0) {
+                // Remove duplicates from bonusPoints array
+                userData.bonusPoints = sortedPoints.filter(point => 
+                    !duplicates.includes(point)
+                );
+
+                // Adjust yearly points
+                if (userData.yearlyPoints[year]) {
+                    userData.yearlyPoints[year] += yearlyPointsAdjustment;
+                }
+
+                // Update stats for this user
+                await collection.updateOne(
+                    { _id: 'stats' },
+                    { $set: { [`users.${username}`]: userData } }
+                );
+
+                totalDuplicatesRemoved += duplicates.length;
+                usersAffected++;
+
+                cleanupResults.push({
+                    username,
+                    duplicatesRemoved: duplicates.length,
+                    pointsAdjusted: yearlyPointsAdjustment,
+                    duplicateReasons: duplicates.map(d => d.reason)
+                });
+            }
+        }
+
+        return {
+            totalDuplicatesRemoved,
+            usersAffected,
+            details: cleanupResults
+        };
+    } catch (error) {
+        console.error('[DATABASE] Error cleaning up duplicate points:', error);
+        throw error;
+    }
+}
    async addUserBonusPoints(username, points, reason) {
     try {
         console.log(`[DATABASE] Adding bonus points for ${username}: ${points} points for ${reason}`);
