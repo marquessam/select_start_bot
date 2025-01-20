@@ -32,22 +32,36 @@ const pointsConfig = {
 };
 
 // Helper function to check for existing points
-async function hasReceivedPoints(username, normalizedReason) {
+async function hasReceivedPoints(username, gameId, pointType) {
     try {
         const stats = await database.getUserStats();
         const year = new Date().getFullYear().toString();
 
         if (!stats?.users?.[username]?.bonusPoints) {
+            console.log(`[POINTS CHECK] No bonus points found for ${username}`);
             return false;
         }
 
-        return stats.users[username].bonusPoints.some(bp => {
-            const existingReason = (bp.internalReason || bp.reason || '')
-                .toLowerCase()
-                .replace(/\s+/g, ' ')
-                .trim();
-            return bp.year === year && existingReason === normalizedReason;
+        // Create the technical key we're looking for
+        const technicalKey = `${pointType}-${gameId}`;
+
+        // Check if points exist for this exact technical key
+        const hasPoints = stats.users[username].bonusPoints.some(bp => {
+            // Check if it's a bonus point from this year
+            if (bp.year !== year) return false;
+
+            // Look for the technical key in the internal reason
+            const internalReason = bp.internalReason || bp.reason || '';
+            const hasMatch = internalReason.includes(`(${technicalKey})`);
+            
+            if (hasMatch) {
+                console.log(`[POINTS CHECK] Found existing ${pointType} points for ${username} on game ${gameId}`);
+            }
+            
+            return hasMatch;
         });
+
+        return hasPoints;
     } catch (error) {
         console.error('Error checking for received points:', error);
         return false;
@@ -84,24 +98,31 @@ const pointChecks = {
         // Create an array to store all point awards
         const pointsToAward = [];
 
-        // Check participation first
-        const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
+        // Check each type of points in sequence
         
-        // Instead of awarding points one at a time, collect all valid point awards
+        // 1. Participation Check
+        const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
         if (hasParticipation) {
-            const participationKey = `participation-${gameId}`;
-            const reason = createPointReason(gameConfig.name, "Participation", participationKey);
-            pointsToAward.push({
-                points: gameConfig.points.participation,
-                reason: reason.display,
-                internalReason: reason.internal,
-                technicalKey: participationKey,
-                pointType: 'participation',
-                gameId
-            });
+            // Check if already has participation points
+            const hasExistingParticipation = await hasReceivedPoints(username, gameId, 'participation');
+            if (!hasExistingParticipation) {
+                const participationKey = `participation-${gameId}`;
+                const reason = createPointReason(gameConfig.name, "Participation", participationKey);
+                pointsToAward.push({
+                    points: gameConfig.points.participation,
+                    reason: reason.display,
+                    internalReason: reason.internal,
+                    technicalKey: participationKey,
+                    pointType: 'participation',
+                    gameId
+                });
+                console.log(`[POINTS] ${username} eligible for participation points`);
+            } else {
+                console.log(`[POINTS] ${username} already has participation points`);
+            }
         }
 
-        // Check beaten status
+        // 2. Beaten Check
         let hasBeaten = true;
         if (gameConfig.requireProgression && gameConfig.progression) {
             hasBeaten = gameConfig.progression.every(achId =>
@@ -127,22 +148,29 @@ const pointChecks = {
                 );
             }
             console.log(`[POINTS] Win condition check for ${username}: ${hasBeaten}`);
+
+            if (hasBeaten) {
+                // Check if already has beaten points
+                const hasExistingBeaten = await hasReceivedPoints(username, gameId, 'beaten');
+                if (!hasExistingBeaten) {
+                    const beatenKey = `beaten-${gameId}`;
+                    const reason = createPointReason(gameConfig.name, "Game Beaten", beatenKey);
+                    pointsToAward.push({
+                        points: gameConfig.points.beaten,
+                        reason: reason.display,
+                        internalReason: reason.internal,
+                        technicalKey: beatenKey,
+                        pointType: 'beaten',
+                        gameId
+                    });
+                    console.log(`[POINTS] ${username} eligible for beaten points`);
+                } else {
+                    console.log(`[POINTS] ${username} already has beaten points`);
+                }
+            }
         }
 
-        if (hasBeaten) {
-            const beatenKey = `beaten-${gameId}`;
-            const reason = createPointReason(gameConfig.name, "Game Beaten", beatenKey);
-            pointsToAward.push({
-                points: gameConfig.points.beaten,
-                reason: reason.display,
-                internalReason: reason.internal,
-                technicalKey: beatenKey,
-                pointType: 'beaten',
-                gameId
-            });
-        }
-
-        // Check mastery if applicable
+        // 3. Mastery Check
         if (gameConfig.masteryCheck) {
             const totalAchievements = gameAchievements.length;
             const earnedAchievements = gameAchievements.filter(a => 
@@ -152,43 +180,35 @@ const pointChecks = {
             console.log(`[POINTS] ${username} mastery progress: ${earnedAchievements}/${totalAchievements}`);
             
             if (totalAchievements > 0 && totalAchievements === earnedAchievements) {
-                const masteryKey = `mastery-${gameId}`;
-                const reason = createPointReason(gameConfig.name, "Mastery", masteryKey);
-                pointsToAward.push({
-                    points: gameConfig.points.mastery,
-                    reason: reason.display,
-                    internalReason: reason.internal,
-                    technicalKey: masteryKey,
-                    pointType: 'mastery',
-                    gameId
-                });
-            }
-        } else {
-            console.log(`[POINTS] ${username} already received mastery points or game doesn't have mastery`);
-        }
-
-        // Now, for each point award we want to give, check if it's already been awarded
-        const validPoints = [];
-        for (const award of pointsToAward) {
-            // Check if these points have already been awarded
-            const normalizedReason = award.internalReason.toLowerCase().replace(/\s+/g, ' ').trim();
-            const alreadyAwarded = await hasReceivedPoints(username, normalizedReason);
-            
-            if (!alreadyAwarded) {
-                validPoints.push(award);
-            } else {
-                console.log(`[POINTS] ${username} already received points for ${normalizedReason}`);
+                // Check if already has mastery points
+                const hasExistingMastery = await hasReceivedPoints(username, gameId, 'mastery');
+                if (!hasExistingMastery) {
+                    const masteryKey = `mastery-${gameId}`;
+                    const reason = createPointReason(gameConfig.name, "Mastery", masteryKey);
+                    pointsToAward.push({
+                        points: gameConfig.points.mastery,
+                        reason: reason.display,
+                        internalReason: reason.internal,
+                        technicalKey: masteryKey,
+                        pointType: 'mastery',
+                        gameId
+                    });
+                    console.log(`[POINTS] ${username} eligible for mastery points`);
+                } else {
+                    console.log(`[POINTS] ${username} already has mastery points`);
+                }
             }
         }
 
-        if (validPoints.length > 0) {
+        if (pointsToAward.length > 0) {
             console.log(`[POINTS] Points to award to ${username} for game ${gameId}:`, 
-                validPoints.map(p => `${p.reason}: ${p.points}`).join(', ')
+                pointsToAward.map(p => `${p.reason}: ${p.points}`).join(', ')
             );
+        } else {
+            console.log(`[POINTS] No new points to award to ${username} for game ${gameId}`);
         }
 
-        // Return only the points that haven't been awarded yet
-        return validPoints;
+        return pointsToAward;
     }
 };
 
