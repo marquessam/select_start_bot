@@ -85,40 +85,34 @@ async function createCoreServices() {
 }
 
 async function initializeServices(coreServices) {
-    const {
-        userTracker,
-        userStats,
-        announcer,
-        commandHandler,
-        shadowGame,
-        leaderboardCache,
-        achievementFeed
-    } = coreServices;
-
     try {
         console.log('Initializing services...');
 
-        // Initialize in sequence, waiting for each to complete
-        await userTracker.initialize();
+        // Do basic initialization first (no API calls)
+        await coreServices.userTracker.initialize();
         console.log('UserTracker initialized');
 
-        await userStats.loadStats(userTracker);
+        await coreServices.userStats.loadStats(coreServices.userTracker);
         console.log('UserStats initialized');
 
-        await shadowGame.loadConfig();
+        await coreServices.shadowGame.loadConfig();
         console.log('ShadowGame initialized');
 
-        await announcer.initialize();
+        await coreServices.announcer.initialize();
         console.log('Announcer initialized');
 
-        await commandHandler.loadCommands(coreServices);
+        await coreServices.commandHandler.loadCommands(coreServices);
         console.log('CommandHandler initialized');
 
-        await leaderboardCache.initialize();
+        // Now do the heavy initialization with API calls - but only once
+        await coreServices.leaderboardCache.initialize(true); // Skip initial API call
         console.log('LeaderboardCache initialized');
 
-        await achievementFeed.initialize();
+        await coreServices.achievementFeed.initialize();
         console.log('AchievementFeed initialized');
+
+        // Do a single coordinated update at the end
+        await coordinateUpdate(coreServices, true);
 
         console.log('All services initialized successfully');
         return coreServices;
@@ -143,6 +137,12 @@ async function setupBot() {
 }
 
 async function coordinateUpdate(services, force = false) {
+    // If this is not forced and we've already got data, skip
+    if (!force && services.leaderboardCache.hasInitialData) {
+        console.log('[UPDATE] Skipping redundant update, using cached data');
+        return;
+    }
+
     console.log('[UPDATE] Starting coordinated update...');
     
     if (!services?.leaderboardCache || !services?.userStats) {
@@ -176,10 +176,9 @@ async function coordinateUpdate(services, force = false) {
         await services.userStats.saveStats();
         console.log('[UPDATE] Stats saved');
 
-        // One final refresh of leaderboards to show new points
-        await services.leaderboardCache.refreshLeaderboard();
-        console.log('[UPDATE] Final leaderboard refresh complete');
-        
+        // Mark that we have initial data
+        services.leaderboardCache.hasInitialData = true;
+
         console.log('[UPDATE] Coordinated update complete');
     } catch (error) {
         console.error('[UPDATE] Error during coordinated update:', error);
@@ -209,7 +208,6 @@ client.once('ready', async () => {
     try {
         console.log(`Logged in as ${client.user.tag}`);
         const initializedServices = await setupBot();
-        await coordinateUpdate(initializedServices, true);
     } catch (error) {
         console.error('Fatal initialization error:', error);
         process.exit(1);
