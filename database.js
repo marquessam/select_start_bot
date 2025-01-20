@@ -235,6 +235,24 @@ class Database {
             return [];
         }
     }
+    async addUserBonusPoints(username, bonusPoint) {
+    try {
+        const collection = await this.getCollection('userstats');
+        await collection.updateOne(
+            { _id: 'stats' },
+            {
+                $push: { [`users.${username}.bonusPoints`]: bonusPoint },
+                $inc: { [`users.${username}.yearlyPoints.${new Date().getFullYear()}`]: bonusPoint.points }
+            },
+            { upsert: true }
+        );
+        console.log(`[DB] Added bonus point for ${username}:`, bonusPoint);
+    } catch (error) {
+        ErrorHandler.logError(error, 'Add User Bonus Points');
+        throw error;
+    }
+}
+
 
  // =================
     // Arcade Methods
