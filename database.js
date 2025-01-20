@@ -1,5 +1,5 @@
 const { MongoClient } = require('mongodb');
-const { ErrorHandler } = require('./utils/errorHandler');
+const { ErrorHandler, BotError } = require('./utils/errorHandler');
 const { fetchData } = require('./utils/dataFetcher');
 const { commonValidators } = require('./utils/validators');
 const { withTransaction } = require('./utils/transactions');
@@ -13,43 +13,42 @@ class Database {
     // =====================
     // Connection Management
     // =====================
-    
     async connect() {
-    try {
-        if (!process.env.MONGODB_URI) {
-            throw new BotError(
-                'MONGODB_URI environment variable is not defined',
-                ErrorHandler.ERROR_TYPES.DATABASE,
-                'Database Connection'
-            );
+        try {
+            if (!process.env.MONGODB_URI) {
+                throw new BotError(
+                    'MONGODB_URI environment variable is not defined',
+                    ErrorHandler.ERROR_TYPES.DATABASE,
+                    'Database Connection'
+                );
+            }
+
+            if (!this.client) {
+                this.client = new MongoClient(process.env.MONGODB_URI, {
+                    maxPoolSize: 10,
+                    minPoolSize: 5,
+                    retryWrites: true,
+                    retryReads: true,
+                    serverSelectionTimeoutMS: 5000,
+                    connectTimeoutMS: 10000
+                });
+
+                await this.client.connect();
+                this.db = this.client.db(process.env.DB_NAME || 'selectstart');
+                console.log('Connected to MongoDB');
+
+                this.client.on('error', (error) => {
+                    ErrorHandler.handleDatabaseError(error, 'MongoDB Client');
+                    this.reconnect();
+                });
+
+                await this.createIndexes();
+            }
+        } catch (error) {
+            const errorMessage = ErrorHandler.handleDatabaseError(error, 'Database Connect');
+            throw new BotError(errorMessage, ErrorHandler.ERROR_TYPES.DATABASE, 'Database Connection', error);
         }
-
-        if (!this.client) {
-            this.client = new MongoClient(process.env.MONGODB_URI, {
-                maxPoolSize: 10,
-                minPoolSize: 5,
-                retryWrites: true,
-                retryReads: true,
-                serverSelectionTimeoutMS: 5000,
-                connectTimeoutMS: 10000
-            });
-
-            await this.client.connect();
-            this.db = this.client.db(process.env.DB_NAME || 'selectstart');
-            console.log('Connected to MongoDB');
-
-            this.client.on('error', (error) => {
-                ErrorHandler.handleDatabaseError(error, 'MongoDB Client');
-                this.reconnect();
-            });
-
-            await this.createIndexes();
-        }
-    } catch (error) {
-        const errorMessage = ErrorHandler.handleDatabaseError(error, 'Database Connect');
-        throw new BotError(errorMessage, ErrorHandler.ERROR_TYPES.DATABASE, 'Database Connection', error);
     }
-}
 
     async reconnect() {
         console.log('Attempting to reconnect to MongoDB...');
@@ -91,8 +90,7 @@ class Database {
             await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
             await this.db.collection('reviews').createIndex({ _id: 1 });
             await this.db.collection('users').createIndex({ username: 1 });
-            await this.db.collection('achievements').createIndex({ _id: 1 }); // Add this line
-        console.log('Indexes created successfully');
+            await this.db.collection('achievements').createIndex({ _id: 1 });
             console.log('Indexes created successfully');
         } catch (error) {
             ErrorHandler.logError(error, 'Create Indexes');
@@ -103,7 +101,6 @@ class Database {
     // ==================
     // Challenge Methods
     // ==================
-    
     async saveChallenge(data, type = 'current') {
         try {
             const collection = await this.getCollection('challenges');
@@ -160,7 +157,6 @@ class Database {
     // ===================
     // User Management
     // ===================
-    
     async manageUser(action, username, newUsername = null) {
         try {
             const collection = await this.getCollection('users');
@@ -235,59 +231,54 @@ class Database {
             return [];
         }
     }
-   
- async function addUserBonusPoints(username, points, reason) {
-    try {
-        console.log(`[DATABASE] Adding bonus points for ${username}: ${points} points for ${reason}`);
-        
-        const collection = await this.getCollection('userstats');
-        const stats = await collection.findOne({ _id: 'stats' });
-        
-        if (!stats?.users?.[username]) {
-            console.warn(`[DATABASE] User ${username} not found in stats`);
-            return false;
-        }
-        
-        const year = new Date().getFullYear().toString();
-        if (!stats.users[username].bonusPoints) {
-            stats.users[username].bonusPoints = [];
-        }
-        if (!stats.users[username].yearlyPoints) {
-            stats.users[username].yearlyPoints = {};
-        }
 
-        // Add bonus points
-        stats.users[username].bonusPoints.push({
-            points,
-            reason,
-            year,
-            date: new Date().toISOString()
-        });
-        
-        // Update yearly points
-        const currentYearPoints = stats.users[username].yearlyPoints[year] || 0;
-        stats.users[username].yearlyPoints[year] = currentYearPoints + points;
+    async addUserBonusPoints(username, points, reason) {
+        try {
+            console.log(`[DATABASE] Adding bonus points for ${username}: ${points} points for ${reason}`);
+            
+            const collection = await this.getCollection('userstats');
+            const stats = await collection.findOne({ _id: 'stats' });
+            
+            if (!stats?.users?.[username]) {
+                console.warn(`[DATABASE] User ${username} not found in stats`);
+                return false;
+            }
+            
+            const year = new Date().getFullYear().toString();
+            if (!stats.users[username].bonusPoints) {
+                stats.users[username].bonusPoints = [];
+            }
+            if (!stats.users[username].yearlyPoints) {
+                stats.users[username].yearlyPoints = {};
+            }
 
-        await collection.updateOne(
-            { _id: 'stats' },
-            { $set: { [`users.${username}`]: stats.users[username] } }
-        );
+            // Add bonus points
+            stats.users[username].bonusPoints.push({
+                points,
+                reason,
+                year,
+                date: new Date().toISOString()
+            });
+            
+            // Update yearly points
+            const currentYearPoints = stats.users[username].yearlyPoints[year] || 0;
+            stats.users[username].yearlyPoints[year] = currentYearPoints + points;
 
-        return true;
-    } catch (error) {
-        console.error('[DATABASE] Error adding bonus points:', error);
-        if (ErrorHandler && ErrorHandler.logError) {
-            ErrorHandler.logError(error, 'Adding Bonus Points');
+            await collection.updateOne(
+                { _id: 'stats' },
+                { $set: { [`users.${username}`]: stats.users[username] } }
+            );
+
+            return true;
+        } catch (error) {
+            console.error('[DATABASE] Error adding bonus points:', error);
+            if (ErrorHandler && ErrorHandler.logError) {
+                ErrorHandler.logError(error, 'Adding Bonus Points');
+            }
+            throw error;
         }
-        throw error;
     }
-}
 
-    /**
-     * Retrieves a user's bonus points.
-     * @param {string} username - The username of the user.
-     * @returns {Array} - An array of bonus points.
-     */
     async getUserBonusPoints(username) {
         try {
             const collection = await this.getCollection('userstats');
@@ -298,7 +289,6 @@ class Database {
             return [];
         }
     }
-
 
  // =================
     // Arcade Methods
