@@ -1,3 +1,4 @@
+// index.js
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const database = require('./database');
@@ -131,17 +132,32 @@ async function setupBot() {
     }
 }
 
-async function performInitialPointsCheck(services) {
-    if (!services?.leaderboardCache || !services?.userStats) return;
+async function coordinateUpdate(services, force = false) {
+    console.log('[UPDATE] Starting coordinated update...');
+    
+    if (!services?.leaderboardCache || !services?.userStats) {
+        console.log('[UPDATE] Required services not available');
+        return;
+    }
 
     try {
-        // Delay a bit so everything else loads first
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        console.log('Performing initial points check...');
+        // Get fresh leaderboard data (includes achievements)
+        const leaderboardData = await services.leaderboardCache.updateLeaderboards(force);
+        
+        if (!leaderboardData?.leaderboard) {
+            console.log('[UPDATE] No leaderboard data available');
+            return;
+        }
+
+        // Process points
         await services.userStats.recheckAllPoints();
-        console.log('Initial points check completed');
+        
+        // One final refresh of leaderboards to show new points
+        await services.leaderboardCache.refreshLeaderboard();
+        
+        console.log('[UPDATE] Coordinated update complete');
     } catch (error) {
-        console.error('Error in initial points check:', error);
+        console.error('[UPDATE] Error during coordinated update:', error);
     }
 }
 
@@ -168,7 +184,7 @@ client.once('ready', async () => {
     try {
         console.log(`Logged in as ${client.user.tag}`);
         const initializedServices = await setupBot();
-        await performInitialPointsCheck(initializedServices);
+        await coordinateUpdate(initializedServices, true);
     } catch (error) {
         console.error('Fatal initialization error:', error);
         process.exit(1);
@@ -182,25 +198,9 @@ client.on('messageCreate', async (message) => {
     );
 });
 
-// Periodic Tasks
-async function updateLeaderboards() {
-    if (!services?.leaderboardCache || !services?.userStats) return;
-
-    try {
-        await services.leaderboardCache.updateLeaderboards(true);
-
-        // =======================
-        // COMMENTED OUT:
-        // Remove or comment out this extra call to avoid awarding points twice:
-        // await services.userStats.recheckAllPoints();
-        // =======================
-    } catch (error) {
-        console.error('Leaderboard Update Error:', error);
-    }
-}
-
-// Set the update interval for leaderboards (1 hour)
-setInterval(updateLeaderboards, 60 * 60 * 1000);
+// Periodic Updates
+const UPDATE_INTERVAL = 10 * 60 * 1000; // 10 minutes
+setInterval(() => coordinateUpdate(services), UPDATE_INTERVAL);
 
 // Graceful Shutdown
 const shutdown = async (signal) => {
@@ -226,4 +226,5 @@ process.on('unhandledRejection', (error) => {
     console.error('Unhandled Rejection:', error);
 });
 
+// Start Bot
 client.login(process.env.DISCORD_TOKEN);
