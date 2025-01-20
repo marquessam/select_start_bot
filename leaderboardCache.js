@@ -9,6 +9,9 @@ class LeaderboardCache {
         this.userStats = null;
         this._updating = false;
         this._pointCheckInProgress = false;
+        this.hasInitialData = false;
+        this.isInitializing = false;
+        this.initializationComplete = false;
 
         this.cache = {
             validUsers: new Set(),
@@ -23,16 +26,33 @@ class LeaderboardCache {
         this.userStats = userStatsInstance;
     }
 
-    async initialize() {
+    async initialize(skipInitialFetch = false) {
+        if (this.isInitializing) {
+            console.log('[LEADERBOARD CACHE] Already initializing, waiting...');
+            while (this.isInitializing) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            return this.initializationComplete;
+        }
+
+        this.isInitializing = true;
         try {
             console.log('[LEADERBOARD CACHE] Initializing...');
             await this.updateValidUsers();
-            await this.updateLeaderboards(true); // Force initial update
+            
+            // Skip the initial fetch if requested (will be done in coordinateUpdate)
+            if (!skipInitialFetch) {
+                await this.updateLeaderboards(true);
+            }
+
+            this.initializationComplete = true;
             console.log('[LEADERBOARD CACHE] Initialization complete');
             return true;
         } catch (error) {
             console.error('[LEADERBOARD CACHE] Initialization error:', error);
             return false;
+        } finally {
+            this.isInitializing = false;
         }
     }
 
@@ -103,7 +123,7 @@ class LeaderboardCache {
                 );
             }
 
-            // Get monthly leaderboard
+            // Get monthly leaderboard - single API call for all users
             const monthlyData = await fetchLeaderboardData(force);
             this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
             
@@ -115,6 +135,7 @@ class LeaderboardCache {
             };
 
             this.cache.lastUpdated = Date.now();
+            this.hasInitialData = true;
             console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
 
             return returnData;
