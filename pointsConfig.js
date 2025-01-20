@@ -41,13 +41,24 @@ const pointsConfig = {
  * @param {string} pointType - The type of points ('participation', 'beaten', 'mastery').
  * @returns {boolean} - True if points have already been awarded, false otherwise.
  */
-function hasReceivedPoints(bonusPoints, gameId, pointType) {
-    if (!bonusPoints || !Array.isArray(bonusPoints)) {
+function hasReceivedPoints(userStats, gameId, pointType) {
+    if (!userStats.bonusPoints || !Array.isArray(userStats.bonusPoints)) {
         return false;
     }
     
-    const exactKey = `${pointType}-${gameId}`;
-    return bonusPoints.some(bp => bp.technicalKey === exactKey);
+    return userStats.bonusPoints.some(bp => {
+        // First try to find the exact technical key
+        if (bp.internalReason) {
+            const technicalKey = `${pointType}-${gameId}`;
+            return bp.internalReason.includes(`(${technicalKey})`);
+        }
+        // Fallback to old format
+        if (bp.reason) {
+            const technicalKey = `${pointType}-${gameId}`;
+            return bp.reason.includes(`(${technicalKey})`);
+        }
+        return false;
+    });
 }
 
 /**
