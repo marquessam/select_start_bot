@@ -8,24 +8,14 @@ class LeaderboardCache {
         this.database = database;
         this.userStats = null;
         this._updating = false;
-        
-        // Initialize cache managers
-        this.userCache = new CacheManager({
-            defaultTTL: 15 * 60 * 1000,  // 15 minutes
-            maxSize: 500
-        });
-        
-        this.leaderboardCache = new CacheManager({
-            defaultTTL: 10 * 60 * 1000,  // 10 minutes
-            maxSize: 100
-        });
+        this._pointCheckInProgress = false;
 
         this.cache = {
             validUsers: new Set(),
             yearlyLeaderboard: [],
             monthlyLeaderboard: [],
             lastUpdated: null,
-            updateInterval: 15 * 60 * 1000  // 15 minutes
+            updateInterval: 600000  // 10 minutes (match global update interval)
         };
     }
 
@@ -81,21 +71,15 @@ class LeaderboardCache {
     }
 
     async updateLeaderboards(force = false) {
-        // Check if update is already in progress
+        // Prevent concurrent updates
         if (this._updating) {
             console.log('[LEADERBOARD CACHE] Update already in progress, skipping...');
-            return {
-                leaderboard: this.cache.monthlyLeaderboard,
-                lastUpdated: this.cache.lastUpdated
-            };
+            return this._getLatestData();
         }
 
-        // Check if update is needed
+        // Skip update if not forced and cache is still valid
         if (!force && !this._shouldUpdate()) {
-            return {
-                leaderboard: this.cache.monthlyLeaderboard,
-                lastUpdated: this.cache.lastUpdated
-            };
+            return this._getLatestData();
         }
 
         this._updating = true;
@@ -120,7 +104,7 @@ class LeaderboardCache {
             }
 
             // Get monthly leaderboard
-            const monthlyData = await fetchLeaderboardData();
+            const monthlyData = await fetchLeaderboardData(force);
             this.cache.monthlyLeaderboard = this._constructMonthlyLeaderboard(monthlyData);
             
             // Create return data structure
@@ -129,17 +113,6 @@ class LeaderboardCache {
                 gameInfo: monthlyData.gameInfo,
                 lastUpdated: new Date().toISOString()
             };
-            
-            // One-time point check if userStats is available
-            if (this.userStats && !this._pointCheckInProgress) {
-                this._pointCheckInProgress = true;
-                try {
-                    console.log('[LEADERBOARD CACHE] Checking points...');
-                    await this.userStats.recheckAllPoints();
-                } finally {
-                    this._pointCheckInProgress = false;
-                }
-            }
 
             this.cache.lastUpdated = Date.now();
             console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
@@ -147,13 +120,17 @@ class LeaderboardCache {
             return returnData;
         } catch (error) {
             console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
-            return {
-                leaderboard: this.cache.monthlyLeaderboard || [],
-                lastUpdated: this.cache.lastUpdated || new Date().toISOString()
-            };
+            return this._getLatestData();
         } finally {
             this._updating = false;
         }
+    }
+
+    _getLatestData() {
+        return {
+            leaderboard: this.cache.monthlyLeaderboard,
+            lastUpdated: this.cache.lastUpdated || new Date().toISOString()
+        };
     }
 
     _constructMonthlyLeaderboard(monthlyData) {
@@ -176,7 +153,8 @@ class LeaderboardCache {
                     completionPercentage: 0,
                     completedAchievements: 0,
                     totalAchievements: 0,
-                    hasCompletion: false
+                    hasCompletion: false,
+                    achievements: []
                 };
             });
 
