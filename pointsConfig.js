@@ -31,6 +31,14 @@ const pointsConfig = {
 };
 
 // Helper functions
+
+/**
+ * Checks if the user has already received points for a specific game and point type.
+ * @param {Object} userStats - The user's statistics object.
+ * @param {string} gameId - The ID of the game.
+ * @param {string} pointType - The type of points ('participation', 'beaten', 'mastery').
+ * @returns {boolean} - True if points have already been awarded, false otherwise.
+ */
 function hasReceivedPoints(userStats, gameId, pointType) {
     if (!userStats.bonusPoints || !Array.isArray(userStats.bonusPoints)) {
         return false;
@@ -38,10 +46,10 @@ function hasReceivedPoints(userStats, gameId, pointType) {
     
     const exactKey = `${pointType}-${gameId}`;
     return userStats.bonusPoints.some(bp => {
-        // First try to get the technical key from internalReason
+        // Extract the technical key from internalReason
         const technicalKey = bp.internalReason?.split('(')[1]?.split(')')[0];
         
-        // If that doesn't exist, try to extract it from reason
+        // Extract the technical key from reason as a fallback
         const fallbackKey = bp.reason?.split('(')[1]?.split(')')[0];
         
         // Compare the exact key to either the technical key or fallback
@@ -49,6 +57,13 @@ function hasReceivedPoints(userStats, gameId, pointType) {
     });
 }
 
+/**
+ * Creates point reason objects with display and internal reasons.
+ * @param {string} gameName - The name of the game.
+ * @param {string} achievementType - The type of achievement ('Participation', 'Game Beaten', 'Mastery').
+ * @param {string} technicalKey - The technical key for the reason (e.g., 'participation-319').
+ * @returns {Object} - An object containing display and internal reasons.
+ */
 function createPointReason(gameName, achievementType, technicalKey) {
     return {
         display: `${gameName} - ${achievementType}`,
@@ -56,7 +71,16 @@ function createPointReason(gameName, achievementType, technicalKey) {
     };
 }
 
+// Point awarding checks
 const pointChecks = {
+    /**
+     * Checks and returns points to be awarded for a specific game.
+     * @param {string} username - The username of the user.
+     * @param {Array} achievements - The list of achievements the user has.
+     * @param {string} gameId - The ID of the game to check.
+     * @param {Object} userStats - The user's statistics object.
+     * @returns {Array} - An array of point objects to be awarded.
+     */
     async checkGamePoints(username, achievements, gameId, userStats) {
         console.log(`[POINTS] Checking ${username}'s points for game ${gameId}`);
         
@@ -85,6 +109,16 @@ const pointChecks = {
                 internalReason: reason.internal
             });
             console.log(`[POINTS] Adding participation point for ${username}`);
+
+            // Immediately mark the points as received to prevent duplicates in the same run
+            if (!userStats.bonusPoints) userStats.bonusPoints = [];
+            userStats.bonusPoints.push({
+                points: gameConfig.points.participation,
+                reason: reason.display, // Display reason
+                internalReason: reason.internal, // Internal reason
+                year: new Date().getFullYear().toString(),
+                date: new Date().toISOString()
+            });
         }
 
         // Check beaten status
@@ -126,6 +160,15 @@ const pointChecks = {
                     internalReason: reason.internal
                 });
                 console.log(`[POINTS] Adding beaten points for ${username}`);
+
+                // Immediately mark the points as received to prevent duplicates in the same run
+                userStats.bonusPoints.push({
+                    points: gameConfig.points.beaten,
+                    reason: reason.display,
+                    internalReason: reason.internal,
+                    year: new Date().getFullYear().toString(),
+                    date: new Date().toISOString()
+                });
             }
         }
 
@@ -145,11 +188,20 @@ const pointChecks = {
                     internalReason: reason.internal
                 });
                 console.log(`[POINTS] Adding mastery points for ${username}`);
+
+                // Immediately mark the points as received to prevent duplicates in the same run
+                userStats.bonusPoints.push({
+                    points: gameConfig.points.mastery,
+                    reason: reason.display,
+                    internalReason: reason.internal,
+                    year: new Date().getFullYear().toString(),
+                    date: new Date().toISOString()
+                });
             }
         }
 
         if (points.length > 0) {
-            console.log(`[POINTS] Total points awarded to ${username} for game ${gameId}:`, 
+            console.log(`[POINTS] Total points to award to ${username} for game ${gameId}:`, 
                 points.map(p => `${p.reason}: ${p.points}`).join(', ')
             );
         }
