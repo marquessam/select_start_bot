@@ -1,5 +1,4 @@
 // pointsConfig.js
-
 const database = require('./database');
 
 // Points configuration for all games
@@ -33,10 +32,9 @@ const pointsConfig = {
 };
 
 // Helper function to check for existing points
-async function hasReceivedPoints(database, username, normalizedReason) {
+async function hasReceivedPoints(username, normalizedReason) {
     try {
-        const collection = await database.getCollection('userstats');
-        const stats = await collection.findOne({ _id: 'stats' });
+        const stats = await database.getUserStats();
         const year = new Date().getFullYear().toString();
 
         if (!stats?.users?.[username]?.bonusPoints) {
@@ -111,6 +109,7 @@ const pointChecks = {
                     parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
                 )
             );
+            console.log(`[POINTS] Progression check for ${username}: ${hasBeaten}`);
         }
 
         if (hasBeaten) {
@@ -127,6 +126,7 @@ const pointChecks = {
                     )
                 );
             }
+            console.log(`[POINTS] Win condition check for ${username}: ${hasBeaten}`);
         }
 
         if (hasBeaten) {
@@ -149,6 +149,8 @@ const pointChecks = {
                 parseInt(a.DateEarned) > 0
             ).length;
             
+            console.log(`[POINTS] ${username} mastery progress: ${earnedAchievements}/${totalAchievements}`);
+            
             if (totalAchievements > 0 && totalAchievements === earnedAchievements) {
                 const masteryKey = `mastery-${gameId}`;
                 const reason = createPointReason(gameConfig.name, "Mastery", masteryKey);
@@ -161,6 +163,8 @@ const pointChecks = {
                     gameId
                 });
             }
+        } else {
+            console.log(`[POINTS] ${username} already received mastery points or game doesn't have mastery`);
         }
 
         // Now, for each point award we want to give, check if it's already been awarded
@@ -168,7 +172,7 @@ const pointChecks = {
         for (const award of pointsToAward) {
             // Check if these points have already been awarded
             const normalizedReason = award.internalReason.toLowerCase().replace(/\s+/g, ' ').trim();
-            const alreadyAwarded = await hasReceivedPoints(userStats.database, username, normalizedReason);
+            const alreadyAwarded = await hasReceivedPoints(username, normalizedReason);
             
             if (!alreadyAwarded) {
                 validPoints.push(award);
