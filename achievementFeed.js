@@ -21,6 +21,34 @@ class AchievementFeed {
         this._processingAchievements = false;
     }
 
+    startPeriodicCheck() {
+        setInterval(() => this.checkNewAchievements(), this.checkInterval);
+    }
+
+    async retryOperation(operation, retries = 3, delay = 5000) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                return await operation();
+            } catch (error) {
+                const isLastAttempt = attempt === retries;
+                // Check if error is "retryable" (network errors, e.g. DNS or ECONNRESET)
+                const isRetryableError = error.code === 'EAI_AGAIN' || 
+                                       error.name === 'FetchError' ||
+                                       error.code === 'ECONNRESET';
+
+                if (isLastAttempt || !isRetryableError) {
+                    throw error;
+                }
+
+                console.log(
+                    `[ACHIEVEMENT FEED] Attempt ${attempt} failed, retrying in ${delay/1000}s:`, 
+                    error.message
+                );
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+
     async initialize() {
         if (this.isInitializing) {
             console.log('[ACHIEVEMENT FEED] Already initializing, waiting...');
@@ -77,6 +105,33 @@ class AchievementFeed {
         }
     }
 
+    async queueAnnouncement(embedData) {
+        this.announcementQueue.push(embedData);
+        if (!this.isProcessingQueue) {
+            await this.processAnnouncementQueue();
+        }
+    }
+
+    async processAnnouncementQueue() {
+        if (this.isProcessingQueue || this.announcementQueue.length === 0) return;
+
+        this.isProcessingQueue = true;
+        try {
+            const channel = await this.client.channels.fetch(this.feedChannel);
+
+            while (this.announcementQueue.length > 0) {
+                const embedData = this.announcementQueue.shift();
+                await channel.send({ embeds: [embedData] });
+                // Wait 1 second between announcements to prevent spam
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        } catch (error) {
+            console.error('[ACHIEVEMENT FEED] Error processing announcement queue:', error);
+        } finally {
+            this.isProcessingQueue = false;
+        }
+    }
+
     async checkNewAchievements() {
         if (this._processingAchievements) {
             console.log('[ACHIEVEMENT FEED] Already processing achievements, skipping...');
@@ -97,7 +152,6 @@ class AchievementFeed {
                 throw new Error('Achievement feed channel not found');
             }
 
-            // Process achievements sequentially to maintain order
             for (const { username, achievements } of allAchievements) {
                 if (!achievements || achievements.length === 0) continue;
 
@@ -136,6 +190,56 @@ class AchievementFeed {
             console.error('[ACHIEVEMENT FEED] Error checking new achievements:', error);
         } finally {
             this._processingAchievements = false;
+        }
+    }
+
+    async sendAchievementNotification(channel, username, achievement) {
+        if (!channel) {
+            throw new BotError('Channel not available', ErrorHandler.ERROR_TYPES.VALIDATION, 'Announce Achievement');
+        }
+        if (!username || !achievement) {
+            throw new BotError('Missing user or achievement data', ErrorHandler.ERROR_TYPES.VALIDATION, 'Announce Achievement');
+        }
+
+        try {
+            const achievementKey = `${username}-${achievement.ID || achievement.AchievementID || achievement.achievementID || achievement.id || Date.now()}-${achievement.GameTitle}-${achievement.Title}`;
+            if (this.announcementHistory.messageIds.has(achievementKey)) {
+                console.log(`[ACHIEVEMENT FEED] Skipping duplicate achievement: ${username} - ${achievement.Title} in ${achievement.GameTitle}`);
+                return;
+            }
+
+            const [badgeUrl, userIconUrl] = await Promise.all([
+                achievement.BadgeName
+                    ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
+                    : 'https://media.retroachievements.org/Badge/00000.png',
+                DataService.getRAProfileImage(username)
+            ]);
+
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle(`${achievement.GameTitle || 'Game'} 🏆`)
+                .setThumbnail(badgeUrl)
+                .setDescription(
+                    `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
+                    `*${achievement.Description || 'No description available'}*`
+                )
+                .setFooter({
+                    text: `Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
+                    iconURL: userIconUrl || `https://retroachievements.org/UserPic/${username}.png` // fallback
+                })
+                .setTimestamp();
+
+            await this.queueAnnouncement(embed);
+            this.announcementHistory.messageIds.add(achievementKey);
+            
+            if (this.announcementHistory.messageIds.size > 1000) {
+                this.announcementHistory.messageIds.clear();
+            }
+
+            console.log(`[ACHIEVEMENT FEED] Sent achievement notification for ${username}: ${achievement.Title}`);
+        } catch (error) {
+            console.error('[ACHIEVEMENT FEED] Error sending achievement notification:', error);
+            throw error;
         }
     }
 
@@ -187,7 +291,7 @@ class AchievementFeed {
         }
     }
 
-    // Optional: manual trigger for checking achievements
+    // Manual check method (optional)
     async manualCheck() {
         console.log('[ACHIEVEMENT FEED] Manual achievement check initiated');
         await this.checkNewAchievements();
