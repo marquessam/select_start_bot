@@ -235,23 +235,45 @@ class Database {
             return [];
         }
     }
+   
     async addUserBonusPoints(username, bonusPoint) {
-    try {
-        const collection = await this.getCollection('userstats');
-        await collection.updateOne(
-            { _id: 'stats' },
-            {
-                $push: { [`users.${username}.bonusPoints`]: bonusPoint },
-                $inc: { [`users.${username}.yearlyPoints.${new Date().getFullYear()}`]: bonusPoint.points }
-            },
-            { upsert: true }
-        );
-        console.log(`[DB] Added bonus point for ${username}:`, bonusPoint);
-    } catch (error) {
-        ErrorHandler.logError(error, 'Add User Bonus Points');
-        throw error;
+        try {
+            const collection = await this.getCollection('userstats');
+
+            // Use a unique identifier to prevent duplicates
+            const technicalKey = bonusPoint.technicalKey || `${bonusPoint.pointType}-${bonusPoint.gameId}`;
+
+            await collection.updateOne(
+                { _id: 'stats' },
+                {
+                    $addToSet: { [`users.${username}.bonusPoints`]: { ...bonusPoint, technicalKey } },
+                    $inc: { [`users.${username}.yearlyPoints.${new Date().getFullYear()}`]: bonusPoint.points }
+                },
+                { upsert: true }
+            );
+
+            console.log(`[DB] Added bonus point for ${username}:`, bonusPoint);
+        } catch (error) {
+            ErrorHandler.logError(error, 'Add User Bonus Points');
+            throw error;
+        }
     }
-}
+
+    /**
+     * Retrieves a user's bonus points.
+     * @param {string} username - The username of the user.
+     * @returns {Array} - An array of bonus points.
+     */
+    async getUserBonusPoints(username) {
+        try {
+            const collection = await this.getCollection('userstats');
+            const stats = await collection.findOne({ _id: 'stats' });
+            return stats?.users?.[username]?.bonusPoints || [];
+        } catch (error) {
+            ErrorHandler.logError(error, 'Get User Bonus Points');
+            return [];
+        }
+    }
 
 
  // =================
