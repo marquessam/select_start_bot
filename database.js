@@ -83,34 +83,43 @@ class Database {
     }
 
    async createIndexes() {
-        try {
-            await this.db.collection('userstats').createIndex({ _id: 1 });
-            await this.db.collection('challenges').createIndex({ _id: 1 });
-            await this.db.collection('records').createIndex({ _id: 1 });
-            await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
-            await this.db.collection('reviews').createIndex({ _id: 1 });
-            await this.db.collection('users').createIndex({ username: 1 });
-            await this.db.collection('achievements').createIndex({ _id: 1 });
+    try {
+        await this.db.collection('userstats').createIndex({ _id: 1 });
+        await this.db.collection('challenges').createIndex({ _id: 1 });
+        await this.db.collection('records').createIndex({ _id: 1 });
+        await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
+        await this.db.collection('reviews').createIndex({ _id: 1 });
+        await this.db.collection('users').createIndex({ username: 1 });
+        await this.db.collection('achievements').createIndex({ _id: 1 });
 
-            // Add unique compound index for bonus points
-            await this.db.collection('userstats').createIndex(
-                {
-                    'users.$**.year': 1,
-                    'users.$**.internalReason': 1
-                },
-                { 
-                    unique: true,
-                    sparse: true,
-                    name: 'unique_bonus_points'
-                }
-            );
+        // Remove illegal wildcard index (commented out)
+        /*
+        await this.db.collection('userstats').createIndex(
+            {
+                'users.$**.year': 1,
+                'users.$**.internalReason': 1
+            },
+            { 
+                unique: true,
+                sparse: true,
+                name: 'unique_bonus_points'
+            }
+        );
+        */
 
-            console.log('Indexes created successfully');
-        } catch (error) {
-            console.error('Error creating indexes:', error);
-            throw error;
-        }
+        // Create unique index on bonusPoints collection
+        await this.db.collection('bonusPoints').createIndex(
+            { username: 1, year: 1, internalReason: 1 },
+            { unique: true, sparse: true, name: 'unique_bonus_points' }
+        );
+
+        console.log('Indexes created successfully');
+    } catch (error) {
+        console.error('Error creating indexes:', error);
+        throw error;
     }
+}
+
     // ==================
     // Challenge Methods
     // ==================
@@ -323,87 +332,50 @@ async cleanupDuplicatePoints() {
         throw error;
     }
 }
-   async addUserBonusPoints(username, points, reason) {
-        try {
-            console.log(`[DATABASE] Adding bonus points for ${username}: ${points} points for ${reason}`);
-            
-            const collection = await this.getCollection('userstats');
-            const stats = await collection.findOne({ _id: 'stats' });
-            
-            if (!stats?.users?.[username]) {
-                console.warn(`[DATABASE] User ${username} not found in stats`);
-                return false;
-            }
-            
-            const year = new Date().getFullYear().toString();
-            
-            // Normalize and clean up the reason
-            const displayReason = reason.reason || reason;
-            const internalReason = reason.internalReason || reason;
-            const normalizedReason = internalReason.toLowerCase().replace(/\s+/g, ' ').trim();
-
-            // Check for existing points with exact same reason
-            const existingPoints = stats.users[username].bonusPoints?.find(bp => {
-                const existingReason = (bp.internalReason || bp.reason || '')
-                    .toLowerCase()
-                    .replace(/\s+/g, ' ')
-                    .trim();
-                return bp.year === year && existingReason === normalizedReason;
-            });
-
-            if (existingPoints) {
-                console.log(`[DATABASE] Duplicate points prevented for ${username}: ${normalizedReason}`);
-                return false;
-            }
-
-            // Initialize arrays if they don't exist
-            if (!stats.users[username].bonusPoints) {
-                stats.users[username].bonusPoints = [];
-            }
-            if (!stats.users[username].yearlyPoints) {
-                stats.users[username].yearlyPoints = {};
-            }
-
-            const bonusPoint = {
-                points,
-                reason: internalReason,
-                displayReason,
-                year,
-                date: new Date().toISOString()
-            };
-
-            // Use updateOne with $addToSet to ensure uniqueness
-            const result = await collection.updateOne(
-                { 
-                    _id: 'stats',
-                    [`users.${username}`]: { $exists: true }
-                },
-                { 
-                    $addToSet: { 
-                        [`users.${username}.bonusPoints`]: bonusPoint 
-                    },
-                    $inc: { 
-                        [`users.${username}.yearlyPoints.${year}`]: points 
-                    }
+   async addUserBonusPoints(username, bonusPoint) {
+    try {
+        console.log(`[DATABASE] Adding bonus points for ${username}: ${bonusPoint.points} points for ${bonusPoint.reason}`);
+        
+        // Get the bonusPoints collection
+        const collection = await this.getCollection('bonusPoints');
+        
+        // Attempt to upsert a unique bonus point document
+        const result = await collection.updateOne(
+            {
+                username: username,
+                year: bonusPoint.year,
+                internalReason: bonusPoint.internalReason
+            },
+            {
+                $setOnInsert: {
+                    username,
+                    year: bonusPoint.year,
+                    internalReason: bonusPoint.internalReason,
+                    reason: bonusPoint.reason,
+                    displayReason: bonusPoint.displayReason,
+                    points: bonusPoint.points,
+                    date: bonusPoint.date
                 }
-            );
+            },
+            { upsert: true }
+        );
 
-            if (result.modifiedCount === 0) {
-                console.log(`[DATABASE] No changes made for ${username} - possible duplicate points`);
-                return false;
-            }
-
-            console.log(`[DATABASE] Successfully added ${points} points to ${username}`);
-            return true;
-        } catch (error) {
-            if (error.code === 11000) { // MongoDB duplicate key error
-                console.log(`[DATABASE] Prevented duplicate points for ${username}`);
-                return false;
-            }
-            console.error('[DATABASE] Error adding bonus points:', error);
-            throw error;
+        if (result.upsertedCount === 0) {
+            console.log(`[DATABASE] Duplicate points prevented for ${username}: ${bonusPoint.internalReason}`);
+            return false;
         }
+
+        console.log(`[DATABASE] Successfully added ${bonusPoint.points} points to ${username}`);
+        return true;
+    } catch (error) {
+        if (error.code === 11000) { // Duplicate key error
+            console.log(`[DATABASE] Duplicate key error prevented duplicate points for ${username}`);
+            return false;
+        }
+        console.error('[DATABASE] Error adding bonus points:', error);
+        throw error;
     }
+}
 
     async getUserBonusPoints(username) {
         try {
