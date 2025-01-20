@@ -78,44 +78,40 @@ const pointChecks = {
             const achievementGameId = String(a.GameID || a.gameId);
             return achievementGameId === String(gameId);
         });
-
         console.log(`[POINTS] Found ${gameAchievements.length} achievements for game ${gameId}`);
 
         const pointsToAward = [];
 
         // 1. Participation Check
         const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
-        if (hasParticipation && !await hasReceivedPoints(username, gameId, 'participation')) {
+        if (hasParticipation) {
             const participationKey = `participation-${gameId}`;
             const reason = createPointReason(gameConfig.name, "Participation", participationKey);
-            pointsToAward.push({
+            const bonusPoint = {
                 points: gameConfig.points.participation,
                 reason: reason.display,
                 internalReason: reason.internal,
                 technicalKey: participationKey,
                 pointType: 'participation',
-                gameId
-            });
-            console.log(`[POINTS] ${username} eligible for participation points`);
-            const bonusPoint = {
-                points: gameConfig.points.participation,
-                reason: reason.display,
-                internalReason: reason.internal,
+                gameId,
                 year: new Date().getFullYear().toString(),
                 date: new Date().toISOString()
             };
-            await database.addUserBonusPoints(username, bonusPoint);
-        } else {
-            console.log(`[POINTS] ${username} already has participation points for game ${gameId}`);
+
+            const added = await database.addUserBonusPoints(username, bonusPoint);
+            if (added) {
+                pointsToAward.push(bonusPoint);
+                console.log(`[POINTS] Awarded participation points to ${username} for game ${gameId}`);
+            } else {
+                console.log(`[POINTS] Duplicate participation points prevented for ${username} on game ${gameId}`);
+            }
         }
 
         // 2. Beaten Check
         let hasBeaten = true;
         if (gameConfig.requireProgression && gameConfig.progression) {
             hasBeaten = gameConfig.progression.every(achId =>
-                gameAchievements.some(a => 
-                    parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
-                )
+                gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
             );
             console.log(`[POINTS] Progression check for ${username}: ${hasBeaten}`);
         }
@@ -123,83 +119,73 @@ const pointChecks = {
         if (hasBeaten) {
             if (gameConfig.requireAllWinConditions) {
                 hasBeaten = gameConfig.winCondition.every(achId =>
-                    gameAchievements.some(a => 
-                        parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
-                    )
+                    gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
                 );
             } else {
                 hasBeaten = gameConfig.winCondition.some(achId =>
-                    gameAchievements.some(a => 
-                        parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0
-                    )
+                    gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
                 );
             }
             console.log(`[POINTS] Win condition check for ${username}: ${hasBeaten}`);
         }
 
-        if (hasBeaten && !await hasReceivedPoints(username, gameId, 'beaten')) {
+        if (hasBeaten) {
             const beatenKey = `beaten-${gameId}`;
             const reason = createPointReason(gameConfig.name, "Game Beaten", beatenKey);
-            pointsToAward.push({
+            const bonusPoint = {
                 points: gameConfig.points.beaten,
                 reason: reason.display,
                 internalReason: reason.internal,
                 technicalKey: beatenKey,
                 pointType: 'beaten',
-                gameId
-            });
-            console.log(`[POINTS] ${username} eligible for beaten points`);
-            const bonusPoint = {
-                points: gameConfig.points.beaten,
-                reason: reason.display,
-                internalReason: reason.internal,
+                gameId,
                 year: new Date().getFullYear().toString(),
                 date: new Date().toISOString()
             };
-            await database.addUserBonusPoints(username, bonusPoint);
-        } else if (!hasBeaten) {
-            console.log(`[POINTS] ${username} does not meet beaten criteria for game ${gameId}`);
+
+            const added = await database.addUserBonusPoints(username, bonusPoint);
+            if (added) {
+                pointsToAward.push(bonusPoint);
+                console.log(`[POINTS] Awarded beaten points to ${username} for game ${gameId}`);
+            } else {
+                console.log(`[POINTS] Duplicate beaten points prevented for ${username} on game ${gameId}`);
+            }
         } else {
-            console.log(`[POINTS] ${username} already has beaten points for game ${gameId}`);
+            console.log(`[POINTS] ${username} does not meet beaten criteria for game ${gameId}`);
         }
 
         // 3. Mastery Check
         if (gameConfig.masteryCheck) {
             const totalAchievements = gameAchievements.length;
-            const earnedAchievements = gameAchievements.filter(a => 
-                parseInt(a.DateEarned) > 0
-            ).length;
-            
+            const earnedAchievements = gameAchievements.filter(a => parseInt(a.DateEarned) > 0).length;
             console.log(`[POINTS] ${username} mastery progress: ${earnedAchievements}/${totalAchievements}`);
             
-            if (totalAchievements > 0 && totalAchievements === earnedAchievements &&
-                !await hasReceivedPoints(username, gameId, 'mastery')) {
+            if (totalAchievements > 0 && totalAchievements === earnedAchievements) {
                 const masteryKey = `mastery-${gameId}`;
                 const reason = createPointReason(gameConfig.name, "Mastery", masteryKey);
-                pointsToAward.push({
+                const bonusPoint = {
                     points: gameConfig.points.mastery,
                     reason: reason.display,
                     internalReason: reason.internal,
                     technicalKey: masteryKey,
                     pointType: 'mastery',
-                    gameId
-                });
-                console.log(`[POINTS] ${username} eligible for mastery points`);
-                const bonusPoint = {
-                    points: gameConfig.points.mastery,
-                    reason: reason.display,
-                    internalReason: reason.internal,
+                    gameId,
                     year: new Date().getFullYear().toString(),
                     date: new Date().toISOString()
                 };
-                await database.addUserBonusPoints(username, bonusPoint);
-            } else if (totalAchievements > 0 && totalAchievements === earnedAchievements) {
-                console.log(`[POINTS] ${username} already has mastery points for game ${gameId}`);
+
+                const added = await database.addUserBonusPoints(username, bonusPoint);
+                if (added) {
+                    pointsToAward.push(bonusPoint);
+                    console.log(`[POINTS] Awarded mastery points to ${username} for game ${gameId}`);
+                } else {
+                    console.log(`[POINTS] Duplicate mastery points prevented for ${username} on game ${gameId}`);
+                }
             }
         }
 
         if (pointsToAward.length > 0) {
-            console.log(`[POINTS] Points to award to ${username} for game ${gameId}:`, 
+            console.log(`[POINTS] Total points awarded to ${username} for game ${gameId}:`, 
                 pointsToAward.map(p => `${p.reason}: ${p.points}`).join(', ')
             );
         } else {
