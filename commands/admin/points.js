@@ -1,7 +1,10 @@
+// commands/admin/points.js
+
 const { Collection } = require('discord.js');
 const TerminalEmbed = require('../../utils/embedBuilder');
 const commonValidators = require('../../utils/validators');
 const DataService = require('../../services/dataService');
+const { ErrorHandler } = require('../../utils/errorHandler');
 
 // Track active point assignments
 const activeCollectors = new Collection();
@@ -50,6 +53,9 @@ module.exports = {
                 case 'recheck':
                     await handleRecheckPoints(message, userStats);
                     break;
+                case 'cleanup':
+                    await handleCleanupPoints(message, userStats);
+                    break;
                 default:
                     await showHelp(message);
             }
@@ -70,7 +76,8 @@ async function showHelp(message) {
             '!points addall <points> <reason>\n' +
             '!points reset <username>\n' +
             '!points resetall - Reset all user points\n' +
-            '!points recheck - Recheck all achievement points')
+            '!points recheck - Recheck all achievement points\n' +
+            '!points cleanup - Remove duplicate point entries')
         .setTerminalFooter();
 
     await message.channel.send({ embeds: [embed] });
@@ -114,7 +121,6 @@ async function startPointsAdd(message, userStats) {
             throw new Error('No response received');
         }
 
-        // Validate username using DataService
         const validatedUsername = await validateUsername(usernameMsg.content, userStats);
         if (!validatedUsername) {
             throw new Error(`User "${usernameMsg.content}" not found`);
@@ -195,7 +201,12 @@ async function startPointsAdd(message, userStats) {
             const pointsBefore = userStatsData?.yearlyPoints?.[currentYear] || 0;
 
             // Add points and force save
-            await userStats.addBonusPoints(username, points, reason);
+            const success = await userStats.addBonusPoints(username, points, reason);
+            
+            if (!success) {
+                throw new Error(`Failed to add points - possible duplicate award for reason: ${reason}`);
+            }
+
             await userStats.saveStats();
 
             // Verify the update
@@ -272,9 +283,13 @@ async function handleAddMultiPoints(message, args, userStats) {
             try {
                 const validatedUsername = await validateUsername(username, userStats);
                 if (validatedUsername) {
-                    await userStats.addBonusPoints(validatedUsername, points, reason);
-                    await userStats.saveStats();
-                    successfulAdditions.push(validatedUsername);
+                    const success = await userStats.addBonusPoints(validatedUsername, points, reason);
+                    if (success) {
+                        await userStats.saveStats();
+                        successfulAdditions.push(validatedUsername);
+                    } else {
+                        failedUsers.push(`${username} (duplicate points)`);
+                    }
                 } else {
                     failedUsers.push(username);
                 }
@@ -337,9 +352,13 @@ async function handleAddAllPoints(message, args, userStats) {
             try {
                 const validatedUsername = await validateUsername(username, userStats);
                 if (validatedUsername) {
-                    await userStats.addBonusPoints(validatedUsername, points, reason);
-                    await userStats.saveStats();
-                    successfulAdditions++;
+                    const success = await userStats.addBonusPoints(validatedUsername, points, reason);
+                    if (success) {
+                        await userStats.saveStats();
+                        successfulAdditions++;
+                    } else {
+                        failedUsers.push(`${username} (duplicate points)`);
+                    }
                 } else {
                     failedUsers.push(username);
                 }
@@ -362,7 +381,7 @@ async function handleAddAllPoints(message, args, userStats) {
                 `POINTS PER USER: ${points}\n` +
                 `REASON: ${reason}`);
 
-        if (failedUsers.length > 0) {
+      if (failedUsers.length > 0) {
             embed.addTerminalField('FAILED ALLOCATIONS', failedUsers.join('\n'));
         }
 
@@ -491,5 +510,77 @@ async function handleRecheckPoints(message, userStats) {
     } catch (error) {
         console.error('Error in handleRecheckPoints:', error);
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to recheck points\n[Ready for input]█\x1b[0m```');
+    }
+}
+
+async function handleCleanupPoints(message, userStats) {
+    try {
+        await message.channel.send('```ansi\n\x1b[32m[NOTICE] Starting duplicate points cleanup...\n```');
+
+        // First, confirm the action
+        const confirmEmbed = new TerminalEmbed()
+            .setTerminalTitle('CONFIRM POINTS CLEANUP')
+            .setTerminalDescription('[WARNING: DATABASE MODIFICATION]')
+            .addTerminalField('OPERATION',
+                'This will remove all duplicate point entries for the current year.\n' +
+                'Points totals will be adjusted accordingly.\n' +
+                'This action cannot be undone.')
+            .addTerminalField(
+                'CONFIRMATION',
+                'Type "CONFIRM CLEANUP" to proceed or anything else to cancel'
+            )
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [confirmEmbed] });
+
+        const filter = m => m.author.id === message.author.id;
+        const collected = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: 30000,
+            errors: ['time']
+        });
+
+        const response = collected.first();
+        if (response.content !== 'CONFIRM CLEANUP') {
+            await message.channel.send('```ansi\n\x1b[32m[NOTICE] Cleanup cancelled\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
+        const results = await userStats.database.cleanupDuplicatePoints();
+
+        // Create detailed results embed
+        const resultsEmbed = new TerminalEmbed()
+            .setTerminalTitle('POINTS CLEANUP COMPLETE')
+            .setTerminalDescription('[OPERATION SUCCESSFUL]')
+            .addTerminalField('SUMMARY',
+                `Total Duplicates Removed: ${results.totalDuplicatesRemoved}\n` +
+                `Users Affected: ${results.usersAffected}`);
+
+        // Add detailed breakdown if there were any changes
+        if (results.details.length > 0) {
+            const detailedResults = results.details
+                .map(user => 
+                    `${user.username}:\n` +
+                    `- Duplicates Removed: ${user.duplicatesRemoved}\n` +
+                    `- Points Adjusted: ${user.pointsAdjusted}\n` +
+                    `- Reasons: ${user.duplicateReasons.join(', ')}`
+                )
+                .join('\n\n');
+
+            resultsEmbed.addTerminalField('DETAILED RESULTS', detailedResults);
+        }
+
+        resultsEmbed.setTerminalFooter();
+        await message.channel.send({ embeds: [resultsEmbed] });
+
+        // Force leaderboard update if any changes were made
+        if (results.usersAffected > 0 && global.leaderboardCache) {
+            await global.leaderboardCache.updateLeaderboards(true);
+        }
+
+    } catch (error) {
+        console.error('Error in handleCleanupPoints:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to cleanup points\n[Ready for input]█\x1b[0m```');
     }
 }
