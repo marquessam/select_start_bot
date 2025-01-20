@@ -32,13 +32,20 @@ const pointsConfig = {
 
 // Helper functions
 function hasReceivedPoints(userStats, gameId, pointType) {
-    if (!userStats.bonusPoints) return false;
+    if (!userStats.bonusPoints || !Array.isArray(userStats.bonusPoints)) {
+        return false;
+    }
     
-    const pointKey = `${pointType}-${gameId}`;
+    const exactKey = `${pointType}-${gameId}`;
     return userStats.bonusPoints.some(bp => {
-        // Check both internal and display reasons
-        const checkReason = bp.internalReason || bp.reason;
-        return checkReason.includes(pointKey);
+        // First try to get the technical key from internalReason
+        const technicalKey = bp.internalReason?.split('(')[1]?.split(')')[0];
+        
+        // If that doesn't exist, try to extract it from reason
+        const fallbackKey = bp.reason?.split('(')[1]?.split(')')[0];
+        
+        // Compare the exact key to either the technical key or fallback
+        return technicalKey === exactKey || fallbackKey === exactKey;
     });
 }
 
