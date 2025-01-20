@@ -1,5 +1,5 @@
 // raAPI.js
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const database = require('./database');
 const { ErrorHandler } = require('./utils/errorHandler');
 
@@ -64,7 +64,7 @@ const cache = {
     leaderboardData: null,
     summaryTTL: 300000,     // 5 minutes
     profileTTL: 3600000,    // 1 hour
-    leaderboardTTL: 600000, // 10 minutes (match update interval)
+    leaderboardTTL: 600000, // 10 minutes
     lastLeaderboardUpdate: 0,
 
     shouldUpdate(type, timestamp) {
@@ -87,6 +87,32 @@ const cache = {
         return null;
     }
 };
+
+// ---------------------------------------
+// Define batchFetchUserProgress to fix error
+// ---------------------------------------
+async function batchFetchUserProgress(usernames, gameIds) {
+    const results = [];
+    for (const username of usernames) {
+        for (const gameId of gameIds) {
+            const params = new URLSearchParams({
+                z: process.env.RA_USERNAME,
+                y: process.env.RA_API_KEY,
+                g: gameId,
+                u: username
+            });
+            try {
+                const data = await rateLimiter.makeRequest(
+                    `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`
+                );
+                results.push({ username, gameId, data });
+            } catch (error) {
+                console.error(`[RA API] Error fetching progress for ${username}, game ${gameId}:`, error);
+            }
+        }
+    }
+    return results;
+}
 
 // ---------------------------------------
 // API Functions
@@ -170,8 +196,9 @@ async function fetchUserProfile(username) {
 
 async function fetchLeaderboardData(force = false) {
     try {
-        // Check cache unless force update
-        if (!force && cache.leaderboardData && !cache.shouldUpdate('leaderboard', cache.lastLeaderboardUpdate)) {
+        // Check cache first
+        if (!force && cache.leaderboardData && 
+            !cache.shouldUpdate('leaderboard', cache.lastLeaderboardUpdate)) {
             console.log('[RA API] Returning cached leaderboard data');
             return cache.leaderboardData;
         }
@@ -189,7 +216,6 @@ async function fetchLeaderboardData(force = false) {
         const gamesToCheck = ['319', '10024']; // Chrono Trigger and Mario Tennis
         const userProgressData = await batchFetchUserProgress(validUsers, gamesToCheck);
 
-        // Process the data
         const usersProgress = [];
         for (const username of validUsers) {
             try {
@@ -211,7 +237,9 @@ async function fetchLeaderboardData(force = false) {
                 }
 
                 // Calculate main game progress
-                const mainGameAchievements = allGameAchievements.filter(a => a.GameID === challenge.gameId);
+                const mainGameAchievements = allGameAchievements.filter(a => 
+                    a.GameID === challenge.gameId
+                );
                 const numAchievements = mainGameAchievements.length;
                 const completed = mainGameAchievements.filter(
                     ach => parseInt(ach.DateEarned, 10) > 0
