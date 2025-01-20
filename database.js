@@ -82,22 +82,32 @@ class Database {
         return this.db.collection(collectionName);
     }
 
-    async createIndexes() {
-        try {
-            await this.db.collection('userstats').createIndex({ _id: 1 });
-            await this.db.collection('challenges').createIndex({ _id: 1 });
-            await this.db.collection('records').createIndex({ _id: 1 });
-            await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
-            await this.db.collection('reviews').createIndex({ _id: 1 });
-            await this.db.collection('users').createIndex({ username: 1 });
-            await this.db.collection('achievements').createIndex({ _id: 1 });
-            console.log('Indexes created successfully');
-        } catch (error) {
-            ErrorHandler.logError(error, 'Create Indexes');
-            throw error;
-        }
-    }
+   async createIndexes() {
+    try {
+        await this.db.collection('userstats').createIndex({ _id: 1 });
+        await this.db.collection('challenges').createIndex({ _id: 1 });
+        await this.db.collection('records').createIndex({ _id: 1 });
+        await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
+        await this.db.collection('reviews').createIndex({ _id: 1 });
+        await this.db.collection('users').createIndex({ username: 1 });
+        await this.db.collection('achievements').createIndex({ _id: 1 });
 
+        // Add unique compound index for bonus points
+        await this.db.collection('userstats').createIndex(
+            {
+                'users.$**.bonusPoints.year': 1,
+                'users.$**.bonusPoints.internalReason': 1,
+                'users.$**.username': 1
+            },
+            { unique: true, sparse: true }
+        );
+
+        console.log('Indexes created successfully');
+    } catch (error) {
+        ErrorHandler.logError(error, 'Create Indexes');
+        throw error;
+    }
+}
     // ==================
     // Challenge Methods
     // ==================
@@ -310,7 +320,7 @@ async cleanupDuplicatePoints() {
         throw error;
     }
 }
-   async addUserBonusPoints(username, points, reason) {
+  async addUserBonusPoints(username, points, reason) {
     try {
         console.log(`[DATABASE] Adding bonus points for ${username}: ${points} points for ${reason}`);
         
@@ -323,21 +333,14 @@ async cleanupDuplicatePoints() {
         }
         
         const year = new Date().getFullYear().toString();
-        if (!stats.users[username].bonusPoints) {
-            stats.users[username].bonusPoints = [];
-        }
-        if (!stats.users[username].yearlyPoints) {
-            stats.users[username].yearlyPoints = {};
-        }
+        
+        // Normalize and clean up the reason
+        const displayReason = reason.reason || reason;
+        const internalReason = reason.internalReason || reason;
+        const normalizedReason = internalReason.toLowerCase().replace(/\s+/g, ' ').trim();
 
-        // Create a normalized version of the reason for comparison
-        const normalizedReason = (reason.internalReason || reason.reason || reason)
-            .toLowerCase()
-            .replace(/\s+/g, ' ')
-            .trim();
-
-        // Check for existing points with the same reason this year
-        const existingPoints = stats.users[username].bonusPoints.find(bp => {
+        // Check for existing points with exact same reason
+        const existingPoints = stats.users[username].bonusPoints?.find(bp => {
             const existingReason = (bp.internalReason || bp.reason || '')
                 .toLowerCase()
                 .replace(/\s+/g, ' ')
@@ -350,29 +353,50 @@ async cleanupDuplicatePoints() {
             return false;
         }
 
-        // Add bonus points using internal reason for tracking
-        const displayReason = reason.reason || reason;
-        const internalReason = reason.internalReason || reason;
-        
-        stats.users[username].bonusPoints.push({
+        // Initialize arrays if they don't exist
+        if (!stats.users[username].bonusPoints) {
+            stats.users[username].bonusPoints = [];
+        }
+        if (!stats.users[username].yearlyPoints) {
+            stats.users[username].yearlyPoints = {};
+        }
+
+        const bonusPoint = {
             points,
             reason: internalReason,
-            displayReason: displayReason,
+            displayReason,
             year,
             date: new Date().toISOString()
-        });
-        
-        // Update yearly points
-        stats.users[username].yearlyPoints[year] = (stats.users[username].yearlyPoints[year] || 0) + points;
+        };
 
-        await collection.updateOne(
-            { _id: 'stats' },
-            { $set: { [`users.${username}`]: stats.users[username] } }
+        // Use updateOne with $addToSet to ensure uniqueness
+        const result = await collection.updateOne(
+            { 
+                _id: 'stats',
+                [`users.${username}`]: { $exists: true }
+            },
+            { 
+                $addToSet: { 
+                    [`users.${username}.bonusPoints`]: bonusPoint 
+                },
+                $inc: { 
+                    [`users.${username}.yearlyPoints.${year}`]: points 
+                }
+            }
         );
 
-        console.log(`[DATABASE] Successfully added ${points} points to ${username} for reason: ${normalizedReason}`);
+        if (result.modifiedCount === 0) {
+            console.log(`[DATABASE] No changes made for ${username} - possible duplicate points`);
+            return false;
+        }
+
+        console.log(`[DATABASE] Successfully added ${points} points to ${username}`);
         return true;
     } catch (error) {
+        if (error.code === 11000) { // MongoDB duplicate key error
+            console.log(`[DATABASE] Prevented duplicate points for ${username}`);
+            return false;
+        }
         console.error('[DATABASE] Error adding bonus points:', error);
         if (ErrorHandler && ErrorHandler.logError) {
             ErrorHandler.logError(error, 'Adding Bonus Points');
