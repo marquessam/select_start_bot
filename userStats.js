@@ -7,74 +7,98 @@ const { pointsConfig, pointChecks } = require('./pointsConfig');
 const { fetchLeaderboardData } = require('./raAPI.js');
 
 class UserStats {
-    constructor(database) {
-        this.database = database;
-        this.cache = {
-            stats: {
-                users: {},
-                yearlyStats: {},
-                monthlyStats: {},
-                gamesBeaten: {},
-                achievementStats: {},
-                communityRecords: {}
-            },
-            lastUpdate: null,
-            updateInterval: 5 * 60 * 1000, // 5 minutes
-            validUsers: new Set(),
-            pendingUpdates: new Set()
-        };
-        this.currentYear = new Date().getFullYear();
-
-        // Periodic save if pending
-        setInterval(() => this.savePendingUpdates(), 30000);
-    }
+   constructor(database) {
+    this.database = database;
+    this.cache = {
+        stats: {
+            users: {},
+            yearlyStats: {},
+            monthlyStats: {},
+            gamesBeaten: {},
+            achievementStats: {},
+            communityRecords: {}
+        },
+        lastUpdate: null,
+        updateInterval: 5 * 60 * 1000, // 5 minutes
+        validUsers: new Set(),
+        pendingUpdates: new Set()
+    };
+    this.currentYear = new Date().getFullYear();
+    this.isInitializing = false;
+    this.initializationComplete = false;
+    this._pendingSaves = new Set();
+    this._activeOperations = new Map();
+}
 
     // =======================
     //         Core
     // =======================
     async loadStats(userTracker) {
-        try {
-            const dbStats = await this.database.getUserStats();
-
-            // Merge or default
-            this.cache.stats = {
-                users: dbStats.users || {},
-                yearlyStats: dbStats.yearlyStats || {},
-                monthlyStats: dbStats.monthlyStats || {},
-                gamesBeaten: dbStats.gamesBeaten || dbStats.gameCompletions || {},
-                achievementStats: dbStats.achievementStats || {},
-                communityRecords: dbStats.communityRecords || {}
-            };
-
-            const users = await userTracker.getValidUsers();
-            this.cache.validUsers = new Set(users.map(u => u.toLowerCase()));
-
-            // Initialize missing user entries
-            await Promise.all(
-                Array.from(this.cache.validUsers).map(username =>
-                    this.initializeUserIfNeeded(username)
-                )
-            );
-
-            await this.saveStats();
-            this.cache.lastUpdate = Date.now();
-        } catch (error) {
-            ErrorHandler.logError(error, 'Loading Stats');
-            throw error;
+    if (this.isInitializing) {
+        console.log('[USER STATS] Already initializing, waiting...');
+        while (this.isInitializing) {
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
+        return;
     }
 
-    async saveStats() {
-        try {
-            await this.database.saveUserStats(this.cache.stats);
-            this.cache.lastUpdate = Date.now();
-            this.cache.pendingUpdates.clear();
-        } catch (error) {
-            ErrorHandler.logError(error, 'Saving Stats');
-            throw error;
-        }
-    }
+    this.isInitializing = true;
+    try {
+        console.log('[USER STATS] Starting stats load...');
+        const dbStats = await this.database.getUserStats();
+        
+        // Merge or default
+        this.cache.stats = {
+            users: dbStats.users || {},
+            yearlyStats: dbStats.yearlyStats || {},
+            monthlyStats: dbStats.monthlyStats || {},
+            gamesBeaten: dbStats.gamesBeaten || dbStats.gameCompletions || {},
+            achievementStats: dbStats.achievementStats || {},
+            communityRecords: dbStats.communityRecords || {}
+        };
 
+        const users = await userTracker.getValidUsers();
+        this.cache.validUsers = new Set(users.map(u => u.toLowerCase()));
+
+        // Initialize users sequentially to avoid race conditions
+        for (const username of this.cache.validUsers) {
+            await this.initializeUserIfNeeded(username);
+        }
+
+        await this.saveStats();
+        this.cache.lastUpdate = Date.now();
+        this.initializationComplete = true;
+        console.log('[USER STATS] Stats load complete');
+    } catch (error) {
+        ErrorHandler.logError(error, 'Loading Stats');
+        throw error;
+    } finally {
+        this.isInitializing = false;
+    }
+}
+
+   async saveStats() {
+    const saveId = Date.now().toString();
+    this._pendingSaves.add(saveId);
+    
+    try {
+        // Wait for any other pending saves to complete
+        while (this._pendingSaves.size > 1) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        console.log('[USER STATS] Saving stats...');
+        await this.database.saveUserStats(this.cache.stats);
+        this.cache.lastUpdate = Date.now();
+        this.cache.pendingUpdates.clear();
+        console.log('[USER STATS] Stats saved successfully');
+    } catch (error) {
+        ErrorHandler.logError(error, 'Saving Stats');
+        throw error;
+    } finally {
+        this._pendingSaves.delete(saveId);
+    }
+}
     async savePendingUpdates() {
         if (this.cache.pendingUpdates.size > 0) {
             await this.saveStats();
@@ -181,10 +205,22 @@ class UserStats {
     //  Points Management
     // =======================
     async addBonusPoints(username, points, reason) {
-    console.log(
-        `[DEBUG] addBonusPoints -> awarding ${points} points to "${username}" for reason: "${reason}"`
-    );
+    const operationId = `bonus-${username}-${Date.now()}`;
+    this._activeOperations.set(operationId, true);
+
     try {
+        // Wait for initialization if needed
+        if (!this.initializationComplete) {
+            console.log('[USER STATS] Waiting for initialization before adding points...');
+            while (!this.initializationComplete) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+
+        console.log(
+            `[USER STATS] Adding ${points} points to "${username}" for reason: "${reason}"`
+        );
+
         const cleanUsername = username.trim().toLowerCase();
         const user = this.cache.stats.users[cleanUsername];
 
@@ -194,6 +230,15 @@ class UserStats {
 
         const year = this.currentYear.toString();
 
+        // Wait for any pending operations for this user
+        const userOperations = Array.from(this._activeOperations.entries())
+            .filter(([id, _]) => id.includes(cleanUsername));
+        if (userOperations.length > 1) {
+            console.log(`[USER STATS] Waiting for pending operations for ${cleanUsername}...`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        // Initialize arrays and objects if they don't exist
         if (!user.bonusPoints) user.bonusPoints = [];
         if (!user.yearlyPoints) user.yearlyPoints = {};
 
@@ -224,20 +269,36 @@ class UserStats {
         });
 
         // Update cache
+        this.cache.stats.users[cleanUsername] = user;
         this.cache.pendingUpdates.add(cleanUsername);
+
+        // Ensure the cache is saved
+        await this.saveStats();
 
         // Announce the points using the display reason
         if (global.achievementFeed) {
             const displayReason = reason.reason || reason;
-            await global.achievementFeed.announcePointsAward(username, points, displayReason);
+            await global.achievementFeed.announcePointsAward(
+                username, 
+                points, 
+                displayReason
+            );
         }
 
+        console.log(
+            `[USER STATS] Successfully added ${points} points to ${username}`,
+            `New total: ${user.yearlyPoints[year]}`
+        );
+
+        return true;
     } catch (error) {
+        console.error(`[USER STATS] Error adding bonus points to ${username}:`, error);
         ErrorHandler.logError(error, 'Adding Bonus Points');
         throw error;
+    } finally {
+        this._activeOperations.delete(operationId);
     }
 }
-
     async resetUserPoints(username) {
         try {
             const cleanUsername = username.trim().toLowerCase();
