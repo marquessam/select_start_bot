@@ -549,34 +549,56 @@ async function handleCleanupPoints(message, userStats) {
 
         const results = await userStats.database.cleanupDuplicatePoints();
 
-        // Create detailed results embed
-        const resultsEmbed = new TerminalEmbed()
+        // Send summary first
+        const summaryEmbed = new TerminalEmbed()
             .setTerminalTitle('POINTS CLEANUP COMPLETE')
             .setTerminalDescription('[OPERATION SUCCESSFUL]')
             .addTerminalField('SUMMARY',
                 `Total Duplicates Removed: ${results.totalDuplicatesRemoved}\n` +
-                `Users Affected: ${results.usersAffected}`);
+                `Users Affected: ${results.usersAffected}`)
+            .setTerminalFooter();
 
-        // Add detailed breakdown if there were any changes
+        await message.channel.send({ embeds: [summaryEmbed] });
+
+        // If there are details, split them into chunks and send multiple embeds
         if (results.details.length > 0) {
-            const detailedResults = results.details
-                .map(user => 
-                    `${user.username}:\n` +
-                    `- Duplicates Removed: ${user.duplicatesRemoved}\n` +
-                    `- Points Adjusted: ${user.pointsAdjusted}\n` +
-                    `- Reasons: ${user.duplicateReasons.join(', ')}`
-                )
-                .join('\n\n');
+            const chunkSize = 5; // Number of users per embed
+            for (let i = 0; i < results.details.length; i += chunkSize) {
+                const chunk = results.details.slice(i, i + chunkSize);
+                const chunkEmbed = new TerminalEmbed()
+                    .setTerminalTitle(`CLEANUP DETAILS (${i/chunkSize + 1}/${Math.ceil(results.details.length/chunkSize)})`)
+                    .setTerminalDescription('[DETAILED RESULTS]');
 
-            resultsEmbed.addTerminalField('DETAILED RESULTS', detailedResults);
+                for (const user of chunk) {
+                    // Create a condensed version of the reasons
+                    const reasonCounts = {};
+                    user.duplicateReasons.forEach(reason => {
+                        reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+                    });
+                    
+                    const formattedReasons = Object.entries(reasonCounts)
+                        .map(([reason, count]) => `${reason}${count > 1 ? ` (×${count})` : ''}`)
+                        .join('\n');
+
+                    chunkEmbed.addTerminalField(user.username,
+                        `Duplicates Removed: ${user.duplicatesRemoved}\n` +
+                        `Points Adjusted: ${user.pointsAdjusted}\n` +
+                        `Reasons:\n${formattedReasons}`
+                    );
+                }
+
+                chunkEmbed.setTerminalFooter();
+                await message.channel.send({ embeds: [chunkEmbed] });
+                
+                // Add a small delay between embeds to avoid rate limits
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
         }
-
-        resultsEmbed.setTerminalFooter();
-        await message.channel.send({ embeds: [resultsEmbed] });
 
         // Force leaderboard update if any changes were made
         if (results.usersAffected > 0 && global.leaderboardCache) {
             await global.leaderboardCache.updateLeaderboards(true);
+            await message.channel.send('```ansi\n\x1b[32m[NOTICE] Leaderboard updated with new point totals\n[Ready for input]█\x1b[0m```');
         }
 
     } catch (error) {
