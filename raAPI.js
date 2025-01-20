@@ -186,48 +186,23 @@ async function fetchLeaderboardData(force = false) {
         const validUsers = await database.getValidUsers();
         console.log(`[RA API] Fetching data for ${validUsers.length} users`);
 
-        const userSummaries = await Promise.all(
-            validUsers.map(async username => {
-                try {
-                    return await fetchUserSummary(username);
-                } catch (error) {
-                    console.error(`[RA API] Error fetching summary for ${username}:`, error);
-                    return null;
-                }
-            })
-        );
-
-        const usersProgress = [];
         const gamesToCheck = ['319', '10024']; // Chrono Trigger and Mario Tennis
+        const userProgressData = await batchFetchUserProgress(validUsers, gamesToCheck);
 
+        // Process the data
+        const usersProgress = [];
         for (const username of validUsers) {
-            if (!username) {
-                console.error('[RA API] Skipping undefined username');
-                continue;
-            }
-
             try {
-                const userSummary = userSummaries.find(
-                    s => s && s.username && username &&
-                        s.username.toLowerCase() === username.toLowerCase()
-                );
-
                 let allGameAchievements = [];
 
+                // Get all game data for this user
                 for (const gameId of gamesToCheck) {
-                    const challengeParams = new URLSearchParams({
-                        z: process.env.RA_USERNAME,
-                        y: process.env.RA_API_KEY,
-                        g: gameId,
-                        u: username
-                    });
-
-                    const gameData = await rateLimiter.makeRequest(
-                        `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${challengeParams}`
+                    const progressEntry = userProgressData.find(p => 
+                        p.username === username && p.gameId === gameId
                     );
 
-                    if (gameData?.Achievements) {
-                        const gameAchievements = Object.values(gameData.Achievements).map(ach => ({
+                    if (progressEntry?.data?.Achievements) {
+                        const gameAchievements = Object.values(progressEntry.data.Achievements).map(ach => ({
                             ...ach,
                             GameID: gameId
                         }));
@@ -235,15 +210,7 @@ async function fetchLeaderboardData(force = false) {
                     }
                 }
 
-                const mappedRecents = (userSummary?.recentAchievements || []).map(r => ({
-                    ID: parseInt(r.AchievementID),
-                    DateEarned: r.Date,
-                    Flags: r.Flags ? parseInt(r.Flags) : 0,
-                    GameID: r.GameID ? parseInt(r.GameID) : null
-                }));
-
-                const allAchievements = [...allGameAchievements, ...mappedRecents];
-
+                // Calculate main game progress
                 const mainGameAchievements = allGameAchievements.filter(a => a.GameID === challenge.gameId);
                 const numAchievements = mainGameAchievements.length;
                 const completed = mainGameAchievements.filter(
@@ -258,9 +225,7 @@ async function fetchLeaderboardData(force = false) {
 
                 usersProgress.push({
                     username,
-                    profileImage: userSummary?.userPic
-                        ? `https://retroachievements.org${userSummary.userPic}`
-                        : `https://retroachievements.org/UserPic/${username}.png`,
+                    profileImage: `https://retroachievements.org/UserPic/${username}.png`,
                     profileUrl: `https://retroachievements.org/user/${username}`,
                     completedAchievements: completed,
                     totalAchievements: numAchievements,
@@ -268,20 +233,16 @@ async function fetchLeaderboardData(force = false) {
                         ? ((completed / numAchievements) * 100).toFixed(2)
                         : '0.00',
                     hasBeatenGame: !!hasBeatenGame,
-                    achievements: allAchievements,
-                    totalPoints: userSummary?.totalPoints || 0,
-                    rank: userSummary?.rank || 0,
-                    recentAchievements: userSummary?.recentAchievements || [],
-                    lastActivity: userSummary?.lastActivity
+                    achievements: allGameAchievements
                 });
 
                 console.log(
-                    `[RA API] Fetched progress for ${username}:`,
+                    `[RA API] Processed achievements for ${username}:`,
                     `${completed}/${numAchievements} achievements (main challenge)`,
-                    `Total achievements tracked: ${allAchievements.length}`
+                    `Total achievements tracked: ${allGameAchievements.length}`
                 );
             } catch (error) {
-                console.error(`[RA API] Error fetching data for ${username}:`, error);
+                console.error(`[RA API] Error processing data for ${username}:`, error);
                 usersProgress.push({
                     username,
                     profileImage: `https://retroachievements.org/UserPic/${username}.png`,
@@ -290,11 +251,7 @@ async function fetchLeaderboardData(force = false) {
                     totalAchievements: 0,
                     completionPercentage: '0.00',
                     hasBeatenGame: false,
-                    achievements: [],
-                    totalPoints: 0,
-                    rank: 0,
-                    recentAchievements: [],
-                    lastActivity: null
+                    achievements: []
                 });
             }
         }
