@@ -236,32 +236,49 @@ class Database {
         }
     }
    
-  async addUserBonusPoints(username, bonusPoint) {
+ async function addUserBonusPoints(username, points, reason) {
     try {
+        console.log(`[DATABASE] Adding bonus points for ${username}: ${points} points for ${reason}`);
+        
         const collection = await this.getCollection('userstats');
+        const stats = await collection.findOne({ _id: 'stats' });
+        
+        if (!stats?.users?.[username]) {
+            console.warn(`[DATABASE] User ${username} not found in stats`);
+            return false;
+        }
+        
+        const year = new Date().getFullYear().toString();
+        if (!stats.users[username].bonusPoints) {
+            stats.users[username].bonusPoints = [];
+        }
+        if (!stats.users[username].yearlyPoints) {
+            stats.users[username].yearlyPoints = {};
+        }
 
-        // Use $addToSet with a unique technicalKey to prevent duplicates
+        // Add bonus points
+        stats.users[username].bonusPoints.push({
+            points,
+            reason,
+            year,
+            date: new Date().toISOString()
+        });
+        
+        // Update yearly points
+        const currentYearPoints = stats.users[username].yearlyPoints[year] || 0;
+        stats.users[username].yearlyPoints[year] = currentYearPoints + points;
+
         await collection.updateOne(
             { _id: 'stats' },
-            {
-                $addToSet: { [`users.${username}.bonusPoints`]: { technicalKey: bonusPoint.technicalKey } },
-                $inc: { [`users.${username}.yearlyPoints.${new Date().getFullYear()}`]: bonusPoint.points }
-            },
-            { upsert: true }
+            { $set: { [`users.${username}`]: stats.users[username] } }
         );
 
-        // Now push the full bonusPoint if it's not already present
-        await collection.updateOne(
-            { _id: 'stats', [`users.${username}.bonusPoints.technicalKey`]: { $ne: bonusPoint.technicalKey } },
-            {
-                $push: { [`users.${username}.bonusPoints`]: bonusPoint }
-            },
-            { upsert: true }
-        );
-
-        console.log(`[DB] Added bonus point for ${username}:`, bonusPoint);
+        return true;
     } catch (error) {
-        ErrorHandler.logError(error, 'Add User Bonus Points');
+        console.error('[DATABASE] Error adding bonus points:', error);
+        if (ErrorHandler && ErrorHandler.logError) {
+            ErrorHandler.logError(error, 'Adding Bonus Points');
+        }
         throw error;
     }
 }
