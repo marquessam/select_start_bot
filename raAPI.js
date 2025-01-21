@@ -89,37 +89,11 @@ const cache = {
 };
 
 // ---------------------------------------
-// Define batchFetchUserProgress to fix error
-// ---------------------------------------
-async function batchFetchUserProgress(usernames, gameIds) {
-    const results = [];
-    for (const username of usernames) {
-        for (const gameId of gameIds) {
-            const params = new URLSearchParams({
-                z: process.env.RA_USERNAME,
-                y: process.env.RA_API_KEY,
-                g: gameId,
-                u: username
-            });
-            try {
-                const data = await rateLimiter.makeRequest(
-                    `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`
-                );
-                results.push({ username, gameId, data });
-            } catch (error) {
-                console.error(`[RA API] Error fetching progress for ${username}, game ${gameId}:`, error);
-            }
-        }
-    }
-    return results;
-}
-
-// ---------------------------------------
 // API Functions
 // ---------------------------------------
 async function fetchUserSummary(username) {
     try {
-        // Check cache
+        // Check cache first
         const cached = cache.getCache('userSummaries', username);
         if (cached) return cached;
 
@@ -157,7 +131,7 @@ async function fetchUserSummary(username) {
 
 async function fetchUserProfile(username) {
     try {
-        // Check cache
+        // Check cache first
         const cached = cache.getCache('userProfiles', username);
         if (cached) return cached;
 
@@ -302,6 +276,29 @@ async function fetchLeaderboardData(force = false) {
         console.error('[RA API] Error fetching leaderboard data:', error);
         throw error;
     }
+}
+
+async function batchFetchUserProgress(usernames, gameIds) {
+    const results = [];
+    for (const username of usernames) {
+        for (const gameId of gameIds) {
+            const params = new URLSearchParams({
+                z: process.env.RA_USERNAME,
+                y: process.env.RA_API_KEY,
+                g: gameId,
+                u: username
+            });
+            try {
+                const data = await rateLimiter.makeRequest(
+                    `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`
+                );
+                results.push({ username, gameId, data });
+            } catch (error) {
+                console.error(`[RA API] Error fetching progress for ${username}, game ${gameId}:`, error);
+            }
+        }
+    }
+    return results;
 }
 
 async function fetchAllRecentAchievements() {
