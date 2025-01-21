@@ -2,148 +2,218 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const ErrorHandler = require('./utils/errorHandler');
 
+class APIRateLimiter {
+    constructor() {
+        this.lastRequest = 0;
+        this.minDelay = 1000; // 1 second minimum between requests
+        this.queue = [];
+        this.processing = false;
+    }
+
+    async makeRequest(url) {
+        return new Promise((resolve, reject) => {
+            this.queue.push({ url, resolve, reject });
+            if (!this.processing) this.processQueue();
+        });
+    }
+
+    async processQueue() {
+        if (this.processing || this.queue.length === 0) return;
+
+        this.processing = true;
+        try {
+            while (this.queue.length > 0) {
+                const { url, resolve, reject } = this.queue[0];
+                
+                const now = Date.now();
+                const timeToWait = Math.max(0, this.lastRequest + this.minDelay - now);
+                
+                if (timeToWait > 0) {
+                    await new Promise(r => setTimeout(r, timeToWait));
+                }
+
+                try {
+                    const response = await fetch(url);
+                    this.lastRequest = Date.now();
+
+                    if (!response.ok) {
+                        throw new Error(`MobyGames API Error: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+                    resolve(data);
+                } catch (error) {
+                    reject(error);
+                }
+
+                this.queue.shift();
+                await new Promise(r => setTimeout(r, this.minDelay));
+            }
+        } finally {
+            this.processing = false;
+        }
+    }
+}
+
 class MobyAPI {
     constructor() {
-        this.baseUrl = process.env.MOBYGAMES_API_URL;
+        this.baseUrl = process.env.MOBYGAMES_API_URL || 'https://api.mobygames.com/v1';
         this.apiKey = process.env.MOBYGAMES_API_KEY;
         
-        // Cache setup
+        // Initialize rate limiter
+        this.rateLimiter = new APIRateLimiter();
+
+        // Cache setup with TTL values
         this.cache = {
             games: new Map(),
             platforms: new Map(),
-            companies: new Map(),
-            lastUpdate: null,
-            updateInterval: 12 * 60 * 60 * 1000 // 12 hours
+            boxArt: new Map(),
+            thisDay: new Map(),
+            lastCleanup: Date.now()
         };
 
-        // Rate limiting
-        this.rateLimiter = {
-            lastRequest: 0,
-            minDelay: 1000 // 1 second between requests
+        // TTL configuration (in milliseconds)
+        this.ttl = {
+            games: 12 * 60 * 60 * 1000,     // 12 hours
+            platforms: 24 * 60 * 60 * 1000,  // 24 hours
+            boxArt: 7 * 24 * 60 * 60 * 1000, // 7 days
+            thisDay: 24 * 60 * 60 * 1000,    // 24 hours
+            cleanupInterval: 60 * 60 * 1000   // 1 hour
         };
     }
 
     async _makeRequest(endpoint, params = {}) {
         try {
-            // Rate limiting
-            const now = Date.now();
-            const timeSinceLastRequest = now - this.rateLimiter.lastRequest;
-            if (timeSinceLastRequest < this.rateLimiter.minDelay) {
-                await new Promise(resolve => 
-                    setTimeout(resolve, this.rateLimiter.minDelay - timeSinceLastRequest)
-                );
-            }
-
             // Add API key to params
             params.api_key = this.apiKey;
             
             // Build URL with parameters
             const url = new URL(`${this.baseUrl}${endpoint}`);
-            Object.keys(params).forEach(key => 
-                url.searchParams.append(key, params[key])
+            Object.entries(params).forEach(([key, value]) => 
+                url.searchParams.append(key, value)
             );
 
-            const response = await fetch(url.toString());
-            this.rateLimiter.lastRequest = Date.now();
-
-            if (!response.ok) {
-                throw new Error(`MobyGames API Error: ${response.statusText}`);
-            }
-
-            return await response.json();
+            return await this.rateLimiter.makeRequest(url.toString());
         } catch (error) {
             ErrorHandler.logError(error, 'MobyGames API Request');
             throw error;
         }
     }
 
-    async searchGames(query) {
-        try {
-            // Check cache first
-            const cacheKey = `search:${query}`;
-            if (this.cache.games.has(cacheKey)) {
-                const cached = this.cache.games.get(cacheKey);
-                if (Date.now() - cached.timestamp < this.cache.updateInterval) {
-                    return cached.data;
+    // Cache management methods
+    _shouldCleanCache() {
+        return Date.now() - this.cache.lastCleanup > this.ttl.cleanupInterval;
+    }
+
+    _cleanCache() {
+        const now = Date.now();
+        
+        Object.entries(this.cache).forEach(([key, cache]) => {
+            if (cache instanceof Map) {
+                for (const [entryKey, entry] of cache) {
+                    if (now - entry.timestamp > this.ttl[key]) {
+                        cache.delete(entryKey);
+                    }
                 }
             }
+        });
 
+        this.cache.lastCleanup = now;
+        console.log('[MOBY API] Cache cleaned');
+    }
+
+    async searchGames(query, exact = false) {
+        try {
+            // Clean cache if needed
+            if (this._shouldCleanCache()) {
+                this._cleanCache();
+            }
+
+            const cacheKey = `search:${query}:${exact}`;
+            const cached = this.cache.games.get(cacheKey);
+            
+            if (cached && (Date.now() - cached.timestamp < this.ttl.games)) {
+                console.log('[MOBY API] Returning cached search results for:', query);
+                return cached.data;
+            }
+
+            console.log('[MOBY API] Fetching new search results for:', query);
             const data = await this._makeRequest('/games', {
                 title: query,
                 format: 'normal'
             });
 
+            // If exact match requested, filter results
+            if (exact) {
+                data.games = data.games.filter(game => 
+                    game.title.toLowerCase() === query.toLowerCase()
+                );
+            }
+
             // Cache the results
             this.cache.games.set(cacheKey, {
-                data: data,
+                data,
                 timestamp: Date.now()
             });
 
             return data;
         } catch (error) {
             ErrorHandler.logError(error, 'Game Search');
-            throw error;
+            return { games: [] };
         }
     }
 
     async getGameDetails(gameId) {
         try {
-            // Check cache first
-            if (this.cache.games.has(gameId)) {
-                const cached = this.cache.games.get(gameId);
-                if (Date.now() - cached.timestamp < this.cache.updateInterval) {
-                    return cached.data;
-                }
+            const cached = this.cache.games.get(gameId);
+            if (cached && (Date.now() - cached.timestamp < this.ttl.games)) {
+                return cached.data;
             }
 
             const data = await this._makeRequest(`/games/${gameId}`);
 
-            // Cache the results
             this.cache.games.set(gameId, {
-                data: data,
+                data,
                 timestamp: Date.now()
             });
 
             return data;
         } catch (error) {
             ErrorHandler.logError(error, 'Game Details');
-            throw error;
+            return null;
         }
     }
 
     async getGameArtwork(gameId) {
         try {
             const cacheKey = `artwork:${gameId}`;
-            if (this.cache.games.has(cacheKey)) {
-                const cached = this.cache.games.get(cacheKey);
-                if (Date.now() - cached.timestamp < this.cache.updateInterval) {
-                    return cached.data;
-                }
+            const cached = this.cache.boxArt.get(cacheKey);
+            
+            if (cached && (Date.now() - cached.timestamp < this.ttl.boxArt)) {
+                return cached.data;
             }
 
             const data = await this._makeRequest(`/games/${gameId}/platforms`);
 
-            // Cache the results
-            this.cache.games.set(cacheKey, {
-                data: data,
+            this.cache.boxArt.set(cacheKey, {
+                data,
                 timestamp: Date.now()
             });
 
             return data;
         } catch (error) {
             ErrorHandler.logError(error, 'Game Artwork');
-            throw error;
+            return null;
         }
     }
 
     async getPlatforms() {
         try {
-            if (this.cache.platforms.size > 0) {
-                const firstEntry = this.cache.platforms.values().next().value;
-                if (Date.now() - firstEntry.timestamp < this.cache.updateInterval) {
-                    return Array.from(this.cache.platforms.values())
-                        .map(entry => entry.data);
-                }
+            // Return cached platforms if available and not expired
+            const firstEntry = this.cache.platforms.values().next().value;
+            if (firstEntry && (Date.now() - firstEntry.timestamp < this.ttl.platforms)) {
+                return Array.from(this.cache.platforms.values())
+                    .map(entry => entry.data);
             }
 
             const data = await this._makeRequest('/platforms');
@@ -159,67 +229,64 @@ class MobyAPI {
             return data.platforms;
         } catch (error) {
             ErrorHandler.logError(error, 'Platforms');
-            throw error;
+            return [];
         }
     }
 
     async getThisDay() {
-    try {
-        const today = new Date();
-        const month = String(today.getMonth() + 1).padStart(2, '0');
-        const day = String(today.getDate()).padStart(2, '0');
+        try {
+            const today = new Date();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const day = String(today.getDate()).padStart(2, '0');
+            const cacheKey = `thisday:${month}-${day}`;
 
-        // Check cache
-        const cacheKey = `thisday:${month}-${day}`;
-        if (this.cache.games.has(cacheKey)) {
-            const cached = this.cache.games.get(cacheKey);
-            if (Date.now() - cached.timestamp < this.cache.updateInterval) {
+            const cached = this.cache.thisDay.get(cacheKey);
+            if (cached && (Date.now() - cached.timestamp < this.ttl.thisDay)) {
                 return cached.data;
             }
+
+            const data = await this._makeRequest('/games', {
+                release_month: month,
+                release_day: day
+            });
+
+            // Validate and normalize the response
+            if (!data || !Array.isArray(data.games)) {
+                throw new Error('API response does not contain a valid games array');
+            }
+
+            const validGames = data.games
+                .filter(game => game.first_release_date && game.title)
+                .map(game => ({
+                    first_release_date: game.first_release_date,
+                    title: game.title,
+                    platforms: game.platforms || [{ platform_name: 'Unknown Platform' }]
+                }));
+
+            const result = { games: validGames };
+
+            this.cache.thisDay.set(cacheKey, {
+                data: result,
+                timestamp: Date.now()
+            });
+
+            return result;
+        } catch (error) {
+            ErrorHandler.logError(error, 'This Day in Gaming');
+            return { games: [] };
         }
-
-        // Fetch data from API
-        const data = await this._makeRequest('/games', {
-            release_month: month,
-            release_day: day
-        });
-
-        console.log('Raw API Response:', JSON.stringify(data, null, 2)); // Debug log
-
-        // Validate the response
-        if (!data || !Array.isArray(data.games)) {
-            throw new Error('API response does not contain a valid games array');
-        }
-
-        // Normalize and validate game data
-        const validGames = data.games.filter(game =>
-            game.first_release_date && game.title && Array.isArray(game.platforms)
-        ).map(game => ({
-            first_release_date: game.first_release_date,
-            title: game.title,
-            platforms: game.platforms || [{ platform_name: 'Unknown Platform' }]
-        }));
-
-        const result = { games: validGames };
-
-        // Cache the results
-        this.cache.games.set(cacheKey, {
-            data: result,
-            timestamp: Date.now()
-        });
-
-        return result;
-    } catch (error) {
-        ErrorHandler.logError(error, 'This Day in Gaming');
-        throw error;
     }
-}
+
     clearCache() {
-        this.cache.games.clear();
-        this.cache.platforms.clear();
-        this.cache.companies.clear();
-        this.cache.lastUpdate = null;
+        Object.values(this.cache).forEach(cache => {
+            if (cache instanceof Map) {
+                cache.clear();
+            }
+        });
+        this.cache.lastCleanup = Date.now();
+        console.log('[MOBY API] Cache cleared');
     }
 }
 
+// Export a singleton instance
 module.exports = new MobyAPI();
