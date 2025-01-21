@@ -223,7 +223,7 @@ client.on('messageCreate', async (message) => {
 
 // Periodic Updates
 const UPDATE_INTERVAL = 10 * 60 * 1000; // 10 minutes
-setInterval(() => coordinateUpdate(services), UPDATE_INTERVAL);
+setInterval(() => coordinateUpdate(services, true), UPDATE_INTERVAL);
 
 // Graceful Shutdown
 const shutdown = async (signal) => {
