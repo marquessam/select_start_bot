@@ -7,6 +7,7 @@ class ShadowGame {
     constructor() {
         this.config = null;
         this.errorChance = 0.99;
+        this.database = require('./database'); // Add database requirement
     }
 
     async loadConfig() {
@@ -238,15 +239,19 @@ class ShadowGame {
                 // Check participation
                 if (user.completedAchievements > 0) {
                     const participationKey = `shadow-participation-${this.config.finalReward.gameId}`;
-                    const userStatsData = await userStats.getUserStats(username);
+                    const stats = await this.database.getUserStats();
                     
-                    if (!userStatsData.bonusPoints?.some(bp => 
-                        bp.reason.includes(participationKey)
+                    // Get user's existing points
+                    if (!stats.users?.[username]?.bonusPoints?.some(bp => 
+                        bp.internalReason?.includes(participationKey)
                     )) {
                         await userStats.addBonusPoints(
                             username,
                             this.config.points.participation,
-                            `${participationKey} - Shadow Game Participation`
+                            {
+                                reason: `${this.config.finalReward.gameName} - Shadow Game Participation`,
+                                internalReason: `${this.config.finalReward.gameName} - Shadow Game Participation (${participationKey})`
+                            }
                         );
                     }
                 }
@@ -259,15 +264,19 @@ class ShadowGame {
 
                 if (hasBeatenGame) {
                     const beatenKey = `shadow-beaten-${this.config.finalReward.gameId}`;
-                    const userStatsData = await userStats.getUserStats(username);
+                    const stats = await this.database.getUserStats();
                     
-                    if (!userStatsData.bonusPoints?.some(bp => 
-                        bp.reason.includes(beatenKey)
+                    // Get user's existing points
+                    if (!stats.users?.[username]?.bonusPoints?.some(bp => 
+                        bp.internalReason?.includes(beatenKey)
                     )) {
                         await userStats.addBonusPoints(
                             username,
                             this.config.points.beaten,
-                            `${beatenKey} - Shadow Game Beaten`
+                            {
+                                reason: `${this.config.finalReward.gameName} - Shadow Game Beaten`,
+                                internalReason: `${this.config.finalReward.gameName} - Shadow Game Beaten (${beatenKey})`
+                            }
                         );
                     }
                 }
