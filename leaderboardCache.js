@@ -18,7 +18,7 @@ class LeaderboardCache {
             yearlyLeaderboard: [],
             monthlyLeaderboard: [],
             lastUpdated: null,
-            updateInterval: 600000  // 10 minutes (match global update interval)
+            updateInterval: 600000  // 10 minutes
         };
     }
 
@@ -112,15 +112,17 @@ class LeaderboardCache {
                 await this.updateValidUsers();
             }
 
-            // Get yearly leaderboard
+            // ALWAYS update yearly leaderboard when updating
             if (this.userStats) {
                 const currentYear = new Date().getFullYear().toString();
                 const validUsers = Array.from(this.cache.validUsers);
                 
+                console.log('[LEADERBOARD CACHE] Updating yearly leaderboard...');
                 this.cache.yearlyLeaderboard = await this.userStats.getYearlyLeaderboard(
                     currentYear,
                     validUsers
                 );
+                console.log('[LEADERBOARD CACHE] Yearly leaderboard updated successfully');
             }
 
             // Get monthly leaderboard - single API call for all users
@@ -148,6 +150,11 @@ class LeaderboardCache {
     }
 
     _getLatestData() {
+        const lastUpdatedStr = this.cache.lastUpdated 
+            ? new Date(this.cache.lastUpdated).toISOString() 
+            : 'never';
+        console.log(`[LEADERBOARD CACHE] Returning cached data from: ${lastUpdatedStr}`);
+        
         return {
             leaderboard: this.cache.monthlyLeaderboard,
             lastUpdated: this.cache.lastUpdated || new Date().toISOString()
@@ -179,11 +186,14 @@ class LeaderboardCache {
                 };
             });
 
-            return monthlyParticipants.sort((a, b) => {
+            const sortedParticipants = monthlyParticipants.sort((a, b) => {
                 const percentageDiff = b.completionPercentage - a.completionPercentage;
                 if (percentageDiff !== 0) return percentageDiff;
                 return b.completedAchievements - a.completedAchievements;
             });
+
+            console.log('[LEADERBOARD CACHE] Monthly leaderboard constructed successfully');
+            return sortedParticipants;
         } catch (error) {
             console.error('[LEADERBOARD CACHE] Error constructing monthly leaderboard:', error);
             return [];
@@ -195,6 +205,10 @@ class LeaderboardCache {
             console.warn('[LEADERBOARD CACHE] Yearly leaderboard not initialized');
             return [];
         }
+        
+        console.log('[LEADERBOARD CACHE] Returning yearly leaderboard data from:', 
+            this.cache.lastUpdated ? new Date(this.cache.lastUpdated).toISOString() : 'never');
+            
         return this.cache.yearlyLeaderboard;
     }
 
@@ -203,6 +217,10 @@ class LeaderboardCache {
             console.warn('[LEADERBOARD CACHE] Monthly leaderboard not initialized');
             return [];
         }
+        
+        console.log('[LEADERBOARD CACHE] Returning monthly leaderboard data from:',
+            this.cache.lastUpdated ? new Date(this.cache.lastUpdated).toISOString() : 'never');
+            
         return this.cache.monthlyLeaderboard;
     }
 
@@ -211,6 +229,7 @@ class LeaderboardCache {
     }
 
     async refreshLeaderboard() {
+        console.log('[LEADERBOARD CACHE] Forcing leaderboard refresh...');
         return await this.updateLeaderboards(true);
     }
 }
