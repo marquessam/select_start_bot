@@ -32,8 +32,8 @@ module.exports = {
                     `> 🥉 ${currentChallenge.points.third} pts`)
                 // Additional information about Monthly Challenge and Shadow Game
                 .addTerminalField('ABOUT THE CHALLENGES',
-                    `**Monthly Challenge:** A community-voted game each month where players compete to earn the most RetroAchievements.\n` +
-                    `**Shadow Game Challenge:** A hidden challenge that is unlocked by interacting with the community/website/bot in unique ways each month. Once one user discovers it, it becomes available to the entire community.`)
+                    `**Monthly Challenge:**\nA community-voted game each month where players compete to earn the most RetroAchievements.\n` +
+                    `**Shadow Game Challenge:**\nA hidden challenge that is unlocked by interacting with the community/website/bot in unique ways each month. Once one user discovers it, it becomes available to the entire community.`)
                 // Additional Ways to Earn Points
                 .addTerminalField('HOW TO EARN POINTS',
                     `**Monthly Challenge & Shadow Games:**\n` +
