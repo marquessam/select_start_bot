@@ -162,8 +162,8 @@ module.exports = {
                 .setTerminalTitle('HOW TO EARN POINTS')
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING POINT EARNINGS]')
                 .addTerminalField('CHALLENGE POINTS',
-                    `**Participation:**\n1 point is awarded for participating in the monthly challenge or shadow games by earning an achievement.\n`)
-                    `**Beaten:**\n3 points are awarded for beating the game in either the monthly challenge or shadow games. Check the retroacheivement site for the "win condition".\n\n` +
+                    `**Participation:**\nA point is awarded for participating in the monthly challenge or shadow games (earning an achievement).\n` +
+                    `**Beaten:**\n3 points are awarded for beating the game in either the monthly challenge or shadow games.\n` +
                     `**Mastery:**\n3 points are awarded for earning 100% of achievements in the monthly challenge. This can be done any time during the year.\n`)
                 .addTerminalField('OTHER POINT EARNINGS',
                     `**Profile Linking:**\n1 point is awarded for linking your Discord and RetroAchievements profiles.\n\n` +
