@@ -3,6 +3,14 @@ const path = require('path');
 const { Collection, PermissionFlagsBits } = require('discord.js');
 const ErrorHandler = require('../utils/errorHandler');
 
+const DM_ALLOWED_COMMANDS = new Set([
+    'profile',    // View profile stats
+    'leaderboard', // View leaderboards
+    'search',     // Search games
+    'help',       // Get help
+    'challenge'   // View current challenge
+]);
+
 class CommandHandler {
     constructor() {
         // Separate collections for normal and admin commands
@@ -108,15 +116,22 @@ class CommandHandler {
      * Check if the message author has admin permission via either
      * the Administrator bit or a special ADMIN_ROLE_ID.
      */
-    hasAdminPermission(message) {
-        const member = message.member;
-        if (!member) return false;
-
-        return (
-            member.permissions.has(PermissionFlagsBits.Administrator) ||
-            member.roles.cache.has(process.env.ADMIN_ROLE_ID)
-        );
+   hasAdminPermission(message) {
+    // In DMs, check against a list of admin user IDs
+    if (!message.guild) {
+        const adminUsers = process.env.ADMIN_USER_IDS?.split(',') || [];
+        return adminUsers.includes(message.author.id);
     }
+
+    // In server, check roles as before
+    const member = message.member;
+    if (!member) return false;
+
+    return (
+        member.permissions.has(PermissionFlagsBits.Administrator) ||
+        member.roles.cache.has(process.env.ADMIN_ROLE_ID)
+    );
+}
 
     /**
      * Checks if the user is on cooldown for a given command.
@@ -164,57 +179,77 @@ class CommandHandler {
      * Main handler for a message. Checks if it starts with "!", then finds
      * the command in either normal or admin collections, handles perms & cooldowns.
      */
-    async handleCommand(message, services) {
-        // Only handle messages starting with '!'
-        if (!message.content.startsWith('!')) return;
+async handleCommand(message, services) {
+    // Only handle messages starting with '!'
+    if (!message.content.startsWith('!')) return;
 
-        // Parse command name and args
-        const args = message.content.slice(1).trim().split(/\s+/);
-        const commandName = args.shift().toLowerCase();
+    // Parse command name and args
+    const args = message.content.slice(1).trim().split(/\s+/);
+    const commandName = args.shift().toLowerCase();
 
-        // Check normal commands first
-        let command = this.commands.get(commandName);
-        let isAdminCommand = false;
+    // Check normal commands first
+    let command = this.commands.get(commandName);
+    let isAdminCommand = false;
 
-        // If not found, check admin
-        if (!command) {
-            command = this.adminCommands.get(commandName);
-            isAdminCommand = !!command;
-        }
-
-        // If no command found at all, bail
-        if (!command) return;
-
-        try {
-            // If it's admin, verify user has permission
-            if (isAdminCommand && !this.hasAdminPermission(message)) {
-                await message.channel.send(
-                    '```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```'
-                );
-                return;
-            }
-
-            // Check cooldown
-            if (this.isOnCooldown(
-                message.author.id,
-                commandName,
-                isAdminCommand
-            )) {
-                await message.channel.send(
-                    '```ansi\n\x1b[32m[ERROR] Command on cooldown\n[Ready for input]█\x1b[0m```'
-                );
-                return;
-            }
-
-            // Execute the command
-            await command.execute(message, args, services);
-        } catch (error) {
-            ErrorHandler.logError(error, `Command Execution: ${commandName}`);
-            await message.channel.send(
-                '```ansi\n\x1b[32m[ERROR] Command execution failed\n[Ready for input]█\x1b[0m```'
-            );
-        }
+    // If not found, check admin
+    if (!command) {
+        command = this.adminCommands.get(commandName);
+        isAdminCommand = !!command;
     }
+
+    // If no command found at all, bail
+    if (!command) return;
+
+    try {
+        // Check if command is being used in DMs
+        const isDM = !message.guild;
+        if (isDM) {
+            // Admin commands are never allowed in DMs
+            if (isAdminCommand) {
+                await message.channel.send(
+                    '```ansi\n\x1b[32m[ERROR] Admin commands cannot be used in DMs\n[Ready for input]█\x1b[0m```'
+                );
+                return;
+            }
+
+            // Check if this command is allowed in DMs
+            if (!DM_ALLOWED_COMMANDS.has(commandName)) {
+                await message.channel.send(
+                    '```ansi\n\x1b[32m[ERROR] This command can only be used in the server\n[Ready for input]█\x1b[0m```'
+                );
+                return;
+            }
+        }
+
+        // If it's admin, verify user has permission
+        if (isAdminCommand && !this.hasAdminPermission(message)) {
+            await message.channel.send(
+                '```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```'
+            );
+            return;
+        }
+
+        // Check cooldown
+        if (this.isOnCooldown(
+            message.author.id,
+            commandName,
+            isAdminCommand
+        )) {
+            await message.channel.send(
+                '```ansi\n\x1b[32m[ERROR] Command on cooldown\n[Ready for input]█\x1b[0m```'
+            );
+            return;
+        }
+
+        // Execute the command
+        await command.execute(message, args, services);
+    } catch (error) {
+        ErrorHandler.logError(error, `Command Execution: ${commandName}`);
+        await message.channel.send(
+            '```ansi\n\x1b[32m[ERROR] Command execution failed\n[Ready for input]█\x1b[0m```'
+        );
+    }
+}
 
     /**
      * Utility to reload a single command by name, searching both
