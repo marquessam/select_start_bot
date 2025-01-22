@@ -154,8 +154,6 @@ module.exports = {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve shadow game challenge\n[Ready for input]█\x1b[0m```');
     }
 }
-
-
     async displayPointsInfo(message, shadowGame) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing points information...\x1b[0m\n```');
