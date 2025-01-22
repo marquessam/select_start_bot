@@ -4,7 +4,7 @@ const database = require('../database');
 module.exports = {
     name: 'challenge',
     description: 'Displays current monthly challenge, shadow game challenge, or ways to earn points',
-    
+
     async execute(message, args, { shadowGame }) {
         try {
             if (!args.length) {
@@ -14,7 +14,7 @@ module.exports = {
 
             const subcommand = args[0].toLowerCase();
 
-            switch(subcommand) {
+            switch (subcommand) {
                 case 'monthly':
                     await this.displayMonthlyChallenge(message, shadowGame);
                     break;
@@ -88,98 +88,69 @@ module.exports = {
         }
     },
 
-   async displayShadowChallenge(message, shadowGame) {
-    try {
-        await message.channel.send('```ansi\n\x1b[32m> Accessing shadow game challenge...\x1b[0m\n```');
+    async displayShadowChallenge(message, shadowGame) {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Accessing shadow game challenge...\x1b[0m\n```');
 
-        // Get shadow game from database
-        const shadowChallenge = await database.getShadowGame();
-        console.log('ShadowChallenge fetched:', shadowChallenge);
+            const shadowChallenge = await database.getShadowGame();
+            if (!shadowChallenge || !shadowChallenge.active) {
+                await message.channel.send('```ansi\n\x1b[32m[STATUS] Current shadow game hidden.\n[Ready for input]█\x1b[0m```');
+                return;
+            }
 
-        // Check if shadowChallenge exists and is active
-        if (!shadowChallenge || !shadowChallenge.active) {
-            await message.channel.send('```ansi\n\x1b[32m[STATUS] Current shadow game hidden.\n[Ready for input]█\x1b[0m```');
-            return;
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('SHADOW GAME CHALLENGE')
+                .setTerminalDescription('[STATUS: UNLOCKED]\n[DATA VERIFIED]')
+                .addTerminalField('CURRENT SHADOW CHALLENGE', shadowChallenge.gameName || 'Unknown Challenge')
+                .addTerminalField('CHALLENGE TIMEFRAME', `${shadowChallenge.startDate || 'N/A'} - ${shadowChallenge.endDate || 'N/A'}`)
+                .addTerminalField('CHALLENGE PARAMETERS', shadowChallenge.rules.map(rule => `> ${rule}`).join('\n') || 'No rules available')
+                .addTerminalField('REWARD PROTOCOL',
+                    shadowChallenge.points.first ?
+                        `> 🥇 ${shadowChallenge.points.first} pts\n> 🥈 ${shadowChallenge.points.second || 0} pts\n> 🥉 ${shadowChallenge.points.third || 0} pts` :
+                        'No reward information')
+                .addTerminalField('POINT STRUCTURE',
+                    `- **Participation:** 1 point (earning an achievement)\n` +
+                    `- **Beaten:** +3 points (beating the game)\n\n` +
+                    `*Note: Points for participation and beating are only available during the active month.*`)
+                .setTerminalFooter();
+
+            if (shadowChallenge.gameId) embed.setURL(`https://retroachievements.org/game/${shadowChallenge.gameId}`);
+            if (shadowChallenge.gameIcon) embed.setThumbnail(`https://retroachievements.org${shadowChallenge.gameIcon}`);
+
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type !challenge to see other options\n[Ready for input]█\x1b[0m```');
+            if (shadowGame) await shadowGame.tryShowError(message);
+        } catch (error) {
+            console.error('Shadow Game Challenge Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve shadow game challenge\n[Ready for input]█\x1b[0m```');
         }
+    },
 
-        // Destructure properties with defaults
-        const { 
-            gameId = '', 
-            gameIcon = '', 
-            gameName = 'Unknown Challenge', 
-            startDate = 'N/A', 
-            endDate = 'N/A', 
-            rules = [], 
-            points = {} 
-        } = shadowChallenge;
+    async displayPointsInfo(message, shadowGame) {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Accessing points information...\x1b[0m\n```');
 
-        // Prepare conditional thumbnail and URL
-        const thumbnail = gameIcon ? `https://retroachievements.org${gameIcon}` : null;
-        const url = gameId ? `https://retroachievements.org/game/${gameId}` : null;
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('HOW TO EARN POINTS')
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING POINT EARNINGS]')
+                .addTerminalField('CHALLENGE POINTS',
+                    `**Participation:**\nA point is awarded for participating in the monthly challenge or shadow games (earning an achievement).\n` +
+                    `**Beaten:**\n3 points are awarded for beating the game in either the monthly challenge or shadow games.\n` +
+                    `**Mastery:**\n3 points are awarded for earning 100% of achievements in the monthly challenge. This can be done any time during the year.\n`)
+                .addTerminalField('OTHER POINT EARNINGS',
+                    `**Profile Linking:**\n1 point is awarded for linking your Discord and RetroAchievements profiles.\n\n` +
+                    `**Beta Membership:**\n1 point is awarded for being a Beta member.\n`)
+                .addTerminalField('NOTES',
+                    `- Points for participation and beating challenges are only available during the active month.\n` +
+                    `- Mastery is not available for Shadow Games.`)
+                .setTerminalFooter();
 
-        const timeframe = `${startDate} - ${endDate}`;
-        const parameters = rules.length > 0 ? rules.map(rule => `> ${rule}`).join('\n') : 'No rules available';
-        const rewardProtocol = points.first ? 
-            `> 🥇 ${points.first} pts\n> 🥈 ${points.second || 0} pts\n> 🥉 ${points.third || 0} pts` 
-            : 'No reward information';
-
-        // Build embed without setting URL or Thumbnail inline
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('SHADOW GAME CHALLENGE')
-            .setTerminalDescription('[STATUS: UNLOCKED]\n[DATA VERIFIED]')
-            .addTerminalField('CURRENT SHADOW CHALLENGE', gameName)
-            .addTerminalField('CHALLENGE TIMEFRAME', timeframe)
-            .addTerminalField('CHALLENGE PARAMETERS', parameters)
-            .addTerminalField('REWARD PROTOCOL', rewardProtocol)
-            .addTerminalField('POINT STRUCTURE',
-                `- **Participation:** 1 point (earning an achievement)\n` +
-                `- **Beaten:** +3 points (beating the game)\n\n` +
-                `*Note: Points for participation and beating are only available during the active month.*\n` +
-                `*Mastery is not available for Shadow Games.*`)
-            .setTerminalFooter();
-
-        // Conditionally set URL and thumbnail if valid
-        if (url) {
-            embed.setURL(url);
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type !challenge to see other options\n[Ready for input]█\x1b[0m```');
+            if (shadowGame) await shadowGame.tryShowError(message);
+        } catch (error) {
+            console.error('Points Information Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve points information\n[Ready for input]█\x1b[0m```');
         }
-        if (thumbnail) {
-            embed.setThumbnail(thumbnail);
-        }
-
-        await message.channel.send({ embeds: [embed] });
-        await message.channel.send('```ansi\n\x1b[32m> Type !challenge to see other options\n[Ready for input]█\x1b[0m```');
-        if (shadowGame) await shadowGame.tryShowError(message);
-    } catch (error) {
-        console.error('Shadow Game Challenge Error:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve shadow game challenge\n[Ready for input]█\x1b[0m```');
     }
-}
-   async displayPointsInfo(message, shadowGame) {
-    try {
-        await message.channel.send('```ansi\n\x1b[32m> Accessing points information...\x1b[0m\n```');
-
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('HOW TO EARN POINTS')
-            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING POINT EARNINGS]')
-            .addTerminalField('CHALLENGE POINTS',
-                `**Participation:**\nA point is awarded for participating in the monthly challenge or shadow games (earning an achievement).\n` +
-                `**Beaten:**\n3 points are awarded for beating the game in either the monthly challenge or shadow games.\n` +
-                `**Mastery:**\n3 points are awarded for earning 100% of achievements in the monthly challenge. This can be done any time during the year.\n`)
-            .addTerminalField('OTHER POINT EARNINGS',
-                `**Profile Linking:**\n1 point is awarded for linking your Discord and RetroAchievements profiles.\n\n` +
-                `**Beta Membership:**\n1 point is awarded for being a Beta member.\n`)
-            .addTerminalField('NOTES',
-                `- Points for participation and beating challenges are only available during the active month.\n` +
-                `- Mastery is not available for Shadow Games.\n`)
-            .setTerminalFooter();
-
-        await message.channel.send({ embeds: [embed] });
-        await message.channel.send('```ansi\n\x1b[32m> Type !challenge to see other options\n[Ready for input]█\x1b[0m```');
-        if (shadowGame) await shadowGame.tryShowError(message);
-    } catch (error) {
-        console.error('Points Information Error:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve points information\n[Ready for input]█\x1b[0m```');
-    }
-}
-
 };
