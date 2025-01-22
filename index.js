@@ -177,12 +177,20 @@ async function coordinateUpdate(services, force = false) {
 }
 
 async function handleMessage(message, services) {
+    // Add debug logs
+    console.log('Message received:', {
+        isDM: !message.guild,
+        channelType: message.channel.type,
+        content: message.content,
+        author: message.author.tag
+    });
     const { userTracker, shadowGame, commandHandler } = services;
     const tasks = [];
 
     const isDM = !message.guild;
 
     if (isDM && !message.author.bot) {
+        console.log('Processing DM message');  // Debug log
         // Check for first-time DM interaction
         const hasInteracted = await message.channel.messages.fetch({ limit: 2 })
             .then(messages => messages.size > 1)
