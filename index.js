@@ -11,6 +11,7 @@ const ShadowGame = require('./shadowGame');
 const errorHandler = require('./utils/errorHandler');
 const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
+const TerminalEmbed = require('./utils/embedBuilder');
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
@@ -55,7 +56,6 @@ async function createCoreServices() {
     try {
         console.log('Creating core services...');
         
-        // Create services in specific order
         const userStats = new UserStats(database);
         const userTracker = new UserTracker(database, userStats);
         const leaderboardCache = createLeaderboardCache(database);
@@ -64,7 +64,6 @@ async function createCoreServices() {
         const shadowGame = new ShadowGame();
         const achievementFeed = new AchievementFeed(client, database);
 
-        // Set interdependencies
         leaderboardCache.setUserStats(userStats);
         global.leaderboardCache = leaderboardCache;
         global.achievementFeed = achievementFeed;
@@ -90,7 +89,6 @@ async function initializeServices(coreServices) {
     try {
         console.log('Initializing services...');
 
-        // Do basic initialization first (no API calls)
         await coreServices.userTracker.initialize();
         console.log('UserTracker initialized');
 
@@ -106,14 +104,12 @@ async function initializeServices(coreServices) {
         await coreServices.commandHandler.loadCommands(coreServices);
         console.log('CommandHandler initialized');
 
-        // Now do the heavy initialization with API calls - but only once
-        await coreServices.leaderboardCache.initialize(true); // Skip initial API call
+        await coreServices.leaderboardCache.initialize(true);
         console.log('LeaderboardCache initialized');
 
         await coreServices.achievementFeed.initialize();
         console.log('AchievementFeed initialized');
 
-        // Do a single coordinated update at the end
         await coordinateUpdate(coreServices, true);
 
         console.log('All services initialized successfully');
@@ -139,7 +135,6 @@ async function setupBot() {
 }
 
 async function coordinateUpdate(services, force = false) {
-    // If this is not forced and we've already got data, skip
     if (!force && services.leaderboardCache.hasInitialData) {
         console.log('[UPDATE] Skipping redundant update, using cached data');
         return;
@@ -153,7 +148,6 @@ async function coordinateUpdate(services, force = false) {
     }
 
     try {
-        // Wait for any pending operations to complete
         if (services.userStats.isInitializing || !services.userStats.initializationComplete) {
             console.log('[UPDATE] Waiting for UserStats initialization...');
             while (services.userStats.isInitializing || !services.userStats.initializationComplete) {
@@ -161,7 +155,6 @@ async function coordinateUpdate(services, force = false) {
             }
         }
 
-        // Get fresh leaderboard data (includes achievements)
         const leaderboardData = await services.leaderboardCache.updateLeaderboards(force);
         console.log('[UPDATE] Leaderboard data updated');
 
@@ -170,17 +163,13 @@ async function coordinateUpdate(services, force = false) {
             return;
         }
 
-        // Process points and wait for completion
         await services.userStats.recheckAllPoints();
         console.log('[UPDATE] Points checked and processed');
         
-        // Wait for any pending saves
         await services.userStats.saveStats();
         console.log('[UPDATE] Stats saved');
 
-        // Mark that we have initial data
         services.leaderboardCache.hasInitialData = true;
-
         console.log('[UPDATE] Coordinated update complete');
     } catch (error) {
         console.error('[UPDATE] Error during coordinated update:', error);
@@ -190,6 +179,41 @@ async function coordinateUpdate(services, force = false) {
 async function handleMessage(message, services) {
     const { userTracker, shadowGame, commandHandler } = services;
     const tasks = [];
+
+    const isDM = !message.guild;
+
+    if (isDM && !message.author.bot) {
+        // Check for first-time DM interaction
+        const hasInteracted = await message.channel.messages.fetch({ limit: 2 })
+            .then(messages => messages.size > 1)
+            .catch(() => true);
+
+        if (!hasInteracted) {
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('SELECT START BOT - DIRECT MESSAGES')
+                .setTerminalDescription(
+                    '[WELCOME TO SELECT START BOT]\n' +
+                    'You can use several commands directly in DMs for quick access to information.'
+                )
+                .addTerminalField('AVAILABLE DM COMMANDS',
+                    '!profile <username> - Check RetroAchievements stats\n' +
+                    '!leaderboard - View challenge rankings\n' +
+                    '!challenge - See current monthly challenge\n' +
+                    '!search <game> - Look up game information\n' +
+                    '!nominations - View/submit game nominations\n' +
+                    '!review - Read/write game reviews\n' +
+                    '!help - Show all available commands'
+                )
+                .addTerminalField('IMPORTANT NOTE',
+                    'Achievement announcements and point updates will still appear in the server\'s bot terminal channel.\n\n' +
+                    'DMs are for quick access to information and submissions only.'
+                )
+                .setTerminalFooter();
+
+            await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type any command to begin\n[Ready for input]█\x1b[0m```');
+        }
+    }
 
     if (message.channel.id === process.env.RA_CHANNEL_ID) {
         tasks.push(userTracker.processMessage(message));
