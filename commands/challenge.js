@@ -32,15 +32,15 @@ module.exports = {
                     `> 🥉 ${currentChallenge.points.third} pts`)
                 // Additional information about Monthly Challenge and Shadow Game
                 .addTerminalField('ABOUT THE CHALLENGES',
-                    `**Monthly Challenge:**\nA community-voted game each month where players compete to earn the most RetroAchievements.\n` +
+                    `**Monthly Challenge:**\nA community-voted game each month where players compete to earn the most RetroAchievements.\n\n` +
                     `**Shadow Game Challenge:**\nA hidden challenge that is unlocked by interacting with the community/website/bot in unique ways each month. Once one user discovers it, it becomes available to the entire community.`)
                 // Additional Ways to Earn Points
                 .addTerminalField('HOW TO EARN POINTS',
                     `**Monthly Challenge & Shadow Games:**\n` +
-                    `- 1 point for participating (earning a single achievement).\n` +
-                    `- 3 points for beating the game.\n` +
-                    `- Mastery in the monthly challenge grants 3 points, achievable any time during the year.\n` +
-                    `- Points for shadow games (participation/beating) are only available during the month they're active.\n\n` +
+                    `- Participation (earning a single achievement) 1pts.\n` +
+                    `- Beaten (beating the game) +3 pts.\n` +
+                    `- Mastery (earning 100% of achievements) +3 pts \n` +
+                    `- Points (participation/beating) are only available during the month they're active.\n\n` +
                     `**Profile Linking & Membership:**\n` +
                     `- 1 point for linking your Discord and RetroAchievements profiles.\n` +
                     `- 1 point for being a Beta member.`)
