@@ -4,11 +4,13 @@ const { Collection, PermissionFlagsBits } = require('discord.js');
 const ErrorHandler = require('../utils/errorHandler');
 
 const DM_ALLOWED_COMMANDS = new Set([
-    'profile',    // View profile stats
-    'leaderboard', // View leaderboards
-    'search',     // Search games
-    'help',       // Get help
-    'challenge'   // View current challenge
+    'profile',    
+    'leaderboard', 
+    'search',     
+    'help',       
+    'challenge',
+    'nominations',
+    'review'
 ]);
 
 class CommandHandler {
