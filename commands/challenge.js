@@ -154,31 +154,32 @@ module.exports = {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve shadow game challenge\n[Ready for input]█\x1b[0m```');
     }
 }
-    async displayPointsInfo(message, shadowGame) {
-        try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing points information...\x1b[0m\n```');
+   async displayPointsInfo(message, shadowGame) {
+    try {
+        await message.channel.send('```ansi\n\x1b[32m> Accessing points information...\x1b[0m\n```');
 
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('HOW TO EARN POINTS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING POINT EARNINGS]')
-                .addTerminalField('CHALLENGE POINTS',
-                    `**Participation:**\nA point is awarded for participating in the monthly challenge or shadow games (earning an achievement).\n` +
-                    `**Beaten:**\n3 points are awarded for beating the game in either the monthly challenge or shadow games.\n` +
-                    `**Mastery:**\n3 points are awarded for earning 100% of achievements in the monthly challenge. This can be done any time during the year.\n`)
-                .addTerminalField('OTHER POINT EARNINGS',
-                    `**Profile Linking:**\n1 point is awarded for linking your Discord and RetroAchievements profiles.\n\n` +
-                    `**Beta Membership:**\n1 point is awarded for being a Beta member.\n`)
-                .addTerminalField('NOTES',
-                    `- Points for participation and beating challenges are only available during the active month.\n` +
-                    `- Mastery is not available for Shadow Games.\n` +)
-                .setTerminalFooter();
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('HOW TO EARN POINTS')
+            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING POINT EARNINGS]')
+            .addTerminalField('CHALLENGE POINTS',
+                `**Participation:**\nA point is awarded for participating in the monthly challenge or shadow games (earning an achievement).\n` +
+                `**Beaten:**\n3 points are awarded for beating the game in either the monthly challenge or shadow games.\n` +
+                `**Mastery:**\n3 points are awarded for earning 100% of achievements in the monthly challenge. This can be done any time during the year.\n`)
+            .addTerminalField('OTHER POINT EARNINGS',
+                `**Profile Linking:**\n1 point is awarded for linking your Discord and RetroAchievements profiles.\n\n` +
+                `**Beta Membership:**\n1 point is awarded for being a Beta member.\n`)
+            .addTerminalField('NOTES',
+                `- Points for participation and beating challenges are only available during the active month.\n` +
+                `- Mastery is not available for Shadow Games.\n`)
+            .setTerminalFooter();
 
-            await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !challenge to see other options\n[Ready for input]█\x1b[0m```');
-            if (shadowGame) await shadowGame.tryShowError(message);
-        } catch (error) {
-            console.error('Points Information Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve points information\n[Ready for input]█\x1b[0m```');
-        }
+        await message.channel.send({ embeds: [embed] });
+        await message.channel.send('```ansi\n\x1b[32m> Type !challenge to see other options\n[Ready for input]█\x1b[0m```');
+        if (shadowGame) await shadowGame.tryShowError(message);
+    } catch (error) {
+        console.error('Points Information Error:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve points information\n[Ready for input]█\x1b[0m```');
     }
+}
+
 };
