@@ -14,7 +14,7 @@ const pointsConfig = {
             progression: [2080, 2081, 2085, 2090, 2191, 2100, 2108, 2129, 2133],
             winCondition: [2266, 2281],
             requireProgression: true,
-            requireAllWinConditions: true,
+            requireAllWinConditions: false,
             masteryCheck: true
         },
         "10024": {
