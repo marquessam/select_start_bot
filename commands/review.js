@@ -164,64 +164,84 @@ async function handleRead(message, shadowGame, mobyAPI) {
 }
 
 async function handleWrite(message, args, mobyAPI) {
-    // 1. If user did not provide a game title, prompt them
     if (args.length === 0) {
-        await message.channel.send(
-            '```ansi\n\x1b[32m[ERROR] Please provide a game title to review. Example: !review write Super Metroid\n[Ready for input]█\x1b[0m```'
-        );
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Please provide a game title to review\nExample: !review write Super Metroid\n[Ready for input]█\x1b[0m```');
         return;
     }
 
-    // 2. Warn user about the 3-minute timeout
-    await message.channel.send(
-        '```ansi\n\x1b[32m[WARNING] You have 3 minutes to respond to each prompt. If you do not respond in time, you can simply start the process again.\n[Ready for input]█\x1b[0m```'
-    );
-
-    // 3. Validate game title
     const inputTitle = args.join(' ');
     try {
         const searchResults = await mobyAPI.searchGames(inputTitle);
 
-        if (!searchResults || !Array.isArray(searchResults.games) || searchResults.games.length === 0) {
-            await message.channel.send(
-                `\`\`\`ansi\n\x1b[32m[ERROR] No matching games found for "${inputTitle}". Please try again with a different title.\n[Ready for input]█\x1b[0m\`\`\``
-            );
+        if (!searchResults?.games?.length) {
+            await message.channel.send(`\`\`\`ansi\n\x1b[32m[ERROR] No games found matching "${inputTitle}"\n[Ready for input]█\x1b[0m\`\`\``);
             return;
         }
 
-        const suggestedGame = searchResults.games[0];
-        const validatedTitle = suggestedGame.title;
+        // Get top 5 matches
+        const matches = searchResults.games.slice(0, 5);
+        
+        // Display matches
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('GAME MATCHES FOUND')
+            .setTerminalDescription('[SELECT A GAME TO REVIEW]')
+            .addTerminalField('MATCHING GAMES',
+                matches.map((game, i) => 
+                    `${i + 1}. ${game.title} (${game.platform || 'Multiple Platforms'})`
+                ).join('\n')
+            )
+            .addTerminalField('USAGE',
+                'Enter the number of the game you want to review\n' +
+                'Or type "custom" to use your exact title'
+            )
+            .setTerminalFooter();
 
-        // Check if user input matches or is contained in validatedTitle
-        if (
-            !validatedTitle.toLowerCase().includes(inputTitle.toLowerCase()) &&
-            inputTitle.toLowerCase() !== validatedTitle.toLowerCase()
-        ) {
-            await message.channel.send(
-                `\`\`\`ansi\n\x1b[32m[INFO] Did you mean "${validatedTitle}"? If so, please type !review write ${validatedTitle}.\n[Ready for input]█\x1b[0m\`\`\``
-            );
+        await message.channel.send({ embeds: [embed] });
+
+        // Wait for user selection
+        const filter = m => m.author.id === message.author.id;
+        const collected = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: 30000
+        });
+
+        if (!collected.size) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] No response received. Command timed out.\n[Ready for input]█\x1b[0m```');
             return;
         }
 
+        const response = collected.first().content.toLowerCase();
+        let validatedTitle;
+
+        if (response === 'custom') {
+            validatedTitle = inputTitle;
+        } else {
+            const choice = parseInt(response);
+            if (isNaN(choice) || choice < 1 || choice > matches.length) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid selection\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+            validatedTitle = matches[choice - 1].title;
+        }
+
+        // Check for existing review
         const existingReviews = await database.getReviewsForGame(validatedTitle);
         const hasReviewed = existingReviews.some(
-            (review) => review.username.toLowerCase() === message.author.username.toLowerCase()
+            review => review.username.toLowerCase() === message.author.username.toLowerCase()
         );
 
         if (hasReviewed) {
-            await message.channel.send(
-                '```ansi\n\x1b[32m[ERROR] You have already reviewed this game.\n[Ready for input]█\x1b[0m```'
-            );
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] You have already reviewed this game\n[Ready for input]█\x1b[0m```');
             return;
         }
 
-        // 4. Begin collecting scores and comments
+        await message.channel.send('```ansi\n\x1b[32m[WARNING] You have 3 minutes to respond to each prompt\n[Ready for input]█\x1b[0m```');
         await collectReviewDetails(message, validatedTitle);
+
     } catch (error) {
-        console.error('MobyAPI Validation Error:', error);
-        await message.channel.send(
-            '```ansi\n\x1b[32m[ERROR] Failed to validate game title. Please try again later.\n[Ready for input]█\x1b[0m```'
-        );
+        console.error('Game validation error:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to validate game title\n[Ready for input]█\x1b[0m```');
     }
 }
 
