@@ -156,8 +156,7 @@ module.exports = {
             )
             .addTerminalField('COMMUNITY POINTS',
                 '**Profile Setup:**\n' +
-                '- Link RetroAchievements profile (1 point)\n' +
-                '- Verify Discord membership (1 point)\n\n' +
+                '- Link RetroAchievements profile and discord profiles (1 point)\n\n' +
                 '**Special Events:**\n' +
                 '- Beta testing participation (1 point)\n' +
                 '- Community event participation (varies)\n' +
