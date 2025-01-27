@@ -209,9 +209,22 @@ async sendAchievementNotification(channel, username, achievement) {
         const currentChallenge = await database.getCurrentChallenge();
         const shadowGame = await database.getShadowGame();
 
+        // Ensure we're comparing strings for game IDs
+        const achievementGameId = String(achievement.GameID || achievement.gameId);
+        const monthlyGameId = currentChallenge?.gameId ? String(currentChallenge.gameId) : null;
+        const shadowGameId = shadowGame?.finalReward?.gameId ? String(shadowGame.finalReward.gameId) : null;
+
         // Check if achievement is from monthly challenge or shadow game
-        const isMonthlyChallenge = achievement.GameID === currentChallenge?.gameId;
-        const isShadowGame = shadowGame?.active && achievement.GameID === shadowGame?.finalReward?.gameId;
+        const isMonthlyChallenge = monthlyGameId && achievementGameId === monthlyGameId;
+        const isShadowGame = shadowGame?.active && shadowGameId && achievementGameId === shadowGameId;
+
+        // Debug logging
+        console.log(`[ACHIEVEMENT FEED] Game ID comparison:
+            Achievement Game ID: ${achievementGameId}
+            Monthly Game ID: ${monthlyGameId}
+            Shadow Game ID: ${shadowGameId}
+            Is Monthly: ${isMonthlyChallenge}
+            Is Shadow: ${isShadowGame}`);
 
         const [badgeUrl, userIconUrl] = await Promise.all([
             achievement.BadgeName
@@ -234,7 +247,7 @@ async sendAchievementNotification(channel, username, achievement) {
             })
             .setTimestamp();
 
-        // Create message options
+        // Message options with the embed
         const messageOptions = {
             embeds: [embed]
         };
@@ -245,8 +258,6 @@ async sendAchievementNotification(channel, username, achievement) {
                 attachment: './logo.png',
                 name: 'logo.png'
             }];
-            // Setting a green line on the left side of the embed for visual distinction
-            embed.setColor('#00FF00');
         }
 
         await this.queueAnnouncement(messageOptions);
