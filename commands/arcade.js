@@ -1,369 +1,256 @@
-// arcade.js
-
 const TerminalEmbed = require('../utils/embedBuilder');
 const database = require('../database');
-const mobyAPI = require('../mobyAPI');
 
 module.exports = {
-    name: 'arcade',
-    description: 'Manage arcade games and scores',
-    async execute(message, args) {
+    name: 'rules',
+    description: 'Displays community rules and challenge information',
+
+    async execute(message, args, { shadowGame }) {
         try {
             if (!args.length) {
-                return await showGameList(message);
+                return await this.displayRuleCategories(message);
             }
 
-            const [command, ...subArgs] = args;
-
-            // Admin commands check
-            const adminCommands = ['reset', 'rules'];
-            if (adminCommands.includes(command)) {
-                const hasPermission = message.member && (
-                    message.member.permissions.has('Administrator') ||
-                    message.member.roles.cache.has(process.env.ADMIN_ROLE_ID)
-                );
-
-                if (!hasPermission) {
-                    await message.channel.send('```ansi\n\x1b[32m[ERROR] Insufficient permissions\n[Ready for input]█\x1b[0m```');
-                    return;
-                }
-            }
-
-            switch (command) {
-                case 'reset':
-                    await handleReset(message, subArgs);
+            const subcommand = args[0].toLowerCase();
+            switch (subcommand) {
+                case 'monthly':
+                    await this.displayMonthlyChallenge(message, shadowGame);
                     break;
-                case 'rules':
-                    await handleRules(message);
+                case 'shadow':
+                    await this.displayShadowChallenge(message, shadowGame);
+                    break;
+                case 'points':
+                    await this.displayPointsInfo(message, shadowGame);
+                    break;
+                case 'arcade':
+                    await this.displayArcadeRules(message);
+                    break;
+                case 'community':
+                    await this.displayCommunityRules(message);
                     break;
                 default:
-                    await handleViewGame(message, args);
-                    break;
+                    await this.displayRuleCategories(message);
             }
         } catch (error) {
-            console.error('Arcade Command Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Arcade operation failed\n[Ready for input]█\x1b[0m```');
+            console.error('Rules Command Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to display rules\n[Ready for input]█\x1b[0m```');
         }
+    },
+
+    async displayRuleCategories(message) {
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('SELECT START RULES')
+            .setTerminalDescription('[RULES DATABASE]\n[SELECT A CATEGORY]')
+            .addTerminalField('AVAILABLE CATEGORIES',
+                '1. !rules monthly - Monthly Challenge Rules & Information\n' +
+                '2. !rules shadow - Shadow Game Challenge Information\n' +
+                '3. !rules points - Point System Rules & Information\n' +
+                '4. !rules arcade - Arcade Challenge Information\n' +
+                '5. !rules community - Community Guidelines & Discord Rules'
+            )
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [embed] });
+    },
+
+    async displayMonthlyChallenge(message, shadowGame) {
+        try {
+            const currentChallenge = await database.getCurrentChallenge();
+            
+            if (!currentChallenge || !currentChallenge.gameId) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] No active monthly challenge found\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('MONTHLY CHALLENGE RULES')
+                .setURL(`https://retroachievements.org/game/${currentChallenge.gameId}`)
+                .setThumbnail(`https://retroachievements.org${currentChallenge.gameIcon}`)
+                .setTerminalDescription('[CURRENT CHALLENGE INFORMATION]')
+                .addTerminalField('ACTIVE CHALLENGE', 
+                    `GAME: ${currentChallenge.gameName}\n` +
+                    `DATES: ${currentChallenge.startDate} - ${currentChallenge.endDate}`
+                )
+                .addTerminalField('CHALLENGE RULES', 
+                    currentChallenge.rules.map(rule => `> ${rule}`).join('\n')
+                )
+                .addTerminalField('PLACEMENT REWARDS',
+                    `> 🥇 ${currentChallenge.points.first} pts\n` +
+                    `> 🥈 ${currentChallenge.points.second} pts\n` +
+                    `> 🥉 ${currentChallenge.points.third} pts`
+                )
+                .addTerminalField('ACHIEVEMENT POINTS',
+                    `- Participation: 1 point (earning any achievement)\n` +
+                    `- Game Beaten: +3 points (completing the game)\n` +
+                    `- Mastery: +3 points (100% completion)\n\n` +
+                    `*Note: Participation and beaten points must be earned during the active month.*`
+                )
+                .setTerminalFooter();
+
+            await message.channel.send({ embeds: [embed] });
+            if (shadowGame) await shadowGame.tryShowError(message);
+        } catch (error) {
+            console.error('Monthly Rules Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly challenge rules\n[Ready for input]█\x1b[0m```');
+        }
+    },
+
+    async displayShadowChallenge(message, shadowGame) {
+        try {
+            const shadowConfig = await database.getShadowGame();
+            if (!shadowConfig || !shadowConfig.active) {
+                await message.channel.send('```ansi\n\x1b[32m[STATUS] Shadow game information unavailable.\n[Ready for input]█\x1b[0m```');
+                return;
+            }
+
+            const isDiscovered = shadowConfig.currentProgress >= shadowConfig.puzzles.length;
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('SHADOW GAME RULES')
+                .setTerminalDescription(
+                    '[SHADOW GAME INFORMATION]\n\n' +
+                    'The shadow game is a special monthly bonus challenge hidden within our community. ' +
+                    'Once discovered through solving puzzles, it becomes available to all members as an ' +
+                    'additional way to earn points alongside the main monthly challenge.'
+                )
+                .addTerminalField('HOW IT WORKS',
+                    '1. A series of puzzles are hidden in the community\n' +
+                    '2. Members work together to solve these puzzles\n' +
+                    '3. Upon completion, a bonus game challenge is revealed\n' +
+                    '4. All members can then participate for additional points'
+                );
+
+            if (isDiscovered) {
+                embed
+                    .addTerminalField('CURRENT CHALLENGE',
+                        `GAME: ${shadowConfig.finalReward.gameName}\n` +
+                        'PLATFORM: Nintendo 64'
+                    )
+                    .addTerminalField('POINT STRUCTURE',
+                        `- Participation: ${shadowConfig.points.participation} point\n` +
+                        `- Game Beaten: ${shadowConfig.points.beaten} points\n\n` +
+                        '*Points can be earned alongside monthly challenge.*'
+                    )
+                    .setURL(`https://retroachievements.org/game/${shadowConfig.finalReward.gameId}`);
+            } else {
+                embed.addTerminalField('STATUS', 'Current shadow game has not yet been discovered.');
+            }
+
+            embed.setTerminalFooter();
+            await message.channel.send({ embeds: [embed] });
+            if (shadowGame) await shadowGame.tryShowError(message);
+        } catch (error) {
+            console.error('Shadow Rules Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve shadow game rules\n[Ready for input]█\x1b[0m```');
+        }
+    },
+
+    async displayPointsInfo(message, shadowGame) {
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('POINT SYSTEM RULES')
+            .setTerminalDescription('[POINT SYSTEM INFORMATION]')
+            .addTerminalField('MONTHLY CHALLENGE POINTS',
+                '**Monthly Game Points:**\n' +
+                '- Participation (1 point): Earn any achievement\n' +
+                '- Game Beaten (3 points): Complete the game\n' +
+                '- Mastery (3 points): 100% achievement completion\n' +
+                '- Top 3 Placement: 6/4/2 points (1st/2nd/3rd)\n\n' +
+                '**Shadow Game Points:**\n' +
+                '- Participation (1 point): Earn any achievement\n' +
+                '- Game Beaten (3 points): Complete the game'
+            )
+            .addTerminalField('COMMUNITY POINTS',
+                '**Profile Setup:**\n' +
+                '- Link RetroAchievements profile and discord profiles (1 point)\n\n' +
+                '**Special Events:**\n' +
+                '- Beta testing participation (1 point)\n' +
+                '- Community event participation (varies)\n' +
+                '- Arcade challenge high scores (varies)'
+            )
+            .addTerminalField('IMPORTANT NOTES',
+                '- Participation and beaten points are time-limited\n' +
+                '- Mastery points can be earned anytime during the year\n' +
+                '- Points contribute to yearly rankings\n' +
+                '- Year-end prizes awarded based on total points'
+            )
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [embed] });
+        if (shadowGame) await shadowGame.tryShowError(message);
+    },
+
+    async displayArcadeRules(message) {
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('ARCADE CHALLENGE RULES')
+            .setTerminalDescription(
+                '[ARCADE CHALLENGE INFORMATION]\n\n' +
+                'The Arcade Challenge is a year-long competition featuring various classic arcade and high-score based games. ' +
+                'Members compete to achieve the highest possible scores across multiple titles, with new games added monthly.'
+            )
+            .addTerminalField('HOW IT WORKS',
+                '1. View available games with !arcade\n' +
+                '2. Each game has specific rules and conditions\n' +
+                '3. Submit scores with screenshot proof\n' +
+                '4. Compete for top 3 positions in each game\n' +
+                '5. Boards close December 1st, 2025'
+            )
+            .addTerminalField('SUBMISSION RULES',
+                '1. All scores must be submitted with screenshot proof\n' +
+                '2. Submit screenshots in #screenshot-submissions\n' +
+                '3. Follow game-specific rules and conditions\n' +
+                '4. Time limits and game modes must be followed\n' +
+                '5. Scores are verified by moderators'
+            )
+            .addTerminalField('SCORING & REWARDS',
+                '- Scores tracked until December 1st, 2025\n' +
+                '- Points awarded for top 3 positions per game\n' +
+                '- Points contribute to yearly total\n' +
+                '- New games added monthly\n' +
+                '- Community game suggestions welcome'
+            )
+            .addTerminalField('COMMANDS',
+                '!arcade - View all arcade games\n' +
+                '!arcade <number> - View specific game board\n\n' +
+                '*Note: Use commands in #bot-terminal channel*'
+            )
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [embed] });
+    },
+
+    async displayCommunityRules(message) {
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('COMMUNITY GUIDELINES')
+            .setTerminalDescription('[COMMUNITY RULES & INFORMATION]')
+            .addTerminalField('GENERAL CONDUCT',
+                '1. Treat all members with respect\n' +
+                '2. No harassment, discrimination, or hate speech\n' +
+                '3. Keep discussions family-friendly\n' +
+                '4. Follow channel topic guidelines\n' +
+                '5. Listen to and respect admin/mod decisions'
+            )
+            .addTerminalField('CHALLENGE PARTICIPATION',
+                '1. No cheating or exploitation of games\n' +
+                '2. Report technical issues to admins\n' +
+                '3. Submit scores/achievements honestly\n' +
+                '4. Help maintain a fair competition\n' +
+                '5. Celebrate others\' achievements'
+            )
+            .addTerminalField('COMMUNICATION CHANNELS',
+                '**#general-chat**\n' +
+                '- General discussion and community chat\n\n' +
+                '**#retroachievements**\n' +
+                '- Share your RA profile for verification\n\n' +
+                '**#submissions**\n' +
+                '- Submit arcade high scores with proof\n\n' +
+                '**#monthly-challenge**\n' +
+                '- Discuss current challenges\n' +
+                '- Share tips and strategies\n\n' +
+                '**#bot-terminal**\n' +
+                '- All bot commands must be used here\n' +
+                '- Keep other channels clear of bot commands'
+            )
+            .setTerminalFooter();
+        
+        await message.channel.send({ embeds: [embed] });
     }
 };
-
-async function showGameList(message) {
-    const arcadeData = await database.getArcadeScores();
-    
-    // Build a list of games with an index
-    const gameList = Object.entries(arcadeData.games)
-        .map(([name, game], index) => {
-            const hasScores = game.scores.length > 0 ? '✓' : ' ';
-            return `${index + 1}. ${name} (${game.platform}) ${hasScores}`;
-        })
-        .join('\n');
-
-    // Create the embed
-    const embed = new TerminalEmbed()
-        .setTerminalTitle('ARCADE CHALLENGE')
-        .setTerminalDescription(
-            '[DATABASE ACCESS GRANTED]\n' +
-            '[SELECT A GAME TO VIEW RANKINGS]\n' +
-            `[EXPIRES: ${arcadeData.expiryDate}]`
-        )
-        .addTerminalField(
-            'SUBMISSION REQUIREMENTS',
-            'All high scores must be verified with screenshot evidence posted in the screenshot-submissions channel.'
-        )
-        .addTerminalField(
-            'AVAILABLE GAMES',
-            gameList + '\n\n✓ = Scores recorded'
-        )
-        .addTerminalField(
-            'USAGE',
-            '!arcade <game number> - View specific game rankings\n' +
-            '!arcade reset <game_number> [username] - Reset scores\n' +
-            '!arcade rules - Update game rules'
-        )
-        .setTerminalFooter();
-
-    await message.channel.send({ embeds: [embed] });
-}
-
-async function handleViewGame(message, args) {
-    const gameNum = parseInt(args[0]);
-    const arcadeData = await database.getArcadeScores();
-    const games = Object.entries(arcadeData.games);
-    
-    if (isNaN(gameNum) || gameNum < 1 || gameNum > games.length) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```');
-        return;
-    }
-
-    const [gameName, gameData] = games[gameNum - 1];
-
-    // Build the score list
-    const scoreList = gameData.scores.length > 0
-        ? gameData.scores
-            .map((score, index) => {
-                const medals = ['🥇', '🥈', '🥉'];
-                return `${medals[index] || ''} ${score.username}: ${score.score.toLocaleString()}`;
-            })
-            .join('\n')
-        : 'No scores recorded';
-
-    // Check if we have boxArt in DB; if not, fetch from Moby
-    let boxArt = gameData.boxArt;
-    let mobyLink = '';
-
-    try {
-        const searchResult = await mobyAPI.searchGames(gameName);
-        if (searchResult?.games?.length > 0) {
-            // Try to find exact match first
-            let matchedGame = searchResult.games.find(game => 
-                game.title.toLowerCase() === gameName.toLowerCase()
-            );
-
-            // If no exact match, use first result
-            if (!matchedGame) {
-                matchedGame = searchResult.games[0];
-            }
-
-            console.log(`Matched game: ${matchedGame.title} for search: ${gameName}`);
-
-            if (!boxArt && matchedGame.sample_cover?.image) {
-                boxArt = matchedGame.sample_cover.image;
-            }
-
-            mobyLink = `https://www.mobygames.com/game/${matchedGame.game_id}/${matchedGame.title
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/^-+|-+$/g, '')}`;
-        }
-    } catch (error) {
-        console.error('Failed to fetch game data:', error);
-    }
-
-    const embed = new TerminalEmbed()
-        .setTerminalTitle(`${gameName} RANKINGS`)
-        .setTerminalDescription(
-            '[DATABASE ACCESS GRANTED]' + 
-            (mobyLink ? `\n\n[View on MobyGames](${mobyLink})` : '')
-        )
-        .addTerminalField(
-            'GAME INFO',
-            `PLATFORM: ${gameData.platform}\n` +
-            `RULES: ${gameData.description}`
-        )
-        .addTerminalField('HIGH SCORES', scoreList);
-
-    if (boxArt) {
-        embed.setImage(boxArt);
-    }
-
-    embed.setTerminalFooter();
-    await message.channel.send({ embeds: [embed] });
-}
-async function handleReset(message, args) {
-    if (!args.length) {
-        await message.channel.send(
-            '```ansi\n\x1b[32m[ERROR] Invalid syntax\n' +
-            'Usage: !arcade reset <game_number> [username]\n' +
-            '[Ready for input]█\x1b[0m```'
-        );
-        return;
-    }
-
-    const gameNum = parseInt(args[0]);
-    const username = args[1]?.toLowerCase();
-
-    const arcadeData = await database.getArcadeScores();
-    const games = Object.entries(arcadeData.games);
-
-    if (gameNum < 1 || gameNum > games.length) {
-        await message.channel.send(
-            '```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```'
-        );
-        return;
-    }
-
-    const [gameName, gameData] = games[gameNum - 1];
-    const oldScores = [...(gameData.scores || [])];
-
-    // Remove a single user's score, or reset all scores
-    if (username) {
-        await database.removeArcadeScore(gameName, username);
-    } else {
-        await database.resetArcadeScores(gameName);
-    }
-
-    // Retrieve updated data for display
-    const updatedData = await database.getArcadeScores();
-    const updatedScores = updatedData.games[gameName].scores;
-
-    // If no boxArt, attempt to fetch from Moby
-    let boxArt = gameData.boxArt;
-    if (!boxArt) {
-        boxArt = await fetchBoxArt(gameName);
-    }
-
-    const embed = new TerminalEmbed()
-        .setTerminalTitle(`${gameName} - SCORES RESET`)
-        .setTerminalDescription('[UPDATE COMPLETE]')
-        .addTerminalField(
-            'ACTION TAKEN',
-            username
-                ? `Removed score for user: ${username}`
-                : 'Reset all scores for game'
-        );
-
-    // Show previous rankings if any
-    if (oldScores.length > 0) {
-        embed.addTerminalField(
-            'PREVIOUS RANKINGS',
-            oldScores
-                .map((score, index) => {
-                    const medals = ['🥇', '🥈', '🥉'];
-                    const medal = medals[index] || '';
-                    return `${medal} ${score.username}: ${score.score.toLocaleString()}`;
-                })
-                .join('\n')
-        );
-    }
-
-    // Show updated rankings
-    embed.addTerminalField(
-        'CURRENT RANKINGS',
-        updatedScores.length > 0
-            ? updatedScores
-                .map((score, index) => {
-                    const medals = ['🥇', '🥈', '🥉'];
-                    const medal = medals[index] || '';
-                    return `${medal} ${score.username}: ${score.score.toLocaleString()}`;
-                })
-                .join('\n')
-            : 'No scores recorded'
-    );
-
-    // Add the box art if available
-    if (boxArt) {
-        embed.setImage(boxArt);
-    }
-
-    embed.setTerminalFooter();
-    await message.channel.send({ embeds: [embed] });
-}
-
-async function handleRules(message) {
-    const filter = m => m.author.id === message.author.id;
-    const timeout = 30000;
-
-    await message.channel.send(
-        '```ansi\n\x1b[32mEnter the game number to update rules for:\x1b[0m```'
-    );
-
-    let gameResponse;
-    try {
-        gameResponse = await message.channel.awaitMessages({
-            filter,
-            max: 1,
-            time: timeout,
-            errors: ['time']
-        });
-    } catch (error) {
-        await message.channel.send(
-            '```ansi\n\x1b[32m[ERROR] Time expired\n[Ready for input]█\x1b[0m```'
-        );
-        return;
-    }
-
-    const gameNum = parseInt(gameResponse.first().content);
-    const arcadeData = await database.getArcadeScores();
-    const games = Object.entries(arcadeData.games);
-
-    if (isNaN(gameNum) || gameNum < 1 || gameNum > games.length) {
-        await message.channel.send(
-            '```ansi\n\x1b[32m[ERROR] Invalid game number\n[Ready for input]█\x1b[0m```'
-        );
-        return;
-    }
-
-    const [gameName, gameData] = games[gameNum - 1];
-
-    await message.channel.send(
-        '```ansi\n\x1b[32mEnter the new rules:\x1b[0m```'
-    );
-
-    let rulesResponse;
-    try {
-        rulesResponse = await message.channel.awaitMessages({
-            filter,
-            max: 1,
-            time: timeout,
-            errors: ['time']
-        });
-    } catch (error) {
-        await message.channel.send(
-            '```ansi\n\x1b[32m[ERROR] Time expired\n[Ready for input]█\x1b[0m```'
-        );
-        return;
-    }
-
-    const newRules = rulesResponse.first().content;
-    await database.updateArcadeRules(gameName, newRules);
-
-    // If the game doesn't already have boxArt, fetch it from Moby
-    let boxArt = gameData.boxArt;
-    if (!boxArt) {
-        boxArt = await fetchBoxArt(gameName);
-    }
-
-    const embed = new TerminalEmbed()
-        .setTerminalTitle('GAME RULES UPDATED')
-        .setTerminalDescription('[UPDATE SUCCESSFUL]')
-        .addTerminalField(
-            'DETAILS',
-            `GAME: ${gameName}\nNEW RULES: ${newRules}`
-        );
-
-    // Add the box art if available
-    if (boxArt) {
-        embed.setImage(boxArt);
-    }
-
-    embed.setTerminalFooter();
-    await message.channel.send({ embeds: [embed] });
-}
-
-/**
- * fetchBoxArt
- * Uses our MobyAPI to look up box art for a given game name.
- * Adjust this function to match your MobyGames API response structure.
- */
-async function fetchBoxArt(gameName) {
-    try {
-        const result = await mobyAPI.searchGames(gameName);
-        
-        if (!result || !Array.isArray(result.games) || result.games.length === 0) {
-            return null;
-        }
-
-        // Find exact match first
-        let matchedGame = result.games.find(game => 
-            game.title.toLowerCase() === gameName.toLowerCase()
-        );
-
-        // If no exact match, use first result
-        if (!matchedGame) {
-            matchedGame = result.games[0];
-        }
-
-        // Log for debugging
-        console.log(`Searching for: "${gameName}"`);
-        console.log('Found game:', matchedGame.title);
-        
-        if (matchedGame.sample_cover?.image) {
-            return matchedGame.sample_cover.image;
-        }
-
-        return null;
-    } catch (error) {
-        console.error('Failed to fetch box art from MobyGames:', error);
-        return null;
-    }
-}
