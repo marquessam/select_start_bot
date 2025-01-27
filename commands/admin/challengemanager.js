@@ -54,24 +54,10 @@ async function showHelp(message) {
     await message.channel.send({ embeds: [embed] });
 }
 
-async function handleSetChallenge(message, args) {
-    if (args.length < 5) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !challengemanager set <gameId> <gameName> <gameIcon> <startDate> <endDate>\n[Ready for input]█\x1b[0m```');
-        return;
-    }
-
-    const [gameId, ...restArgs] = args;
-    const endDate = restArgs.pop();
-    const startDate = restArgs.pop();
-    const gameIcon = restArgs.pop();
-    const gameName = restArgs.join(' ').replace(/"/g, '');
-
-    const challengeData = {
-        gameId,
-        gameName,
-        gameIcon,
-        startDate,
-        endDate,
+async function handleSetChallenge(message) {
+    const filter = m => m.author.id === message.author.id;
+    const timeout = 30000; // 30 seconds for each response
+    let challengeData = {
         rules: [
             "Hardcore mode must be enabled",
             "All achievements are eligible",
@@ -79,28 +65,102 @@ async function handleSetChallenge(message, args) {
             "No hacks/save states/cheats allowed"
         ],
         points: {
-            first: 6,
-            second: 4,
+            first: 5,
+            second: 3,
             third: 2
         }
     };
 
-    await database.saveCurrentChallenge(challengeData);
+    try {
+        // Step 1: Game ID
+        await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the game ID:\n[Ready for input]█\x1b[0m```');
+        const gameIdResponse = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: timeout,
+            errors: ['time']
+        });
+        challengeData.gameId = gameIdResponse.first().content.trim();
 
-    const embed = new TerminalEmbed()
-        .setTerminalTitle('CHALLENGE UPDATED')
-        .setTerminalDescription('[UPDATE SUCCESSFUL]')
-        .addTerminalField('DETAILS', 
-            `GAME ID: ${gameId}\n` +
-            `GAME NAME: ${gameName}\n` +
-            `ICON: ${gameIcon}\n` +
-            `START: ${startDate}\n` +
-            `END: ${endDate}`)
-        .setTerminalFooter();
+        // Step 2: Game Name
+        await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the game name:\n[Ready for input]█\x1b[0m```');
+        const nameResponse = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: timeout,
+            errors: ['time']
+        });
+        challengeData.gameName = nameResponse.first().content.trim();
 
-    await message.channel.send({ embeds: [embed] });
+        // Step 3: Game Icon
+        await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the icon address (e.g., 059119.png):\n[Ready for input]█\x1b[0m```');
+        const iconResponse = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: timeout,
+            errors: ['time']
+        });
+        challengeData.gameIcon = `/Images/${iconResponse.first().content.trim()}`;
+
+        // Step 4: Start and End Dates
+        await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the start date (MM/DD/YY):\n[Ready for input]█\x1b[0m```');
+        const startResponse = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: timeout,
+            errors: ['time']
+        });
+        challengeData.startDate = startResponse.first().content.trim();
+
+        await message.channel.send('```ansi\n\x1b[32m[INPUT REQUIRED] Enter the end date (MM/DD/YY):\n[Ready for input]█\x1b[0m```');
+        const endResponse = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: timeout,
+            errors: ['time']
+        });
+        challengeData.endDate = endResponse.first().content.trim();
+
+        // Show confirmation
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('CONFIRM CHALLENGE SETUP')
+            .setTerminalDescription('[REVIEW DETAILS]')
+            .addTerminalField('CHALLENGE INFORMATION', 
+                `GAME ID: ${challengeData.gameId}\n` +
+                `GAME NAME: ${challengeData.gameName}\n` +
+                `ICON: ${challengeData.gameIcon}\n` +
+                `START: ${challengeData.startDate}\n` +
+                `END: ${challengeData.endDate}`)
+            .addTerminalField('CONFIRMATION REQUIRED',
+                'Type "confirm" to save these settings or "cancel" to abort')
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [embed] });
+
+        const confirmation = await message.channel.awaitMessages({
+            filter,
+            max: 1,
+            time: timeout,
+            errors: ['time']
+        });
+
+        if (confirmation.first().content.toLowerCase() === 'confirm') {
+            await database.saveChallenge(challengeData, 'next');
+            
+            await message.channel.send('```ansi\n\x1b[32m> Challenge settings saved successfully\n[Ready for input]█\x1b[0m```');
+        } else {
+            await message.channel.send('```ansi\n\x1b[32m> Challenge setup cancelled\n[Ready for input]█\x1b[0m```');
+        }
+
+    } catch (error) {
+        if (error.message === 'time') {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Setup timed out. Please start over.\n[Ready for input]█\x1b[0m```');
+        } else {
+            console.error('Challenge Setup Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to set up challenge\n[Ready for input]█\x1b[0m```');
+        }
+    }
 }
-
 async function handleSetNext(message, args) {
     if (args.length < 2) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUse !challengemanager for help\n[Ready for input]█\x1b[0m```');
