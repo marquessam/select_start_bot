@@ -222,40 +222,31 @@ async sendAchievementNotification(channel, username, achievement) {
 
         const embed = new EmbedBuilder()
             .setColor('#00FF00')
-            .setTitle(achievement.GameTitle || 'Game');
+            .setTitle(`${achievement.GameTitle || 'Game'} 🏆`)
+            .setThumbnail(badgeUrl)
+            .setDescription(
+                `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
+                `*${achievement.Description || 'No description available'}*`
+            )
+            .setFooter({
+                text: `Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
+                iconURL: userIconUrl || `https://retroachievements.org/UserPic/${username}.png`
+            })
+            .setTimestamp();
 
-        // For monthly challenge or shadow game achievements, add the logo
-        if (isMonthlyChallenge || isShadowGame) {
-            embed.setThumbnail('attachment://logo.png')  // Use the local logo
-                .setDescription(
-                    `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
-                    `*${achievement.Description || 'No description available'}*`
-                )
-                .setImage(badgeUrl);  // Achievement badge becomes the main image
-        } else {
-            embed.setThumbnail(badgeUrl)  // Regular achievements keep the normal layout
-                .setDescription(
-                    `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
-                    `*${achievement.Description || 'No description available'}*`
-                );
-        }
-
-        embed.setFooter({
-            text: `Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
-            iconURL: userIconUrl || `https://retroachievements.org/UserPic/${username}.png`
-        })
-        .setTimestamp();
-
-        // For monthly/shadow achievements, we need to attach the local logo
+        // Create message options
         const messageOptions = {
             embeds: [embed]
         };
 
+        // Add Select Start logo for monthly/shadow achievements
         if (isMonthlyChallenge || isShadowGame) {
             messageOptions.files = [{
                 attachment: './logo.png',
                 name: 'logo.png'
             }];
+            // Setting a green line on the left side of the embed for visual distinction
+            embed.setColor('#00FF00');
         }
 
         await this.queueAnnouncement(messageOptions);
@@ -271,7 +262,6 @@ async sendAchievementNotification(channel, username, achievement) {
         throw error;
     }
 }
-
     async announcePointsAward(username, points, reason) {
         try {
             if (!this.feedChannel) {
