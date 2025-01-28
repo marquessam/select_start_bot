@@ -208,114 +208,135 @@ class AchievementFeed {
         }
     }
 
-    async sendAchievementNotification(channel, username, achievement) {
-        try {
-            if (!channel || !username || !achievement) {
-                throw new BotError(
-                    'Missing required data',
-                    ErrorHandler.ERROR_TYPES.VALIDATION,
-                    'Announce Achievement'
-                );
-            }
-
-            const achievementKey = `${username}-${
-                achievement.ID ||
-                achievement.AchievementID ||
-                achievement.achievementID ||
-                achievement.id ||
-                Date.now()
-            }-${achievement.GameTitle}-${achievement.Title}`;
-            if (this.announcementHistory.messageIds.has(achievementKey)) {
-                console.log(
-                    `[ACHIEVEMENT FEED] Skipping duplicate achievement: ${username} - ${achievement.Title} in ${achievement.GameTitle}`
-                );
-                return;
-            }
-
-            const currentChallenge = await database.getCurrentChallenge();
-            const shadowGame = await database.getShadowGame();
-
-            const achievementGameId = String(achievement.GameID || achievement.gameId);
-            const monthlyGameId = currentChallenge?.gameId
-                ? String(currentChallenge.gameId)
-                : null;
-            const shadowGameId = shadowGame?.finalReward?.gameId
-                ? String(shadowGame.finalReward.gameId)
-                : null;
-
-            const isMonthlyChallenge =
-                monthlyGameId && achievementGameId === monthlyGameId;
-            const isShadowGame =
-                shadowGame?.active && shadowGameId && achievementGameId === shadowGameId;
-
-            const [badgeUrl, userIconUrl] = await Promise.all([
-                achievement.BadgeName
-                    ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
-                    : 'https://media.retroachievements.org/Badge/00000.png',
-                DataService.getRAProfileImage(username)
-            ]);
-
-            const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle(`${achievement.GameTitle || 'Game'} 🏆`)
-                .setThumbnail(badgeUrl)
-                .setDescription(
-                    `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
-                        `*${achievement.Description || 'No description available'}*`
-                )
-                .setFooter({
-                    text: `Points: ${achievement.Points || '0'} • ${new Date(
-                        achievement.Date
-                    ).toLocaleTimeString()}`,
-                    iconURL:
-                        userIconUrl || `https://retroachievements.org/UserPic/${username}.png`
-                })
-                .setTimestamp();
-
-            // Build message options
-            const messageOptions = {
-                embeds: [embed]
-            };
-
-            // Optionally still attach a custom image to the embed if you want:
-            // if (isMonthlyChallenge) {
-            //     messageOptions.files = [{
-            //         attachment: './monthly_logo.png',
-            //         name: 'logo.png'
-            //     }];
-            // } else if (isShadowGame) {
-            //     messageOptions.files = [{
-            //         attachment: './shadow_logo.png',
-            //         name: 'logo.png'
-            //     }];
-            // }
-
-            // Queue the announcement, including flags for monthly/shadow
-            await this.queueAnnouncement({
-                messageOptions,
-                isMonthlyChallenge,
-                isShadowGame
-            });
-
-            this.announcementHistory.messageIds.add(achievementKey);
-            if (this.announcementHistory.messageIds.size > 1000) {
-                this.announcementHistory.messageIds.clear();
-            }
-
-            console.log(
-                `[ACHIEVEMENT FEED] Sent ${
-                    isMonthlyChallenge
-                        ? 'monthly challenge'
-                        : isShadowGame
-                        ? 'shadow game'
-                        : 'regular'
-                } achievement notification for ${username}: ${achievement.Title}`
+  async sendAchievementNotification(channel, username, achievement) {
+    try {
+        if (!channel || !username || !achievement) {
+            throw new BotError(
+                'Missing required data',
+                ErrorHandler.ERROR_TYPES.VALIDATION,
+                'Announce Achievement'
             );
-        } catch (error) {
-            console.error('[ACHIEVEMENT FEED] Error sending achievement notification:', error);
-            throw error;
         }
+
+        const achievementKey = `${username}-${
+            achievement.ID || achievement.AchievementID || achievement.achievementID || achievement.id || Date.now()
+        }-${achievement.GameTitle}-${achievement.Title}`;
+        if (this.announcementHistory.messageIds.has(achievementKey)) {
+            console.log(
+                `[ACHIEVEMENT FEED] Skipping duplicate achievement: ${username} - ${achievement.Title} in ${achievement.GameTitle}`
+            );
+            return;
+        }
+
+        const currentChallenge = await database.getCurrentChallenge();
+        const shadowGame = await database.getShadowGame();
+
+        // Identify which game ID this achievement is for
+        const achievementGameId = String(achievement.GameID || achievement.gameId);
+        const monthlyGameId = currentChallenge?.gameId
+            ? String(currentChallenge.gameId)
+            : null;
+        const shadowGameId = shadowGame?.finalReward?.gameId
+            ? String(shadowGame.finalReward.gameId)
+            : null;
+
+        const isMonthlyChallenge =
+            monthlyGameId && achievementGameId === monthlyGameId;
+        const isShadowGame =
+            shadowGame?.active && shadowGameId && achievementGameId === shadowGameId;
+
+        // Fetch the images
+        const [badgeUrl, userIconUrl] = await Promise.all([
+            achievement.BadgeName
+                ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
+                : 'https://media.retroachievements.org/Badge/00000.png',
+            DataService.getRAProfileImage(username)
+        ]);
+
+        // Decide which icon to use for the embed's Author field
+        let authorName = '';
+        let authorIconUrl = '';
+        if (isMonthlyChallenge) {
+            authorName = 'MONTHLY CHALLENGE';
+            authorIconUrl = 'attachment://monthly_challenge_logo.png';
+            // or if you have the emoji URL, use that:
+            // authorIconUrl = 'https://cdn.discordapp.com/emojis/<emojiID>.png';
+        } else if (isShadowGame) {
+            authorName = 'SHADOW GAME';
+            authorIconUrl = 'attachment://shadow_game_logo.png';
+            // or same note for the emoji URL
+        }
+
+        // Build the embed
+        const embed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setTitle(`${achievement.GameTitle || 'Game'} 🏆`)
+            // If we have a monthly/shadow icon, set it via Author
+            .setAuthor({
+                name: authorName,
+                iconURL: authorIconUrl || null
+            })
+            // The badge as the embed's thumbnail (on the right)
+            .setThumbnail(badgeUrl)
+            .setDescription(
+                `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
+                `*${achievement.Description || 'No description available'}*`
+            )
+            .setFooter({
+                text: `Points: ${achievement.Points || '0'} • ${new Date(
+                    achievement.Date
+                ).toLocaleTimeString()}`,
+                iconURL:
+                    userIconUrl || `https://retroachievements.org/UserPic/${username}.png`
+            })
+            .setTimestamp();
+
+        // We'll attach the monthly/shadow logo if needed.
+        // If you're using local PNGs from your bot's root folder, do:
+        const files = [];
+        if (isMonthlyChallenge) {
+            files.push({
+                attachment: './monthly_logo.png',
+                name: 'monthly_challenge_logo.png'
+            });
+        } else if (isShadowGame) {
+            files.push({
+                attachment: './shadow_logo.png',
+                name: 'shadow_game_logo.png'
+            });
+        }
+
+        const messageOptions = {
+            embeds: [embed],
+            files
+        };
+
+        // Then queue the announcement
+        await this.queueAnnouncement({
+            messageOptions,
+            isMonthlyChallenge,
+            isShadowGame
+        });
+
+        this.announcementHistory.messageIds.add(achievementKey);
+        if (this.announcementHistory.messageIds.size > 1000) {
+            this.announcementHistory.messageIds.clear();
+        }
+
+        console.log(
+            `[ACHIEVEMENT FEED] Sent ${
+                isMonthlyChallenge
+                    ? 'monthly challenge'
+                    : isShadowGame
+                    ? 'shadow game'
+                    : 'regular'
+            } achievement notification for ${username}: ${achievement.Title}`
+        );
+    } catch (error) {
+        console.error('[ACHIEVEMENT FEED] Error sending achievement notification:', error);
+        throw error;
     }
+}
 
     async announcePointsAward(username, points, reason) {
         try {
