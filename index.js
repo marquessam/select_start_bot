@@ -12,7 +12,6 @@ const errorHandler = require('./utils/errorHandler');
 const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
 const TerminalEmbed = require('./utils/embedBuilder');
-const leaderboardCommand = require('./commands/leaderboard'); 
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
@@ -242,10 +241,7 @@ async function handleMessage(message, services) {
 client.once('ready', async () => {
     try {
         console.log(`Logged in as ${client.user.tag}`);
-         // Initialize the live leaderboard updates
-    await leaderboardCommand.initializeLiveLeaderboards(client);
         const initializedServices = await setupBot();
-        
     } catch (error) {
         console.error('Fatal initialization error:', error);
         process.exit(1);
