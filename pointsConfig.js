@@ -42,8 +42,10 @@ const pointsConfig = {
                 participation: 1,
                 beaten: 3
             },
-            progression: [944, 2192, 2282, 980, 2288, 2291, 2292, 2296, 2315, 2336, 2351, 
-                         2357, 2359, 2361, 2365, 2334, 2354, 2368, 2350, 2372, 2387],
+            progression: [
+                944, 2192, 2282, 980, 2288, 2291, 2292, 2296, 2315, 2336, 2351,
+                2357, 2359, 2361, 2365, 2334, 2354, 2368, 2350, 2372, 2387
+            ],
             winCondition: [2389],
             requireProgression: true,
             requireAllWinConditions: true,
@@ -104,13 +106,15 @@ async function canAwardPoints(username, gameId, pointType) {
     const gameConfig = pointsConfig.monthlyGames[gameId];
     if (!gameConfig) return false;
 
-    // Get current month
-    const currentMonth = new Date().toLocaleString('default', { month: 'UPPERCASE' }).toUpperCase();
-    
+    // Use 'long' then convert to uppercase, e.g. "January" -> "JANUARY"
+    const currentMonth = new Date()
+        .toLocaleString('default', { month: 'long' })
+        .toUpperCase();
+
     // Shadow games must be active to award any points
     if (gameConfig.shadowGame && !gameConfig.active) return false;
 
-    // Check if point type exists in regular points (mastery)
+    // Check if point type exists in regular points (for example, 'mastery')
     if (gameConfig.points[pointType]) return true;
 
     // Check if point type is month-restricted (participation/beaten)
@@ -245,7 +249,7 @@ const pointChecks = {
         }
 
         if (pointsToAward.length > 0) {
-            console.log(`[POINTS] Total points awarded to ${username} for game ${gameId}:`, 
+            console.log(`[POINTS] Total points awarded to ${username} for game ${gameId}:`,
                 pointsToAward.map(p => `${p.reason}: ${p.points}`).join(', ')
             );
         } else {
