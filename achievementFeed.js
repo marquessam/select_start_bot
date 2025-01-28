@@ -248,10 +248,32 @@ async sendAchievementNotification(channel, username, achievement) {
             .setTimestamp();
 
         // Message options with the embed
-        const messageOptions = {
-            embeds: [embed]
-        };
+         const messageOptions = {
+        files: isMonthlyChallenge || isShadowGame ? [{
+            attachment: './logo.png',
+            name: 'logo.png',
+            width: 100,
+            height: 100
+        }] : [],
+        embeds: []
+    };
+// Then create embed
+    const embed = new EmbedBuilder()
+        .setColor('#00FF00')
+        .setTitle(`${achievement.GameTitle || 'Game'} 🏆`)
+        .setThumbnail(badgeUrl)
+        .setDescription(
+            `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
+            `*${achievement.Description || 'No description available'}*`
+        )
+        .setFooter({
+            text: `Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
+            iconURL: userIconUrl || `https://retroachievements.org/UserPic/${username}.png`
+        })
+        .setTimestamp();
 
+    messageOptions.embeds.push(embed);
+    await this.queueAnnouncement(messageOptions);
         // Add Select Start logo for monthly/shadow achievements
         if (isMonthlyChallenge || isShadowGame) {
             messageOptions.files = [{
