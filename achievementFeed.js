@@ -30,19 +30,20 @@ class AchievementFeed {
                 return await operation();
             } catch (error) {
                 const isLastAttempt = attempt === retries;
-                const isRetryableError = error.code === 'EAI_AGAIN' || 
-                                       error.name === 'FetchError' ||
-                                       error.code === 'ECONNRESET';
+                const isRetryableError =
+                    error.code === 'EAI_AGAIN' ||
+                    error.name === 'FetchError' ||
+                    error.code === 'ECONNRESET';
 
                 if (isLastAttempt || !isRetryableError) {
                     throw error;
                 }
 
                 console.log(
-                    `[ACHIEVEMENT FEED] Attempt ${attempt} failed, retrying in ${delay/1000}s:`, 
+                    `[ACHIEVEMENT FEED] Attempt ${attempt} failed, retrying in ${delay / 1000}s:`,
                     error.message
                 );
-                await new Promise(resolve => setTimeout(resolve, delay));
+                await new Promise((resolve) => setTimeout(resolve, delay));
             }
         }
     }
@@ -51,7 +52,7 @@ class AchievementFeed {
         if (this.isInitializing) {
             console.log('[ACHIEVEMENT FEED] Already initializing, waiting...');
             while (this.isInitializing) {
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise((resolve) => setTimeout(resolve, 100));
             }
             return;
         }
@@ -59,28 +60,28 @@ class AchievementFeed {
         this.isInitializing = true;
         try {
             console.log('[ACHIEVEMENT FEED] Initializing achievement feed...');
-            
+
             if (global.leaderboardCache?.userStats) {
                 while (!global.leaderboardCache.userStats.initializationComplete) {
                     console.log('[ACHIEVEMENT FEED] Waiting for UserStats initialization...');
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await new Promise((resolve) => setTimeout(resolve, 100));
                 }
             }
-            
+
             const [allAchievements, storedTimestamps] = await Promise.all([
                 this.retryOperation(async () => {
                     return await raAPI.fetchAllRecentAchievements();
                 }),
                 database.getLastAchievementTimestamps()
             ]);
-            
+
             for (const { username, achievements } of allAchievements) {
                 if (achievements && achievements.length > 0) {
                     const lastStoredTime = storedTimestamps[username.toLowerCase()];
                     if (!lastStoredTime) {
                         const mostRecentTime = new Date(achievements[0].Date).getTime();
                         await database.updateLastAchievementTimestamp(
-                            username.toLowerCase(), 
+                            username.toLowerCase(),
                             mostRecentTime
                         );
                     }
@@ -98,13 +99,22 @@ class AchievementFeed {
         }
     }
 
-    async queueAnnouncement(messageOptions) {
-        this.announcementQueue.push(messageOptions);
+    /**
+     * Queue an announcement (embed + flags) to be sent to the feed channel.
+     */
+    async queueAnnouncement(announcementData) {
+        // announcementData is now an object like:
+        // { messageOptions, isMonthlyChallenge, isShadowGame }
+        this.announcementQueue.push(announcementData);
         if (!this.isProcessingQueue) {
             await this.processAnnouncementQueue();
         }
     }
 
+    /**
+     * Processes the queued announcements one by one, reacting with
+     * monthly_challenge_logo or shadow_game_logo if applicable.
+     */
     async processAnnouncementQueue() {
         if (this.isProcessingQueue || this.announcementQueue.length === 0) return;
 
@@ -113,9 +123,27 @@ class AchievementFeed {
             const channel = await this.client.channels.fetch(this.feedChannel);
 
             while (this.announcementQueue.length > 0) {
-                const messageOptions = this.announcementQueue.shift();
-                await channel.send(messageOptions);
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Destructure each queued item
+                const {
+                    messageOptions,
+                    isMonthlyChallenge,
+                    isShadowGame
+                } = this.announcementQueue.shift();
+
+                // Send the embed/message
+                const sentMessage = await channel.send(messageOptions);
+
+                // If it's monthly or shadow, add the corresponding reaction
+                if (isMonthlyChallenge) {
+                    await sentMessage.react('monthly_challenge_logo'); 
+                    // If custom emoji requires ID: await sentMessage.react('<:monthly_challenge_logo:EMOJI_ID>');
+                } else if (isShadowGame) {
+                    await sentMessage.react('shadow_game_logo');
+                    // If custom emoji requires ID: await sentMessage.react('<:shadow_game_logo:EMOJI_ID>');
+                }
+
+                // Avoid flooding the channel too quickly
+                await new Promise((resolve) => setTimeout(resolve, 1000));
             }
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error processing announcement queue:', error);
@@ -138,7 +166,7 @@ class AchievementFeed {
                 }),
                 database.getLastAchievementTimestamps()
             ]);
-            
+
             const channel = await this.client.channels.fetch(this.feedChannel);
             if (!channel) {
                 throw new Error('Achievement feed channel not found');
@@ -148,28 +176,28 @@ class AchievementFeed {
                 if (!achievements || achievements.length === 0) continue;
 
                 const lastCheckedTime = storedTimestamps[username.toLowerCase()] || 0;
-                
+
                 const sortedAchievements = [...achievements].sort(
                     (a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime()
                 );
-                
-                const newAchievements = sortedAchievements.filter(ach => 
-                    new Date(ach.Date).getTime() > lastCheckedTime
+
+                const newAchievements = sortedAchievements.filter(
+                    (ach) => new Date(ach.Date).getTime() > lastCheckedTime
                 );
 
                 if (newAchievements.length > 0) {
                     const latestTime = new Date(
                         sortedAchievements[sortedAchievements.length - 1].Date
                     ).getTime();
-                    
+
                     await database.updateLastAchievementTimestamp(
-                        username.toLowerCase(), 
+                        username.toLowerCase(),
                         latestTime
                     );
 
                     for (const achievement of newAchievements) {
                         await this.sendAchievementNotification(channel, username, achievement);
-                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await new Promise((resolve) => setTimeout(resolve, 500));
                     }
                 }
             }
@@ -183,12 +211,24 @@ class AchievementFeed {
     async sendAchievementNotification(channel, username, achievement) {
         try {
             if (!channel || !username || !achievement) {
-                throw new BotError('Missing required data', ErrorHandler.ERROR_TYPES.VALIDATION, 'Announce Achievement');
+                throw new BotError(
+                    'Missing required data',
+                    ErrorHandler.ERROR_TYPES.VALIDATION,
+                    'Announce Achievement'
+                );
             }
 
-            const achievementKey = `${username}-${achievement.ID || achievement.AchievementID || achievement.achievementID || achievement.id || Date.now()}-${achievement.GameTitle}-${achievement.Title}`;
+            const achievementKey = `${username}-${
+                achievement.ID ||
+                achievement.AchievementID ||
+                achievement.achievementID ||
+                achievement.id ||
+                Date.now()
+            }-${achievement.GameTitle}-${achievement.Title}`;
             if (this.announcementHistory.messageIds.has(achievementKey)) {
-                console.log(`[ACHIEVEMENT FEED] Skipping duplicate achievement: ${username} - ${achievement.Title} in ${achievement.GameTitle}`);
+                console.log(
+                    `[ACHIEVEMENT FEED] Skipping duplicate achievement: ${username} - ${achievement.Title} in ${achievement.GameTitle}`
+                );
                 return;
             }
 
@@ -196,11 +236,17 @@ class AchievementFeed {
             const shadowGame = await database.getShadowGame();
 
             const achievementGameId = String(achievement.GameID || achievement.gameId);
-            const monthlyGameId = currentChallenge?.gameId ? String(currentChallenge.gameId) : null;
-            const shadowGameId = shadowGame?.finalReward?.gameId ? String(shadowGame.finalReward.gameId) : null;
+            const monthlyGameId = currentChallenge?.gameId
+                ? String(currentChallenge.gameId)
+                : null;
+            const shadowGameId = shadowGame?.finalReward?.gameId
+                ? String(shadowGame.finalReward.gameId)
+                : null;
 
-            const isMonthlyChallenge = monthlyGameId && achievementGameId === monthlyGameId;
-            const isShadowGame = shadowGame?.active && shadowGameId && achievementGameId === shadowGameId;
+            const isMonthlyChallenge =
+                monthlyGameId && achievementGameId === monthlyGameId;
+            const isShadowGame =
+                shadowGame?.active && shadowGameId && achievementGameId === shadowGameId;
 
             const [badgeUrl, userIconUrl] = await Promise.all([
                 achievement.BadgeName
@@ -215,33 +261,56 @@ class AchievementFeed {
                 .setThumbnail(badgeUrl)
                 .setDescription(
                     `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
-                    `*${achievement.Description || 'No description available'}*`
+                        `*${achievement.Description || 'No description available'}*`
                 )
                 .setFooter({
-                    text: `Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
-                    iconURL: userIconUrl || `https://retroachievements.org/UserPic/${username}.png`
+                    text: `Points: ${achievement.Points || '0'} • ${new Date(
+                        achievement.Date
+                    ).toLocaleTimeString()}`,
+                    iconURL:
+                        userIconUrl || `https://retroachievements.org/UserPic/${username}.png`
                 })
                 .setTimestamp();
 
+            // Build message options
             const messageOptions = {
                 embeds: [embed]
             };
 
-            if (isMonthlyChallenge || isShadowGame) {
-                messageOptions.files = [{
-                    attachment: isMonthlyChallenge ? './monthly_logo.png' : './shadow_logo.png',
-                    name: 'logo.png'
-                }];
-            }
+            // Optionally still attach a custom image to the embed if you want:
+            // if (isMonthlyChallenge) {
+            //     messageOptions.files = [{
+            //         attachment: './monthly_logo.png',
+            //         name: 'logo.png'
+            //     }];
+            // } else if (isShadowGame) {
+            //     messageOptions.files = [{
+            //         attachment: './shadow_logo.png',
+            //         name: 'logo.png'
+            //     }];
+            // }
 
-            await this.queueAnnouncement(messageOptions);
+            // Queue the announcement, including flags for monthly/shadow
+            await this.queueAnnouncement({
+                messageOptions,
+                isMonthlyChallenge,
+                isShadowGame
+            });
+
             this.announcementHistory.messageIds.add(achievementKey);
-            
             if (this.announcementHistory.messageIds.size > 1000) {
                 this.announcementHistory.messageIds.clear();
             }
 
-            console.log(`[ACHIEVEMENT FEED] Sent ${isMonthlyChallenge ? 'monthly challenge' : isShadowGame ? 'shadow game' : 'regular'} achievement notification for ${username}: ${achievement.Title}`);
+            console.log(
+                `[ACHIEVEMENT FEED] Sent ${
+                    isMonthlyChallenge
+                        ? 'monthly challenge'
+                        : isShadowGame
+                        ? 'shadow game'
+                        : 'regular'
+                } achievement notification for ${username}: ${achievement.Title}`
+            );
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error sending achievement notification:', error);
             throw error;
@@ -251,7 +320,9 @@ class AchievementFeed {
     async announcePointsAward(username, points, reason) {
         try {
             if (!this.feedChannel) {
-                console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
+                console.warn(
+                    '[ACHIEVEMENT FEED] No feedChannel configured for points announcements'
+                );
                 return;
             }
 
@@ -264,25 +335,36 @@ class AchievementFeed {
             this.announcementHistory.pointAwards.add(awardKey);
 
             const userProfile = await DataService.getRAProfileImage(username);
-            
+
             const embed = new EmbedBuilder()
                 .setColor('#FFD700')
                 .setAuthor({
                     name: username,
-                    iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
+                    iconURL:
+                        userProfile || `https://retroachievements.org/UserPic/${username}.png`,
                     url: `https://retroachievements.org/user/${username}`
                 })
                 .setTitle('🏆 Points Awarded!')
-                .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
+                .setDescription(
+                    `**${username}** earned **${points} point${
+                        points !== 1 ? 's' : ''
+                    }**!\n*${reason}*`
+                )
                 .setTimestamp();
 
-            await this.queueAnnouncement({ embeds: [embed] });
+            await this.queueAnnouncement({
+                messageOptions: { embeds: [embed] },
+                isMonthlyChallenge: false,
+                isShadowGame: false
+            });
 
             if (this.announcementHistory.pointAwards.size > 1000) {
                 this.announcementHistory.pointAwards.clear();
             }
 
-            console.log(`[ACHIEVEMENT FEED] Queued points announcement for ${username}: ${points} points (${reason})`);
+            console.log(
+                `[ACHIEVEMENT FEED] Queued points announcement for ${username}: ${points} points (${reason})`
+            );
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
             this.announcementHistory.pointAwards.delete(awardKey);
