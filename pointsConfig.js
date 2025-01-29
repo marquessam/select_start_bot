@@ -30,7 +30,7 @@ const pointsConfig = {
             winCondition: [48411, 48412],
             requireAllWinConditions: false,
             masteryCheck: false,
-            active: true
+            active: true  // Currently active for January
         },
         "355": {  // ALTTP
             name: "The Legend of Zelda: A Link to the Past",
@@ -42,10 +42,8 @@ const pointsConfig = {
                 participation: 1,
                 beaten: 3
             },
-            progression: [
-                944, 2192, 2282, 980, 2288, 2291, 2292, 2296, 2315, 2336, 2351,
-                2357, 2359, 2361, 2365, 2334, 2354, 2368, 2350, 2372, 2387
-            ],
+            progression: [944, 2192, 2282, 980, 2288, 2291, 2292, 2296, 2315, 2336, 2351, 
+                         2357, 2359, 2361, 2365, 2334, 2354, 2368, 2350, 2372, 2387],
             winCondition: [2389],
             requireProgression: true,
             requireAllWinConditions: true,
@@ -64,62 +62,66 @@ const pointsConfig = {
             requireProgression: true,
             requireAllWinConditions: true,
             masteryCheck: false,
-            active: false
+            active: false  // Will become true when discovered through triforce hunt
         }
     }
 };
 
-// Helper function to check for existing points
-async function hasReceivedPoints(username, gameId, pointType) {
+// Helper function to handle month transitions
+async function updateShadowGameStatus(newMonth) {
     try {
-        const stats = await database.getUserStats();
-        const year = new Date().getFullYear().toString();
-
-        if (!stats?.users?.[username]?.bonusPoints) {
-            console.log(`[POINTS CHECK] No bonus points found for ${username}`);
-            return false;
+        console.log(`[POINTS CONFIG] Updating shadow game status for ${newMonth}`);
+        
+        for (const [gameId, game] of Object.entries(pointsConfig.monthlyGames)) {
+            if (game.shadowGame) {
+                const wasActive = game.active;
+                // Set game inactive if it's from a different month
+                game.active = game.month === newMonth && game.active;
+                console.log(`[POINTS CONFIG] Shadow game ${game.name} (${gameId}): ${wasActive ? 'active' : 'inactive'} -> ${game.active ? 'active' : 'inactive'}`);
+            }
         }
-
-        const technicalKey = `${pointType}-${gameId}`;
-
-        return stats.users[username].bonusPoints.some(bp => {
-            if (bp.year !== year) return false;
-            const internalReason = bp.internalReason || bp.reason || '';
-            return internalReason.includes(`(${technicalKey})`);
-        });
     } catch (error) {
-        console.error('Error checking for received points:', error);
+        console.error('[POINTS CONFIG] Error updating shadow game status:', error);
+    }
+}
+
+// Helper function to activate a shadow game
+async function activateShadowGame(gameId) {
+    try {
+        if (pointsConfig.monthlyGames[gameId]?.shadowGame) {
+            pointsConfig.monthlyGames[gameId].active = true;
+            console.log(`[POINTS CONFIG] Shadow game ${pointsConfig.monthlyGames[gameId].name} activated`);
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('[POINTS CONFIG] Error activating shadow game:', error);
         return false;
     }
 }
 
-// Helper function to create point reasons
-function createPointReason(gameName, achievementType, technicalKey) {
-    return {
-        display: `${gameName} - ${achievementType}`,
-        internal: `${gameName} - ${achievementType} (${technicalKey})`
-    };
-}
-
-// Helper function to check if points can be awarded
 async function canAwardPoints(username, gameId, pointType) {
     const gameConfig = pointsConfig.monthlyGames[gameId];
     if (!gameConfig) return false;
 
-    // Use 'long' then convert to uppercase, e.g. "January" -> "JANUARY"
-    const currentMonth = new Date()
-        .toLocaleString('default', { month: 'long' })
-        .toUpperCase();
-
+    const currentMonth = new Date().toLocaleString('default', { month: 'UPPERCASE' });
+    
     // Shadow games must be active to award any points
-    if (gameConfig.shadowGame && !gameConfig.active) return false;
+    if (gameConfig.shadowGame && !gameConfig.active) {
+        console.log(`[POINTS CONFIG] Cannot award points - shadow game ${gameConfig.name} is not active`);
+        return false;
+    }
 
-    // Check if point type exists in regular points (for example, 'mastery')
+    // Check if point type exists in regular points (mastery)
     if (gameConfig.points[pointType]) return true;
 
     // Check if point type is month-restricted (participation/beaten)
     if (gameConfig.monthlyOnlyPoints && gameConfig.monthlyOnlyPoints[pointType]) {
-        return currentMonth === gameConfig.month;
+        const isCurrentMonth = currentMonth === gameConfig.month;
+        if (!isCurrentMonth) {
+            console.log(`[POINTS CONFIG] Cannot award ${pointType} points - wrong month (Current: ${currentMonth}, Required: ${gameConfig.month})`);
+        }
+        return isCurrentMonth;
     }
 
     return false;
@@ -143,10 +145,7 @@ const pointChecks = {
 
         const pointsToAward = [];
 
-        // Don't process inactive shadow games
-        if (gameConfig.shadowGame && !gameConfig.active) return [];
-
-        // 1. Participation Check
+        // Check participation (only if eligible)
         const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
         if (hasParticipation && await canAwardPoints(username, gameId, 'participation')) {
             const participationKey = `participation-${gameId}`;
@@ -171,13 +170,12 @@ const pointChecks = {
             }
         }
 
-        // 2. Beaten Check
+        // Check beaten status (if eligible)
         let hasBeaten = true;
         if (gameConfig.requireProgression && gameConfig.progression) {
             hasBeaten = gameConfig.progression.every(achId =>
                 gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
             );
-            console.log(`[POINTS] Progression check for ${username}: ${hasBeaten}`);
         }
 
         if (hasBeaten) {
@@ -190,7 +188,6 @@ const pointChecks = {
                     gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
                 );
             }
-            console.log(`[POINTS] Win condition check for ${username}: ${hasBeaten}`);
         }
 
         if (hasBeaten && await canAwardPoints(username, gameId, 'beaten')) {
@@ -214,15 +211,12 @@ const pointChecks = {
             } else {
                 console.log(`[POINTS] Duplicate beaten points prevented for ${username} on game ${gameId}`);
             }
-        } else {
-            console.log(`[POINTS] ${username} does not meet beaten criteria for game ${gameId}`);
         }
 
-        // 3. Mastery Check (only for non-shadow games)
+        // Check mastery (if eligible and not a shadow game)
         if (gameConfig.masteryCheck && !gameConfig.shadowGame && await canAwardPoints(username, gameId, 'mastery')) {
             const totalAchievements = gameAchievements.length;
             const earnedAchievements = gameAchievements.filter(a => parseInt(a.DateEarned) > 0).length;
-            console.log(`[POINTS] ${username} mastery progress: ${earnedAchievements}/${totalAchievements}`);
             
             if (totalAchievements > 0 && totalAchievements === earnedAchievements) {
                 const masteryKey = `mastery-${gameId}`;
@@ -242,28 +236,26 @@ const pointChecks = {
                 if (added) {
                     pointsToAward.push(bonusPoint);
                     console.log(`[POINTS] Awarded mastery points to ${username} for game ${gameId}`);
-                } else {
-                    console.log(`[POINTS] Duplicate mastery points prevented for ${username} on game ${gameId}`);
                 }
             }
-        }
-
-        if (pointsToAward.length > 0) {
-            console.log(`[POINTS] Total points awarded to ${username} for game ${gameId}:`,
-                pointsToAward.map(p => `${p.reason}: ${p.points}`).join(', ')
-            );
-        } else {
-            console.log(`[POINTS] No new points to award to ${username} for game ${gameId}`);
         }
 
         return pointsToAward;
     }
 };
 
+function createPointReason(gameName, achievementType, technicalKey) {
+    return {
+        display: `${gameName} - ${achievementType}`,
+        internal: `${gameName} - ${achievementType} (${technicalKey})`
+    };
+}
+
 module.exports = {
     pointsConfig,
     pointChecks,
+    updateShadowGameStatus,
+    activateShadowGame,
     canAwardPoints,
-    hasReceivedPoints,
     createPointReason
 };
