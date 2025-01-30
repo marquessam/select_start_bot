@@ -60,8 +60,8 @@ module.exports = {
                 (user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0)
             );
 
-            // Sort users with tie handling
-            const rankedUsers = this.rankUsersWithTies(activeUsers);
+            // Calculate combined percentages and rank users
+            const rankedUsers = this.rankUsersWithCombinedProgress(activeUsers, shadowGameData);
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('USER RANKINGS')
@@ -69,61 +69,36 @@ module.exports = {
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
                 .addTerminalField('CURRENT CHALLENGE', 
                     `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
-                    `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}`
+                    `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}` +
+                    (shadowGameData?.active && shadowGameData?.finalReward ? 
+                        `\nSHADOW GAME: ${shadowGameData.finalReward.gameName}` : '')
                 );
 
-            // Add top rankings (including ties)
-            let lastAddedRank = 0;
+            // Add top rankings
             for (const user of rankedUsers) {
-                if (lastAddedRank >= 3 && user.rank > 3) break; // Only show beyond top 3 if tied
+                if (!user.displayInMain && user.rank > 3) continue;
 
-                // Check if user has completed main challenge and shadow game is active
-                const showShadowProgress = user.completionPercentage === '100.00' && 
-                                         shadowGameData?.active && 
-                                         shadowGameData?.finalReward;
-
-                // Find shadow game progress if needed
-                let shadowProgress = null;
-                if (showShadowProgress) {
-                    shadowProgress = activeUsers.find(u => 
-                        u.username.toLowerCase() === user.username.toLowerCase() &&
-                        u.achievements.some(a => a.GameID === shadowGameData.finalReward.gameId)
-                    );
-                }
-
-                // Get medal based on rank
                 const medals = ['🥇', '🥈', '🥉'];
                 const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
 
-                // Create progress text
                 let progressText = `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\n` +
                                  `PROGRESS: ${user.completionPercentage}%`;
 
-                // Add shadow game progress if applicable
-                if (showShadowProgress && shadowProgress) {
-                    const shadowAchievements = shadowProgress.achievements.filter(
-                        a => a.GameID === shadowGameData.finalReward.gameId
-                    );
-                    const completedShadow = shadowAchievements.filter(a => parseInt(a.DateEarned) > 0).length;
-                    const totalShadow = shadowAchievements.length;
-                    
-                    progressText += `\nSHADOW GAME: ${completedShadow}/${totalShadow} (${((completedShadow/totalShadow) * 100).toFixed(2)}%)`;
+                if (user.shadowProgress) {
+                    progressText += `\nSHADOW GAME: ${user.shadowProgress.completed}/${user.shadowProgress.total} (${user.shadowProgress.percentage}%)`;
                 }
 
-                // Add field for user
                 embed.addTerminalField(
                     `${medal} RANK #${user.rank} - ${user.username}`,
                     progressText
                 );
-
-                lastAddedRank = user.rank;
             }
 
             // Add remaining participants if any
-            const remainingUsers = rankedUsers.filter(user => user.rank > 3 && !user.isTied);
+            const remainingUsers = rankedUsers.filter(user => !user.displayInMain);
             if (remainingUsers.length > 0) {
                 const remainingText = remainingUsers
-                    .map(user => `${user.username} (${user.completionPercentage}%)`)
+                    .map(user => `RANK #${user.rank} - ${user.username} (${user.completionPercentage}%)`)
                     .join('\n');
 
                 embed.addTerminalField('ADDITIONAL PARTICIPANTS', remainingText);
@@ -142,6 +117,73 @@ module.exports = {
             console.error('Monthly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
         }
+    },
+
+    rankUsersWithCombinedProgress(users, shadowGameData) {
+        // Calculate combined percentages for each user
+        const usersWithCombined = users.map(user => {
+            const monthlyPercentage = parseFloat(user.completionPercentage);
+            let shadowProgress = null;
+            let combinedPercentage = monthlyPercentage;
+
+            // Only consider shadow game if monthly is 100% and shadow game is active
+            if (monthlyPercentage === 100 && shadowGameData?.active && shadowGameData?.finalReward) {
+                const shadowAchievements = user.achievements.filter(
+                    a => a.GameID === shadowGameData.finalReward.gameId
+                );
+                const completedShadow = shadowAchievements.filter(a => parseInt(a.DateEarned) > 0).length;
+                const totalShadow = shadowAchievements.length;
+                const shadowPercentage = (completedShadow / totalShadow) * 100;
+
+                shadowProgress = {
+                    completed: completedShadow,
+                    total: totalShadow,
+                    percentage: shadowPercentage.toFixed(2)
+                };
+
+                // Direct addition of percentages
+                combinedPercentage = monthlyPercentage + shadowPercentage;
+            }
+
+            return {
+                ...user,
+                shadowProgress,
+                combinedPercentage
+            };
+        });
+
+        // Sort users by combined percentage and then by achievements
+        const sortedUsers = [...usersWithCombined].sort((a, b) => {
+            if (a.combinedPercentage !== b.combinedPercentage) {
+                return b.combinedPercentage - a.combinedPercentage;
+            }
+            return b.completedAchievements - a.completedAchievements;
+        });
+
+        // Assign ranks with tie handling
+        let currentRank = 1;
+        let previousScore = null;
+        let displayInMainCount = 0;
+
+        return sortedUsers.map((user, index) => {
+            const currentScore = `${user.combinedPercentage}-${user.completedAchievements}`;
+
+            if (previousScore !== currentScore) {
+                currentRank = index + 1;
+                previousScore = currentScore;
+            }
+
+            // Determine if this user should be displayed in main rankings
+            const displayInMain = currentRank <= 3;
+
+            if (displayInMain) displayInMainCount++;
+
+            return {
+                ...user,
+                rank: currentRank,
+                displayInMain
+            };
+        });
     },
 
     async displayYearlyLeaderboard(message, shadowGame) {
@@ -197,40 +239,5 @@ module.exports = {
             console.error('Yearly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
         }
-    },
-
-    rankUsersWithTies(users) {
-        // Sort users by completion percentage and achievements
-        const sortedUsers = [...users].sort((a, b) => {
-            const percentDiff = parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage);
-            if (percentDiff !== 0) return percentDiff;
-            return b.completedAchievements - a.completedAchievements;
-        });
-
-        const rankedUsers = [];
-        let currentRank = 1;
-        let previousScore = null;
-        let tiedUsers = 0;
-
-        for (let i = 0; i < sortedUsers.length; i++) {
-            const user = sortedUsers[i];
-            const currentScore = `${user.completionPercentage}-${user.completedAchievements}`;
-
-            if (previousScore === null || currentScore !== previousScore) {
-                currentRank = i + 1;
-                previousScore = currentScore;
-                tiedUsers = 0;
-            } else {
-                tiedUsers++;
-            }
-
-            rankedUsers.push({
-                ...user,
-                rank: currentRank,
-                isTied: tiedUsers > 0
-            });
-        }
-
-        return rankedUsers;
     }
 };
