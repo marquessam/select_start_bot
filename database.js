@@ -387,6 +387,7 @@ async cleanupDuplicatePoints() {
             return [];
         }
     }
+    
 
  // =================
     // Arcade Methods
@@ -905,6 +906,35 @@ async cleanupDuplicatePoints() {
             throw error;
         }
     }
+    async saveGameHistory(history) {
+    try {
+        const collection = await this.getCollection('challenges');
+        await collection.updateOne(
+            { _id: 'history' },
+            { $set: { games: history } },
+            { upsert: true }
+        );
+        return true;
+    } catch (error) {
+        console.error('Error saving game history:', error);
+        throw error;
+    }
+}
+
+async addGameToHistory(gameData) {
+    try {
+        const collection = await this.getCollection('challenges');
+        await collection.updateOne(
+            { _id: 'history' },
+            { $push: { games: gameData } },
+            { upsert: true }
+        );
+        return true;
+    } catch (error) {
+        console.error('Error adding game to history:', error);
+        throw error;
+    }
+}
 
     // ===================
     // Configuration Methods
