@@ -46,11 +46,10 @@ module.exports = {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
 
-            // Fetch all required data
-            const [leaderboardData, currentChallenge, shadowGameData] = await Promise.all([
+            // Fetch required data
+            const [leaderboardData, currentChallenge] = await Promise.all([
                 DataService.getLeaderboard('monthly'),
-                DataService.getCurrentChallenge(),
-                shadowGame?.config || null
+                DataService.getCurrentChallenge()
             ]);
 
             // Get valid users and filter for active participants
@@ -60,19 +59,17 @@ module.exports = {
                 (user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0)
             );
 
-            // Calculate combined percentages and rank users
-            const rankedUsers = this.rankUsersWithCombinedProgress(activeUsers, shadowGameData);
+            // Sort and rank users
+            const rankedUsers = this.rankUsersWithTies(activeUsers);
 
-           const embed = new TerminalEmbed()
-            .setTerminalTitle('USER RANKINGS')
-            .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
-            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
-            .addTerminalField('CURRENT CHALLENGE', 
-                `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
-                `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}` +
-                (shadowGameData?.active && shadowGameData?.currentProgress >= shadowGameData.puzzles.length ? 
-                    `\nSHADOW GAME: ${shadowGameData.finalReward.gameName}` : '')
-            );
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('USER RANKINGS')
+                .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
+                .addTerminalField('CURRENT CHALLENGE', 
+                    `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
+                    `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}`
+                );
 
             // Add top rankings
             for (const user of rankedUsers) {
@@ -81,16 +78,10 @@ module.exports = {
                 const medals = ['🥇', '🥈', '🥉'];
                 const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
 
-                let progressText = `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\n` +
-                                 `PROGRESS: ${user.completionPercentage}%`;
-
-                if (user.shadowProgress) {
-                    progressText += `\nSHADOW GAME: ${user.shadowProgress.completed}/${user.shadowProgress.total} (${user.shadowProgress.percentage}%)`;
-                }
-
                 embed.addTerminalField(
                     `${medal} RANK #${user.rank} - ${user.username}`,
-                    progressText
+                    `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\n` +
+                    `PROGRESS: ${user.completionPercentage}%`
                 );
             }
 
@@ -119,44 +110,11 @@ module.exports = {
         }
     },
 
-    rankUsersWithCombinedProgress(users, shadowGameData) {
-        // Calculate combined percentages for each user
-        const usersWithCombined = users.map(user => {
-            const monthlyPercentage = parseFloat(user.completionPercentage);
-            let shadowProgress = null;
-            let combinedPercentage = monthlyPercentage;
-
-            // Only consider shadow game if monthly is 100% and shadow game is active
-            if (monthlyPercentage === 100 && shadowGameData?.active && shadowGameData?.finalReward) {
-                const shadowAchievements = user.achievements.filter(
-                    a => a.GameID === shadowGameData.finalReward.gameId
-                );
-                const completedShadow = shadowAchievements.filter(a => parseInt(a.DateEarned) > 0).length;
-                const totalShadow = shadowAchievements.length;
-                const shadowPercentage = (completedShadow / totalShadow) * 100;
-
-                shadowProgress = {
-                    completed: completedShadow,
-                    total: totalShadow,
-                    percentage: shadowPercentage.toFixed(2)
-                };
-
-                // Direct addition of percentages
-                combinedPercentage = monthlyPercentage + shadowPercentage;
-            }
-
-            return {
-                ...user,
-                shadowProgress,
-                combinedPercentage
-            };
-        });
-
-        // Sort users by combined percentage and then by achievements
-        const sortedUsers = [...usersWithCombined].sort((a, b) => {
-            if (a.combinedPercentage !== b.combinedPercentage) {
-                return b.combinedPercentage - a.combinedPercentage;
-            }
+    rankUsersWithTies(users) {
+        // Sort users by completion percentage and achievements
+        const sortedUsers = [...users].sort((a, b) => {
+            const percentDiff = parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage);
+            if (percentDiff !== 0) return percentDiff;
             return b.completedAchievements - a.completedAchievements;
         });
 
@@ -165,21 +123,19 @@ module.exports = {
         let previousScore = null;
         let displayInMainCount = 0;
 
-        return sortedUsers.map((user, index) => {
-            const currentScore = `${user.combinedPercentage}-${user.completedAchievements}`;
+        return sortedUsers.map((entry, index) => {
+            const currentScore = `${entry.completionPercentage}-${entry.completedAchievements}`;
 
             if (previousScore !== currentScore) {
                 currentRank = index + 1;
                 previousScore = currentScore;
             }
 
-            // Determine if this user should be displayed in main rankings
             const displayInMain = currentRank <= 3;
-
             if (displayInMain) displayInMainCount++;
 
             return {
-                ...user,
+                ...entry,
                 rank: currentRank,
                 displayInMain
             };
