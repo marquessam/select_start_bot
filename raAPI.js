@@ -1,5 +1,5 @@
 // raAPI.js
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const database = require('./database');
 const { ErrorHandler } = require('./utils/errorHandler');
 
@@ -17,13 +17,15 @@ const rateLimiter = {
 
         this.processing = true;
         while (this.queue.length > 0) {
-            const { url, resolve, reject } = this.queue[0];
+            const { url, resolve, reject } = this.queue.shift();  // Shift first
 
             try {
                 const now = Date.now();
                 const lastRequest = this.requests.get(url) || 0;
-                const timeToWait = Math.max(0, lastRequest + this.cooldown - now);
+                const timeSinceLast = now - lastRequest;
 
+                // Calculate any remaining cooldown
+                const timeToWait = Math.max(0, this.cooldown - timeSinceLast);
                 if (timeToWait > 0) {
                     await new Promise(r => setTimeout(r, timeToWait));
                 }
@@ -40,9 +42,6 @@ const rateLimiter = {
             } catch (error) {
                 reject(error);
             }
-
-            this.queue.shift();
-            await new Promise(r => setTimeout(r, this.cooldown));
         }
         this.processing = false;
     },
@@ -50,7 +49,7 @@ const rateLimiter = {
     async makeRequest(url) {
         return new Promise((resolve, reject) => {
             this.queue.push({ url, resolve, reject });
-            this.processQueue();
+            this.processQueue(); // Kick off processing if not already running
         });
     }
 };
@@ -171,7 +170,7 @@ async function fetchUserProfile(username) {
 async function fetchLeaderboardData(force = false) {
     try {
         // Check cache first
-        if (!force && cache.leaderboardData && 
+        if (!force && cache.leaderboardData &&
             !cache.shouldUpdate('leaderboard', cache.lastLeaderboardUpdate)) {
             console.log('[RA API] Returning cached leaderboard data');
             return cache.leaderboardData;
@@ -195,23 +194,21 @@ async function fetchLeaderboardData(force = false) {
             try {
                 let allGameAchievements = [];
 
-                // Get all game data for this user
-                for (const gameId of gamesToCheck) {
-                    const progressEntry = userProgressData.find(p => 
-                        p.username === username && p.gameId === gameId
-                    );
+                // Filter out this user's data from the progress array
+                const userEntries = userProgressData.filter(p => p.username === username);
 
-                    if (progressEntry?.data?.Achievements) {
-                        const gameAchievements = Object.values(progressEntry.data.Achievements).map(ach => ({
+                for (const entry of userEntries) {
+                    if (entry.data?.Achievements) {
+                        const gameAchievements = Object.values(entry.data.Achievements).map(ach => ({
                             ...ach,
-                            GameID: gameId
+                            GameID: entry.gameId
                         }));
-                        allGameAchievements = [...allGameAchievements, ...gameAchievements];
+                        allGameAchievements.push(...gameAchievements);
                     }
                 }
 
                 // Calculate main game progress
-                const mainGameAchievements = allGameAchievements.filter(a => 
+                const mainGameAchievements = allGameAchievements.filter(a =>
                     a.GameID === challenge.gameId
                 );
                 const numAchievements = mainGameAchievements.length;
@@ -278,8 +275,13 @@ async function fetchLeaderboardData(force = false) {
     }
 }
 
+/**
+ * Parallelizes user/game progress fetch by pushing all requests to the rateLimiter at once,
+ * rather than sequentially in nested loops. The rate limiter still processes them one-by-one.
+ */
 async function batchFetchUserProgress(usernames, gameIds) {
-    const results = [];
+    const fetchPromises = [];
+
     for (const username of usernames) {
         for (const gameId of gameIds) {
             const params = new URLSearchParams({
@@ -288,27 +290,35 @@ async function batchFetchUserProgress(usernames, gameIds) {
                 g: gameId,
                 u: username
             });
-            try {
-                const data = await rateLimiter.makeRequest(
-                    `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`
-                );
-                results.push({ username, gameId, data });
-            } catch (error) {
-                console.error(`[RA API] Error fetching progress for ${username}, game ${gameId}:`, error);
-            }
+            const url = `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`;
+
+            // We push a Promise, which calls rateLimiter
+            fetchPromises.push(
+                rateLimiter.makeRequest(url)
+                    .then(data => ({ username, gameId, data }))
+                    .catch(error => {
+                        console.error(`[RA API] Error fetching progress for ${username}, game ${gameId}:`, error);
+                        return { username, gameId, data: null };
+                    })
+            );
         }
     }
-    return results;
+
+    // Wait for all requests to complete
+    return Promise.all(fetchPromises);
 }
 
+/**
+ * Parallelizes recent achievement fetch for all valid users.
+ */
 async function fetchAllRecentAchievements() {
     try {
         console.log('[RA API] Fetching ALL recent achievements for each user...');
 
         const validUsers = await database.getValidUsers();
-        const allRecentAchievements = [];
 
-        for (const username of validUsers) {
+        // Map each user to a Promise, so they run in parallel
+        const achievementsPromises = validUsers.map(async (username) => {
             try {
                 const params = new URLSearchParams({
                     z: process.env.RA_USERNAME,
@@ -320,28 +330,21 @@ async function fetchAllRecentAchievements() {
                 const url = `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`;
                 const recentData = await rateLimiter.makeRequest(url);
 
-                let finalAchievements = [];
                 if (Array.isArray(recentData)) {
-                    finalAchievements = recentData;
+                    console.log(`[RA API] Fetched recent achievements for user: ${username}`);
+                    return { username, achievements: recentData };
                 } else {
-                    console.warn(`[RA API] "recentData" was not an array for user: ${username}. Using empty array instead.`);
+                    console.warn(`[RA API] "recentData" was not an array for user: ${username}. Using empty array.`);
+                    return { username, achievements: [] };
                 }
-
-                allRecentAchievements.push({
-                    username,
-                    achievements: finalAchievements
-                });
-
-                console.log(`[RA API] Fetched recent achievements for user: ${username}`);
             } catch (error) {
                 console.error(`[RA API] Error fetching recent achievements for ${username}:`, error);
-                allRecentAchievements.push({
-                    username,
-                    achievements: []
-                });
+                return { username, achievements: [] };
             }
-        }
+        });
 
+        // Wait for all user fetches
+        const allRecentAchievements = await Promise.all(achievementsPromises);
         return allRecentAchievements;
     } catch (error) {
         console.error('[RA API] Error in fetchAllRecentAchievements:', error);
