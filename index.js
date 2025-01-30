@@ -134,6 +134,28 @@ async function setupBot() {
     }
 }
 
+/**
+ * Waits (non-blocking) for userStats to finish initializing.
+ * Returns immediately if already initialized, otherwise polls
+ * every 100ms until initialization is complete.
+ */
+function waitForUserStatsInitialization(userStats) {
+    // If already initialized, no need to wait
+    if (!userStats.isInitializing && userStats.initializationComplete) {
+        return Promise.resolve();
+    }
+
+    // Poll every 100ms until ready
+    return new Promise((resolve) => {
+        const timer = setInterval(() => {
+            if (!userStats.isInitializing && userStats.initializationComplete) {
+                clearInterval(timer);
+                resolve();
+            }
+        }, 100);
+    });
+}
+
 async function coordinateUpdate(services, force = false) {
     if (!force && services.leaderboardCache.hasInitialData) {
         console.log('[UPDATE] Skipping redundant update, using cached data');
@@ -148,11 +170,10 @@ async function coordinateUpdate(services, force = false) {
     }
 
     try {
+        // Instead of while-loop blocking, we wait with a small helper
         if (services.userStats.isInitializing || !services.userStats.initializationComplete) {
             console.log('[UPDATE] Waiting for UserStats initialization...');
-            while (services.userStats.isInitializing || !services.userStats.initializationComplete) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
+            await waitForUserStatsInitialization(services.userStats);
         }
 
         const leaderboardData = await services.leaderboardCache.updateLeaderboards(force);
