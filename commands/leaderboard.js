@@ -3,7 +3,7 @@ const DataService = require('../services/dataService');
 
 module.exports = {
     name: 'leaderboard',
-    description: 'Displays monthly, yearly, or high score leaderboards',
+    description: 'Displays monthly or yearly leaderboards',
 
     async execute(message, args, { shadowGame }) {
         try {
@@ -15,8 +15,7 @@ module.exports = {
                     .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT AN OPTION]\n')
                     .addTerminalField('USAGE',
                         '1. !leaderboard month - View monthly challenge leaderboard\n' +
-                        '2. !leaderboard year - View yearly challenge leaderboard\n' +
-                        '3. !leaderboard highscores - View game high scores')
+                        '2. !leaderboard year - View yearly challenge leaderboard')
                     .setTerminalFooter();
 
                 await message.channel.send({ embeds: [embed] });
@@ -33,9 +32,6 @@ module.exports = {
                 case 'year':
                     await this.displayYearlyLeaderboard(message, shadowGame);
                     break;
-                case 'highscores':
-                    await this.displayHighScores(message, args.slice(1), shadowGame);
-                    break;
                 default:
                     await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid option\nUse !leaderboard to see available options\n[Ready for input]█\x1b[0m```');
                     if (shadowGame) await shadowGame.tryShowError(message);
@@ -46,42 +42,91 @@ module.exports = {
         }
     },
 
-    // Display monthly leaderboard
     async displayMonthlyLeaderboard(message, shadowGame) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
 
-            const leaderboardData = await DataService.getLeaderboard('monthly');
-            const currentChallenge = await DataService.getCurrentChallenge();
+            // Fetch all required data
+            const [leaderboardData, currentChallenge, shadowGameData] = await Promise.all([
+                DataService.getLeaderboard('monthly'),
+                DataService.getCurrentChallenge(),
+                shadowGame?.config || null
+            ]);
 
-            // Filter out users with 0 progress
+            // Get valid users and filter for active participants
             const validUsers = await DataService.getValidUsers();
             const activeUsers = leaderboardData.filter(user =>
                 validUsers.includes(user.username.toLowerCase()) &&
                 (user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0)
             );
 
+            // Sort users with tie handling
+            const rankedUsers = this.rankUsersWithTies(activeUsers);
+
             const embed = new TerminalEmbed()
                 .setTerminalTitle('USER RANKINGS')
                 .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]');
-
-            // Display top 3
-            activeUsers.slice(0, 3).forEach((user, index) => {
-                const medals = ['🥇', '🥈', '🥉'];
-                embed.addTerminalField(
-                    `${medals[index]} ${user.username}`,
-                    `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\nPROGRESS: ${user.completionPercentage}%`
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
+                .addTerminalField('CURRENT CHALLENGE', 
+                    `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
+                    `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}`
                 );
-            });
 
-            // Display remaining active participants
-            const additionalParticipants = activeUsers.slice(3)
-                .map(user => `${user.username} (${user.completionPercentage}%)`)
-                .join('\n');
+            // Add top rankings (including ties)
+            let lastAddedRank = 0;
+            for (const user of rankedUsers) {
+                if (lastAddedRank >= 3 && user.rank > 3) break; // Only show beyond top 3 if tied
 
-            if (additionalParticipants) {
-                embed.addTerminalField('ADDITIONAL PARTICIPANTS', additionalParticipants);
+                // Check if user has completed main challenge and shadow game is active
+                const showShadowProgress = user.completionPercentage === '100.00' && 
+                                         shadowGameData?.active && 
+                                         shadowGameData?.finalReward;
+
+                // Find shadow game progress if needed
+                let shadowProgress = null;
+                if (showShadowProgress) {
+                    shadowProgress = activeUsers.find(u => 
+                        u.username.toLowerCase() === user.username.toLowerCase() &&
+                        u.achievements.some(a => a.GameID === shadowGameData.finalReward.gameId)
+                    );
+                }
+
+                // Get medal based on rank
+                const medals = ['🥇', '🥈', '🥉'];
+                const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
+
+                // Create progress text
+                let progressText = `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\n` +
+                                 `PROGRESS: ${user.completionPercentage}%`;
+
+                // Add shadow game progress if applicable
+                if (showShadowProgress && shadowProgress) {
+                    const shadowAchievements = shadowProgress.achievements.filter(
+                        a => a.GameID === shadowGameData.finalReward.gameId
+                    );
+                    const completedShadow = shadowAchievements.filter(a => parseInt(a.DateEarned) > 0).length;
+                    const totalShadow = shadowAchievements.length;
+                    
+                    progressText += `\nSHADOW GAME: ${completedShadow}/${totalShadow} (${((completedShadow/totalShadow) * 100).toFixed(2)}%)`;
+                }
+
+                // Add field for user
+                embed.addTerminalField(
+                    `${medal} RANK #${user.rank} - ${user.username}`,
+                    progressText
+                );
+
+                lastAddedRank = user.rank;
+            }
+
+            // Add remaining participants if any
+            const remainingUsers = rankedUsers.filter(user => user.rank > 3 && !user.isTied);
+            if (remainingUsers.length > 0) {
+                const remainingText = remainingUsers
+                    .map(user => `${user.username} (${user.completionPercentage}%)`)
+                    .join('\n');
+
+                embed.addTerminalField('ADDITIONAL PARTICIPANTS', remainingText);
             }
 
             if (activeUsers.length === 0) {
@@ -89,15 +134,16 @@ module.exports = {
             }
 
             embed.setTerminalFooter();
+            
             await message.channel.send({ embeds: [embed] });
             if (shadowGame) await shadowGame.tryShowError(message);
+
         } catch (error) {
             console.error('Monthly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
 
-    // Display yearly leaderboard
     async displayYearlyLeaderboard(message, shadowGame) {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
@@ -108,7 +154,7 @@ module.exports = {
             // Filter for valid and active users and sort by points
             const activeUsers = yearlyLeaderboard
                 .filter(user => validUsers.includes(user.username.toLowerCase()) && user.points > 0)
-                .sort((a, b) => b.points - a.points); // Sort by points in descending order
+                .sort((a, b) => b.points - a.points);
 
             let currentRank = 1;
             let previousPoints = null;
@@ -133,7 +179,11 @@ module.exports = {
             if (rankedLeaderboard.length > 0) {
                 embed.addTerminalField('TOP USERS',
                     rankedLeaderboard
-                        .map(user => `${user.rank}. ${user.username}: ${user.points} points`)
+                        .map(user => {
+                            const medals = ['🥇', '🥈', '🥉'];
+                            const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
+                            return `${medal} ${user.rank}. ${user.username}: ${user.points} points`;
+                        })
                         .join('\n'));
             } else {
                 embed.addTerminalField('STATUS', 'No rankings available');
@@ -142,75 +192,45 @@ module.exports = {
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
             if (shadowGame) await shadowGame.tryShowError(message);
+
         } catch (error) {
             console.error('Yearly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
 
-    // Display high scores
-    async displayHighScores(message, args, shadowGame) {
-        try {
-            const highscores = await DataService.getArcadeScores();
+    rankUsersWithTies(users) {
+        // Sort users by completion percentage and achievements
+        const sortedUsers = [...users].sort((a, b) => {
+            const percentDiff = parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage);
+            if (percentDiff !== 0) return percentDiff;
+            return b.completedAchievements - a.completedAchievements;
+        });
 
-            if (!args.length) {
-                await message.channel.send('```ansi\n\x1b[32m> Accessing high score database...\x1b[0m\n```');
+        const rankedUsers = [];
+        let currentRank = 1;
+        let previousScore = null;
+        let tiedUsers = 0;
 
-                const embed = new TerminalEmbed()
-                    .setTerminalTitle('HIGH SCORE BOARDS')
-                    .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT A GAME TO VIEW RANKINGS]\n')
-                    .addTerminalField('AVAILABLE GAMES',
-                        Object.entries(highscores.games)
-                            .map(([gameName, gameData], index) => {
-                                const hasScores = gameData.scores.length > 0 ? '✓' : ' ';
-                                return `${index + 1}. ${gameName} (${gameData.platform}) ${hasScores}`;
-                            })
-                            .join('\n') + '\n\n✓ = Scores recorded')
-                    .addTerminalField('USAGE', '!leaderboard highscores <game number>\nExample: !leaderboard highscores 1')
-                    .setTerminalFooter();
+        for (let i = 0; i < sortedUsers.length; i++) {
+            const user = sortedUsers[i];
+            const currentScore = `${user.completionPercentage}-${user.completedAchievements}`;
 
-                await message.channel.send({ embeds: [embed] });
-                if (shadowGame) await shadowGame.tryShowError(message);
-                return;
-            }
-
-            const gameNumber = parseInt(args[0]);
-            const games = Object.entries(highscores.games);
-
-            if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > games.length) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\nUse !leaderboard highscores to see available games\n[Ready for input]█\x1b[0m```');
-                if (shadowGame) await shadowGame.tryShowError(message);
-                return;
-            }
-
-            const [gameName, gameData] = games[gameNumber - 1];
-
-            const embed = new TerminalEmbed()
-                .setTerminalTitle(`${gameName} HIGH SCORES`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING RANKINGS]');
-
-            if (gameData.scores.length > 0) {
-                embed.addTerminalField('RANKINGS',
-                    gameData.scores
-                        .map((score, index) => {
-                            const medals = ['🥇', '🥈', '🥉'];
-                            return `${medals[index] || ''} ${score.username}: ${score.score.toLocaleString()}`;
-                        })
-                        .join('\n'));
+            if (previousScore === null || currentScore !== previousScore) {
+                currentRank = i + 1;
+                previousScore = currentScore;
+                tiedUsers = 0;
             } else {
-                embed.addTerminalField('STATUS', 'No scores recorded yet');
+                tiedUsers++;
             }
 
-            if (gameData.boxArt) {
-                embed.setImage(gameData.boxArt);
-            }
-
-            embed.setTerminalFooter();
-            await message.channel.send({ embeds: [embed] });
-            if (shadowGame) await shadowGame.tryShowError(message);
-        } catch (error) {
-            console.error('High Scores Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve high scores\n[Ready for input]█\x1b[0m```');
+            rankedUsers.push({
+                ...user,
+                rank: currentRank,
+                isTied: tiedUsers > 0
+            });
         }
+
+        return rankedUsers;
     }
 };
