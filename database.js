@@ -633,6 +633,20 @@ async cleanupDuplicatePoints() {
             throw error;
         }
     }
+    async updateArcadeGame(gameName, gameData) {
+    try {
+        const collection = await this.getCollection('arcadechallenge');
+        await collection.updateOne(
+            { _id: 'scores' },
+            { $set: { [`games.${gameName}`]: gameData } },
+            { upsert: true }
+        );
+        return true;
+    } catch (error) {
+        console.error('Error updating arcade game:', error);
+        throw error;
+    }
+}
     // =================
     // Review Methods
     // =================
