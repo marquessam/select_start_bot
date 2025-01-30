@@ -68,15 +68,16 @@ const pointsConfig = {
 };
 
 // Helper function to handle month transitions
-async function updateShadowGameStatus(newMonth) {
+async function updateShadowGameStatus() {
     try {
-        console.log(`[POINTS CONFIG] Updating shadow game status for ${newMonth}`);
+        // Get current month in correct format
+        const currentMonth = new Date().toLocaleString('default', { month: 'long' }).toUpperCase();
+        console.log(`[POINTS CONFIG] Updating shadow game status for ${currentMonth}`);
         
         for (const [gameId, game] of Object.entries(pointsConfig.monthlyGames)) {
             if (game.shadowGame) {
                 const wasActive = game.active;
-                // Set game inactive if it's from a different month
-                game.active = game.month === newMonth && game.active;
+                game.active = game.month === currentMonth && game.active;
                 console.log(`[POINTS CONFIG] Shadow game ${game.name} (${gameId}): ${wasActive ? 'active' : 'inactive'} -> ${game.active ? 'active' : 'inactive'}`);
             }
         }
@@ -104,7 +105,8 @@ async function canAwardPoints(username, gameId, pointType) {
     const gameConfig = pointsConfig.monthlyGames[gameId];
     if (!gameConfig) return false;
 
-    const currentMonth = new Date().toLocaleString('default', { month: 'UPPERCASE' });
+    // Get current month in correct format
+    const currentMonth = new Date().toLocaleString('default', { month: 'long' }).toUpperCase();
     
     // Shadow games must be active to award any points
     if (gameConfig.shadowGame && !gameConfig.active) {
