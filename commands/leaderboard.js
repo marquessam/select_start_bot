@@ -63,16 +63,16 @@ module.exports = {
             // Calculate combined percentages and rank users
             const rankedUsers = this.rankUsersWithCombinedProgress(activeUsers, shadowGameData);
 
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('USER RANKINGS')
-                .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
-                .addTerminalField('CURRENT CHALLENGE', 
-                    `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
-                    `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}` +
-                    (shadowGameData?.active && shadowGameData?.finalReward ? 
-                        `\nSHADOW GAME: ${shadowGameData.finalReward.gameName}` : '')
-                );
+           const embed = new TerminalEmbed()
+            .setTerminalTitle('USER RANKINGS')
+            .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
+            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
+            .addTerminalField('CURRENT CHALLENGE', 
+                `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
+                `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}` +
+                (shadowGameData?.active && shadowGameData?.currentProgress >= shadowGameData.puzzles.length ? 
+                    `\nSHADOW GAME: ${shadowGameData.finalReward.gameName}` : '')
+            );
 
             // Add top rankings
             for (const user of rankedUsers) {
