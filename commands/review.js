@@ -39,8 +39,12 @@ async function showHelp(message) {
         .addTerminalField(
             'COMMANDS',
             '!review read - Browse and read game reviews\n' +
-            '!review write <game title> - Submit a new review'
+            '!review write <game title> - Submit a new review' 
         )
+        //TRIFORCE SHADOWGAME
+        .addTerminalField('ANCIENT WISDOM',
+        `[W5J9CH]`)
+        //TRIFOCE SHADOWGAME
         .addTerminalField(
             'SCORING CATEGORIES',
             'Art/Graphics (1-5)\n' +
