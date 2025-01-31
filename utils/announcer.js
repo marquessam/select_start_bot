@@ -1,25 +1,10 @@
-const TerminalEmbed = require('./embedBuilder');
-const { fetchLeaderboardData } = require('../raAPI.js');
-const cron = require('node-cron');
-const database = require('../database');
+// Modified version of announcer.js
 
 class Announcer {
     constructor(client, userStats, channelId) {
         this.client = client;
         this.userStats = userStats;
         this.announcementChannelId = channelId;
-    }
-
-    async initialize() {
-        // Schedule monthly events
-        // 1st of each month - New Challenge Start
-        cron.schedule('0 0 1 * *', () => this.handleNewMonth());
-        
-        // 15th of month - Nominations Open
-        cron.schedule('0 0 15 * *', () => this.announceNominationsOpen());
-        
-        // 23rd of month - Voting Open
-        cron.schedule('0 0 23 * *', () => this.announceVotingOpen());
     }
 
     async handleNewMonth() {
@@ -34,19 +19,33 @@ class Announcer {
             await this.announceNewChallenge();
         } catch (error) {
             console.error('Month transition error:', error);
+            throw error;
         }
     }
 
-    async getAnnouncementChannel() {
-        return await this.client.channels.fetch(this.announcementChannelId);
-    }
-
-    async makeAnnouncement(embed) {
+    async handleChallengeEnd() {
         try {
-            const channel = await this.getAnnouncementChannel();
-            await channel.send({ embeds: [embed] });
+            // Fetch final standings
+            const data = await fetchLeaderboardData();
+            
+            // Archive the month
+            await this.userStats.archiveLeaderboard(data);
+            
+            // Announce completion without automatic points
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('CHALLENGE COMPLETE')
+                .setTerminalDescription('[MISSION ACCOMPLISHED]\n[ARCHIVING FINAL RESULTS]')
+                .addTerminalField('STATUS UPDATE',
+                    'Monthly challenge has concluded\n' +
+                    'Final standings have been archived\n' +
+                    'Points will be awarded manually')
+                .setTerminalFooter();
+
+            await this.makeAnnouncement(embed);
+
         } catch (error) {
-            console.error('Announcement Error:', error);
+            console.error('Challenge End Error:', error);
+            throw error;
         }
     }
 
@@ -61,7 +60,7 @@ class Announcer {
             }
 
             // Save next challenge as current
-            await database.saveCurrentChallenge(nextChallenge);
+            await database.saveChallenge(nextChallenge, 'current');
             console.log('Saved next challenge as current');
 
             // Create empty template for next challenge
@@ -85,61 +84,12 @@ class Announcer {
             };
 
             // Save empty template as next challenge
-            await database.saveNextChallenge(emptyTemplate);
+            await database.saveChallenge(emptyTemplate, 'next');
             console.log('Saved empty template as next challenge');
 
-            // Create announcement about transition
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('CHALLENGE TRANSITION')
-                .setTerminalDescription('[SYSTEM UPDATE]\n[NEW CHALLENGE LOADED]')
-                .addTerminalField('STATUS UPDATE', 
-                    'Previous challenge archived\nNew challenge activated\nNext challenge template prepared')
-                .setTerminalFooter();
-
-            await this.makeAnnouncement(embed);
-
         } catch (error) {
-            console.error('Detailed switch error:', error);
+            console.error('Switch error:', error);
             throw error;
-        }
-    }
-
-    async handleChallengeEnd() {
-        try {
-            // Fetch final standings
-            const data = await fetchLeaderboardData();
-            
-            // Archive the month
-            await this.userStats.archiveLeaderboard(data);
-            
-            // Update points for top 3
-            const month = new Date().toLocaleString('default', { month: 'long' });
-            const year = new Date().getFullYear().toString();
-            
-            const winners = {
-                first: data.leaderboard[0]?.username,
-                second: data.leaderboard[1]?.username,
-                third: data.leaderboard[2]?.username
-            };
-
-            await this.userStats.addMonthlyPoints(month, year, winners);
-
-            // Announce winners
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('CHALLENGE COMPLETE')
-                .setTerminalDescription('[MISSION ACCOMPLISHED]\n[CALCULATING FINAL RESULTS]')
-                .addTerminalField('CHALLENGE WINNERS',
-                    `🥇 ${winners.first || 'None'} - 6 pts\n` +
-                    `🥈 ${winners.second || 'None'} - 4 pts\n` +
-                    `🥉 ${winners.third || 'None'} - 2 pts`)
-                .addTerminalField('STATUS UPDATE',
-                    'Monthly challenge has concluded\nPoints have been awarded\nArchive has been updated')
-                .setTerminalFooter();
-
-            await this.makeAnnouncement(embed);
-
-        } catch (error) {
-            console.error('Challenge End Error:', error);
         }
     }
 
@@ -154,26 +104,16 @@ class Announcer {
         await this.makeAnnouncement(embed);
     }
 
-    async announceNominationsOpen() {
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('NOMINATIONS OPEN')
-            .setTerminalDescription('[ALERT: MISSION SELECTION PHASE]\n[INPUT REQUESTED]')
-            .addTerminalField('STATUS UPDATE',
-                'Nominations for next month\'s challenge are now open!\nSubmit your game suggestions in the nominations channel.')
-            .setTerminalFooter();
-
-        await this.makeAnnouncement(embed);
-    }
-
-    async announceVotingOpen() {
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('VOTING PHASE INITIATED')
-            .setTerminalDescription('[ALERT: FINAL SELECTION PHASE]\n[VOTES REQUIRED]')
-            .addTerminalField('STATUS UPDATE',
-                'Voting for next month\'s challenge has begun!\nCast your votes in the voting channel.')
-            .setTerminalFooter();
-
-        await this.makeAnnouncement(embed);
+    async makeAnnouncement(embed) {
+        try {
+            const channel = await this.client.channels.fetch(this.announcementChannelId);
+            if (channel) {
+                await channel.send({ embeds: [embed] });
+            }
+        } catch (error) {
+            console.error('Announcement Error:', error);
+            throw error;
+        }
     }
 }
 
