@@ -503,6 +503,59 @@ class UserStats {
         }
     }
 
+    async archiveLeaderboard(data) {
+    try {
+        if (!data?.leaderboard || !data?.gameInfo) {
+            throw new Error('Invalid leaderboard data for archiving');
+        }
+
+        const currentMonth = new Date().toLocaleString('default', { month: 'long' });
+        const currentYear = new Date().getFullYear().toString();
+
+        // Build archive entry
+        const archiveEntry = {
+            month: currentMonth,
+            year: currentYear,
+            gameInfo: data.gameInfo,
+            leaderboard: data.leaderboard.map(user => ({
+                username: user.username,
+                completedAchievements: user.completedAchievements,
+                totalAchievements: user.totalAchievements,
+                completionPercentage: user.completionPercentage,
+                hasBeatenGame: user.hasBeatenGame
+            })),
+            date: new Date().toISOString()
+        };
+
+        // Save to monthly stats
+        if (!this.cache.stats.monthlyStats[currentYear]) {
+            this.cache.stats.monthlyStats[currentYear] = {};
+        }
+        this.cache.stats.monthlyStats[currentYear][currentMonth] = archiveEntry;
+
+        // Add game to history
+        await this.database.addGameToHistory({
+            ...data.gameInfo,
+            month: currentMonth,
+            year: currentYear,
+            date: archiveEntry.date
+        });
+
+        // Force save
+        await this.saveStats();
+
+        return {
+            month: currentMonth,
+            year: currentYear,
+            rankings: archiveEntry.leaderboard
+        };
+    } catch (error) {
+        console.error('Error archiving leaderboard:', error);
+        throw error;
+    }
+}
+
+
     // =======================
     //     Utility
     // =======================
