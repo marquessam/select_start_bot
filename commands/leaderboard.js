@@ -152,7 +152,7 @@ module.exports = {
 
     async displayYearlyLeaderboard(message, shadowGame) {
         try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
+            await message.channel.send('```ansi\n\x1b[32m> Accessing HERO\'S RECORD...\x1b[0m\n```');
 
             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
             const validUsers = await DataService.getValidUsers();
@@ -180,7 +180,7 @@ module.exports = {
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('YEARLY RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS][C5V5BN]');
 
             if (rankedLeaderboard.length > 0) {
                 embed.addTerminalField('TOP USERS',
