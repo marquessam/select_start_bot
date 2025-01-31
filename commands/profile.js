@@ -82,7 +82,7 @@ async function getInitialUserData(username, userStats) {
 
 module.exports = {
     name: 'profile',
-    description: 'Displays enhanced user profile and stats',
+    description: 'Displays user profile and stats',
     
     async execute(message, args, { shadowGame, userStats }) {
         try {
@@ -178,9 +178,7 @@ module.exports = {
             await message.channel.send({ embeds: [embed] });
             await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
             
-            if (shadowGame) {
-                await shadowGame.tryShowError(message);
-            }
+            if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
 
         } catch (error) {
             console.error('[PROFILE] Error:', error);
