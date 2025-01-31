@@ -1,11 +1,6 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
-const { getTimeUntilMonthEnd, formatTimeRemaining } = require('../utils/timerFunctions'); // Import the timer functions
-
-const timeLeftMs = getTimeUntilMonthEnd(); // returns ms
-const timeLeftSeconds = Math.floor(timeLeftMs / 1000);
-
-const endOfMonthTimestamp = Math.floor(Date.now() / 1000) + timeLeftSeconds;
+const { createTimestamp } = require('../utils/timerFunctions');
 
 module.exports = {
     name: 'leaderboard',
@@ -25,7 +20,7 @@ module.exports = {
                     .setTerminalFooter();
 
                 await message.channel.send({ embeds: [embed] });
-                if (shadowGame && shadowGame.tryShowError) await shadowGame.tryShowError(message); // Check if shadowGame and tryShowError exist
+                if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
                 return;
             }
 
@@ -40,7 +35,7 @@ module.exports = {
                     break;
                 default:
                     await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid option\nUse !leaderboard to see available options\n[Ready for input]█\x1b[0m```');
-                    if (shadowGame && shadowGame.tryShowError) await shadowGame.tryShowError(message); // Check if shadowGame and tryShowError exist
+                    if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
             }
         } catch (error) {
             console.error('Leaderboard Command Error:', error);
@@ -52,31 +47,20 @@ module.exports = {
         try {
             await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
 
-            // Fetch required data
             const [leaderboardData, currentChallenge] = await Promise.all([
                 DataService.getLeaderboard('monthly'),
                 DataService.getCurrentChallenge()
             ]);
 
-            // Get valid users and filter for active participants
             const validUsers = await DataService.getValidUsers();
             const activeUsers = leaderboardData.filter(user =>
                 validUsers.includes(user.username.toLowerCase()) &&
                 (user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0)
             );
 
-            // Sort and rank users
             const rankedUsers = this.rankUsersWithTies(activeUsers);
-
-            // Get time remaining
-            const timeLeft = getTimeUntilMonthEnd();
-            const timeRemaining = formatTimeRemaining(timeLeft);
-
-            // Define localizedTime
-            const now = new Date();
-            const localizedTime = now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }); // Use Taipei time zone
-
-            const monthName = now.toLocaleString('default', { month: 'long' });
+            const monthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59);
+            const monthName = new Date().toLocaleString('default', { month: 'long' });
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('USER RANKINGS')
@@ -85,10 +69,10 @@ module.exports = {
                 .addTerminalField(`${monthName.toUpperCase()} CHALLENGE`, 
                     `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
                     `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}\n` +
-                    `TIME REMAINING: ${timeRemaining} (local time: ${localizedTime})`
+                    `CHALLENGE ENDS: ${createTimestamp(monthEnd, 'F')}\n` +
+                    `TIME REMAINING: ${createTimestamp(monthEnd, 'R')}`
                 );
 
-            // Add top rankings
             for (const user of rankedUsers) {
                 if (!user.displayInMain && user.rank > 3) continue;
 
@@ -102,7 +86,6 @@ module.exports = {
                 );
             }
 
-            // Add remaining participants if any
             const remainingUsers = rankedUsers.filter(user => !user.displayInMain);
             if (remainingUsers.length > 0) {
                 const remainingText = remainingUsers
@@ -116,13 +99,11 @@ module.exports = {
                 embed.addTerminalField('STATUS', 'No active participants yet');
             }
 
-            // TRIFORCE SHADOWGAME
             embed.setFooter({ text: `Rankings Updated: [W2K5MN]` });
-            // TRIFORCE SHADOWGAME
             embed.setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
-            if (shadowGame && shadowGame.tryShowError) await shadowGame.tryShowError(message); // Check if shadowGame and tryShowError exist
+            if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
 
         } catch (error) {
             console.error('Monthly Leaderboard Error:', error);
@@ -131,14 +112,12 @@ module.exports = {
     },
 
     rankUsersWithTies(users) {
-        // Sort users by completion percentage and achievements
         const sortedUsers = [...users].sort((a, b) => {
             const percentDiff = parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage);
             if (percentDiff !== 0) return percentDiff;
             return b.completedAchievements - a.completedAchievements;
         });
 
-        // Assign ranks with tie handling
         let currentRank = 1;
         let previousScore = null;
         let displayInMainCount = 0;
@@ -169,7 +148,6 @@ module.exports = {
             const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
             const validUsers = await DataService.getValidUsers();
 
-            // Filter for valid and active users and sort by points
             const activeUsers = yearlyLeaderboard
                 .filter(user => validUsers.includes(user.username.toLowerCase()) && user.points > 0)
                 .sort((a, b) => b.points - a.points);
@@ -177,7 +155,6 @@ module.exports = {
             let currentRank = 1;
             let previousPoints = null;
 
-            // Assign ranks properly
             const rankedLeaderboard = activeUsers.map((user, index) => {
                 if (previousPoints !== user.points) {
                     currentRank = index + 1;
@@ -209,7 +186,7 @@ module.exports = {
 
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
-            if (shadowGame && shadowGame.tryShowError) await shadowGame.tryShowError(message); // Check if shadowGame and tryShowError exist
+            if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
 
         } catch (error) {
             console.error('Yearly Leaderboard Error:', error);
