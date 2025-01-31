@@ -1,19 +1,17 @@
+// shadowGame.js
 const { EmbedBuilder } = require('discord.js');
 const database = require('./database');
 const { fetchLeaderboardData } = require('./raAPI');
-const { withTransaction } = require('./utils/transactions');
 
 class ShadowGame {
     constructor() {
         this.config = null;
-        this.errorChance = 0.99;
-        this.database = require('./database'); // Add database requirement
+        this.database = require('./database');
     }
 
     async loadConfig() {
         try {
             this.config = await database.getShadowGame();
-            console.log('Shadow Game config loaded successfully');
             return true;
         } catch (error) {
             console.error('Error loading shadow game config:', error);
@@ -23,16 +21,51 @@ class ShadowGame {
 
     async initialize(gameData = null) {
         try {
-            if (gameData) {
-                // Initialize default point values
-                if (!gameData.points) {
-                    gameData.points = {
+            const shadowGameData = {
+                active: true,
+                currentProgress: 0,
+                triforceState: {
+                    wisdom: {
+                        required: 6,
+                        found: 0,
+                        pieces: [
+                            "W1X4BY",  // Profile display
+                            "W2K5MN",  // Monthly leaderboard
+                            "W3R8ST",  // Arcade scores
+                            "W4Y6PV",  // Achievement feed
+                            "W5J9CH",  // Reviews
+                            "W6F7GD"   // Nominations
+                        ],
+                        collected: new Set()
+                    },
+                    courage: {
+                        required: 6,
+                        found: 0,
+                        pieces: [
+                            "C1B5NM",  // Help command
+                            "C2K4LP",  // Archive viewer
+                            "C3R8TW",  // Rules display
+                            "C4Y2XQ",  // Search results
+                            "C5V5BN",  // Monthly standings
+                            "C6H7JD"   // Points awards
+                        ],
+                        collected: new Set()
+                    },
+                    power: {
+                        collected: false
+                    }
+                },
+                finalReward: {
+                    gameId: "274",
+                    gameName: "U.N. Squadron",
+                    points: {
                         participation: 1,
                         beaten: 3
-                    };
+                    }
                 }
-                await database.saveShadowGame(gameData);
-            }
+            };
+            
+            await database.saveShadowGame(shadowGameData);
             await this.loadConfig();
             return true;
         } catch (error) {
@@ -45,187 +78,201 @@ class ShadowGame {
         try {
             let shadowGame = await database.getShadowGame();
             shadowGame.currentProgress = 0;
+            shadowGame.triforceState = {
+                wisdom: {
+                    required: 6,
+                    found: 0,
+                    pieces: [
+                        "W1X4BY", "W2K5MN", "W3R8ST",
+                        "W4Y6PV", "W5J9CH", "W6F7GD"
+                    ],
+                    collected: new Set()
+                },
+                courage: {
+                    required: 6,
+                    found: 0,
+                    pieces: [
+                        "C1B5NM", "C2K4LP", "C3R8TW",
+                        "C4Y2XQ", "C5V5BN", "C6H7JD"
+                    ],
+                    collected: new Set()
+                },
+                power: {
+                    collected: false
+                }
+            };
             await database.saveShadowGame(shadowGame);
             return true;
         } catch (error) {
-            console.error('Error resetting shadow game progress:', error);
+            console.error('Error resetting shadow game:', error);
             return false;
         }
     }
 
-    async tryShowError(message) {
-        try {
-            if (!this.config || !this.config.active) {
-                return;
-            }
-
-            const currentPuzzle = this.config.puzzles[this.config.currentProgress];
-            if (!currentPuzzle) {
-                return;
-            }
-
-            const roll = Math.random();
-            if (roll > this.errorChance) {
-                return;
-            }
-
-            const embed = new EmbedBuilder()
-                .setColor('#FF0000')
-                .setTitle('SYSTEM ERROR')
-                .setDescription('```ansi\n\x1b[31m' + currentPuzzle.error + '\x1b[0m```')
-                .setFooter({ text: `ERROR_ID: ${Date.now().toString(36).toUpperCase()}` });
-
-            await message.channel.send({ embeds: [embed] });
-        } catch (error) {
-            console.error('Error in tryShowError:', error);
-        }
-    }
-
-    async processCommand(message, command) {
-        try {
-            switch (command) {
-                case 'reset':
-                    await this.handleReset(message);
-                    break;
-                case 'init':
-                    await this.handleInit(message);
-                    break;
-                default:
-                    await this.checkMessage(message);
-            }
-        } catch (error) {
-            console.error('Error processing shadow command:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Shadow game command failed\n[Ready for input]█\x1b[0m```');
-        }
-    }
-
-    async handleReset(message) {
-        await this.resetProgress();
-        await this.loadConfig();
-        
-        await message.channel.send('```ansi\n\x1b[32m[SYSTEM RESET COMPLETE]\n[Ready for input]█\x1b[0m```');
-        
-        const firstPuzzle = this.config.puzzles[0];
-        const errorEmbed = new EmbedBuilder()
-            .setColor('#FF0000')
-            .setTitle('SYSTEM ERROR')
-            .setDescription('```ansi\n\x1b[31m' + firstPuzzle.error + '\x1b[0m```')
-            .setFooter({ text: `ERROR_ID: ${Date.now().toString(36).toUpperCase()}` });
-
-        await message.channel.send({ embeds: [errorEmbed] });
-    }
-
-    async handleInit(message) {
-        const shadowGameData = {
-            active: true,
-            currentProgress: 0,
-            points: {
-                participation: 1,
-                beaten: 3
-            },
-            puzzles: [
-                {
-                    error: "ERROR 0xCT01: Timeline database corrupted\nExpected value 'date.presentday.timeline' not found\nAttempting recovery of time marker...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
-                    solution: "!1000AD",
-                    completion_message: "[RECOVERED] Present day timeline restored\n[WARNING] Additional timeline anomaly detected in Middle Ages..."
-                },
-                {
-                    error: "ERROR 0xCT02: Paradox detected in Middle Ages\nAnomalous dual existence: LEANNE.entity and MARLE.entity\nExpected value 'date.middleages.timeline' not found\nAttempting timeline calibration...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
-                    solution: "!600AD",
-                    completion_message: "[RECOVERED] Middle Ages timeline stabilized\n[WARNING] Future timeline corruption detected..."
-                },
-                {
-                    error: "ERROR 0xCT03: Future systems critical\nLife support failing: DOME_NETWORK.status = CRITICAL\nExpected value 'date.futureapocalypse.timeline' corrupted\nAttempting emergency time sync...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
-                    solution: "!2300AD",
-                    completion_message: "[RECOVERED] Future timeline synchronized\n[WARNING] Day of Lavos temporal anomaly detected..."
-                },
-                {
-                    error: "ERROR 0xCT04: LAVOS.emergence_date corrupted\nCatastrophic event timeline unstable\nExpected value 'date.lavos.timeline' not found\nAttempting temporal stabilization...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
-                    solution: "!1999AD",
-                    completion_message: "[RECOVERED] Day of Lavos timepoint restored\n[WARNING] Prehistoric data corruption detected..."
-                },
-                {
-                    error: "ERROR 0xCT05: Prehistoric database overflow\nAEON.sys temporal boundary exceeded\nExpected value 'prehistory.timeline' not found\nAttempting primitive era recovery...\n\n\x1b[37mPlease input !<year> to continue\x1b[0m",
-                    solution: "!65000000BC",
-                    completion_message: "[RECOVERED] Prehistoric era restored\n[SUCCESS] All temporal anomalies resolved\n[ACCESSING HIDDEN DATA...]"
-                }
-            ],
-            finalReward: {
-                gameId: "10024",
-                gameName: "Mario Tennis",
-                points: "Participation: 1, Beaten: 3"
-            }
-        };
-
-        await this.initialize(shadowGameData);
-
-        const embed = new EmbedBuilder()
-            .setColor('#00FF00')
-            .setTitle('SHADOW GAME INITIALIZED')
-            .setDescription('```ansi\n\x1b[32m[DATABASE UPDATE COMPLETE]\n[SHADOW SYSTEM CONFIGURED]\x1b[0m```')
-            .addFields({
-                name: 'VERIFICATION',
-                value: '```ansi\n\x1b[32m' +
-                    `Active: ${this.config.active}\n` +
-                    `Puzzles: ${this.config.puzzles.length}\n` +
-                    `Current Progress: ${this.config.currentProgress}\x1b[0m` +
-                    '```'
-            })
-            .setFooter({ text: `INIT_ID: ${Date.now().toString(36).toUpperCase()}` });
-
-        await message.channel.send({ embeds: [embed] });
-        await message.channel.send('```ansi\n\x1b[32m> Type !shadowreset to begin the game\n[Ready for input]█\x1b[0m```');
-    }
-
     async checkMessage(message) {
         try {
-            if (!this.config || !this.config.active) {
+            if (!this.config || !message.content.startsWith('!triforce')) {
                 return;
             }
 
-            const currentPuzzle = this.config.puzzles[this.config.currentProgress];
-            if (!currentPuzzle) {
+            const args = message.content.split(/\s+/);
+            
+            if (args.length === 1) {
+                const embed = new EmbedBuilder()
+                    .setColor('#FFD700')
+                    .setTitle('THE SACRED REALM')
+                    .setDescription(
+                        '```ansi\n\x1b[33m' +
+                        'The sacred triangles lie scattered across our realm...\n\n' +
+                        'Wisdom and Courage, shattered by dark magic, must be restored.\n' +
+                        'Their fragments whisper ancient secrets, awaiting those who would seek them.\n\n' +
+                        'Only when these pieces are united can the final trial begin.\n\n' +
+                        'But beware... Ganon\'s power grows stronger with each passing moment.' +
+                        '\x1b[0m```'
+                    );
+
+                embed.addFields({
+                    name: 'SACRED REALM STATUS',
+                    value: this.getTriforceStatus()
+                });
+
+                await message.channel.send({ embeds: [embed] });
                 return;
             }
 
-            if (message.content.toLowerCase() === currentPuzzle.solution.toLowerCase()) {
-                await this.handleCorrectSolution(message, currentPuzzle);
+            if (args.length === 2 && args[1].toLowerCase() === 'power') {
+                await this.checkTriforce(message, 'power');
+                return;
+            }
+
+            if (args.length === 3) {
+                await this.checkTriforce(message, args[1], args[2]);
             }
         } catch (error) {
             console.error('Error in checkMessage:', error);
         }
     }
 
-    async handleCorrectSolution(message, puzzle) {
-        const embed = new EmbedBuilder()
-            .setColor('#00FF00')
-            .setTitle('ERROR RESOLVED')
-            .setDescription('```ansi\n\x1b[32m' + puzzle.completion_message + '\x1b[0m```')
-            .setFooter({ text: `REPAIR_ID: ${Date.now().toString(36).toUpperCase()}` });
-        
-        await message.channel.send({ embeds: [embed] });
-        
-        this.config.currentProgress++;
-        await database.saveShadowGame(this.config);
+    async checkTriforce(message, piece, code = null) {
+        switch(piece.toLowerCase()) {
+            case 'wisdom':
+            case 'courage':
+                const triforce = this.config.triforceState[piece.toLowerCase()];
+                
+                if (triforce.collected.has(code)) {
+                    await message.channel.send('```ansi\n\x1b[33mThis ancient power has already been restored to the Sacred Realm...\x1b[0m```');
+                    return;
+                }
+                
+                if (triforce.pieces.includes(code)) {
+                    triforce.collected.add(code);
+                    triforce.found++;
+                    
+                    const embed = new EmbedBuilder()
+                        .setColor('#FFD700')
+                        .setTitle('SACRED POWER RESTORED')
+                        .setDescription(
+                            `A fragment of the Triforce of ${piece} resonates with ancient power!\n\n` +
+                            `The Triforce of ${piece} grows stronger...\n` +
+                            `${triforce.required - triforce.found} fragments remain lost in shadow.`
+                        );
+                    
+                    await message.channel.send({ embeds: [embed] });
+                    await this.handleTriforceProgress(message, piece);
+                    await database.saveShadowGame(this.config);
+                } else {
+                    await message.channel.send('```ansi\n\x1b[31mThis incantation holds no power here...\x1b[0m```');
+                }
+                break;
+                
+            case 'power':
+                // Check if anyone has beaten ALTTP
+                const leaderboard = await global.leaderboardCache.getMonthlyLeaderboard();
+                const anyoneBeatenGame = leaderboard.some(user => user.hasBeatenGame);
+                
+                if (!anyoneBeatenGame) {
+                    await message.channel.send('```ansi\n\x1b[31mGanon\'s dark magic still protects the Triforce of Power...\nNone have yet proven strong enough to break his seal.\x1b[0m```');
+                    return;
+                }
+                
+                if (this.config.triforceState.wisdom.found !== this.config.triforceState.wisdom.required ||
+                    this.config.triforceState.courage.found !== this.config.triforceState.courage.required) {
+                    await message.channel.send('```ansi\n\x1b[31mThe Triforce remains incomplete. Wisdom and Courage must first be restored...\x1b[0m```');
+                    return;
+                }
+                
+                this.config.triforceState.power.collected = true;
+                await database.saveShadowGame(this.config);
+                await this.revealShadowChallenge(message);
+                break;
+        }
+    }
 
-        if (this.config.currentProgress >= this.config.puzzles.length) {
-            await this.revealShadowChallenge(message);
-        } else {
-            setTimeout(async () => {
-                const nextPuzzle = this.config.puzzles[this.config.currentProgress];
-                const nextErrorEmbed = new EmbedBuilder()
-                    .setColor('#FF0000')
-                    .setTitle('SYSTEM ERROR')
-                    .setDescription('```ansi\n\x1b[31m' + nextPuzzle.error + '\x1b[0m```')
-                    .setFooter({ text: `ERROR_ID: ${Date.now().toString(36).toUpperCase()}` });
+    async handleTriforceProgress(message, piece) {
+        const triforce = this.config.triforceState[piece.toLowerCase()];
+        
+        if (triforce.found === triforce.required) {
+            const embed = new EmbedBuilder()
+                .setColor('#FFD700')
+                .setTitle(`THE TRIFORCE OF ${piece.toUpperCase()} AWAKENS`)
+                .setDescription(
+                    `The Triforce of ${piece} pulses with renewed power!\n` +
+                    `Its ancient strength has been restored!`
+                );
+                
+            await message.channel.send({ embeds: [embed] });
+            
+            if (this.config.triforceState.wisdom.found === this.config.triforceState.wisdom.required &&
+                this.config.triforceState.courage.found === this.config.triforceState.courage.required) {
+                
+                await message.channel.send('```ansi\n' +
+                    '\x1b[33mWisdom and Courage shine with sacred light!\n\n' +
+                    'But darkness still grips the Triforce of Power...\n' +
+                    'Only by defeating Ganon can the final piece be claimed.\n\n' +
+                    'Face your destiny, hero...\x1b[0m```');
+            }
+        }
+    }
 
-                await message.channel.send({ embeds: [nextErrorEmbed] });
-            }, 2000);
+    getTriforceStatus() {
+        const wisdom = this.config.triforceState.wisdom;
+        const courage = this.config.triforceState.courage;
+        
+        return `Triforce of Wisdom: ${wisdom.found} fragments restored\n` +
+               `Triforce of Courage: ${courage.found} fragments restored\n` +
+               `Triforce of Power: ${this.config.triforceState.power.collected ? 'Reclaimed from darkness' : 'Held by Ganon'}`;
+    }
+
+    async revealShadowChallenge(message) {
+        try {
+            const reward = this.config.finalReward;
+            const embed = new EmbedBuilder()
+                .setColor('#FFD700')
+                .setTitle('THE TRIFORCE UNITED')
+                .setDescription(
+                    '```ansi\n' +
+                    '\x1b[33mAs the three golden triangles resonate as one, ' +
+                    'a new trial emerges from the shadows...\n\n' +
+                    `${reward.gameName}\n\n` +
+                    'This challenge may be undertaken alongside your current quest.\n' +
+                    'Rewards for the worthy:\n' +
+                    `Mark of Participation: ${reward.points.participation} sacred point\n` +
+                    `Mark of Completion: ${reward.points.beaten} sacred points` +
+                    '\x1b[0m```'
+                )
+                .setURL(`https://retroachievements.org/game/${reward.gameId}`)
+                .setFooter({ text: `SACRED_SEAL: ${Date.now().toString(36).toUpperCase()}` });
+
+            await message.channel.send({ embeds: [embed] });
+            setInterval(() => this.checkAchievements(), 5 * 60 * 1000);
+        } catch (error) {
+            console.error('Error in revealShadowChallenge:', error);
+            await message.channel.send('```ansi\n\x1b[31mA dark power prevents the revelation...\x1b[0m```');
         }
     }
 
     async checkAchievements(userStats) {
-        if (!this.config || !this.config.active || !this.config.finalReward?.gameId) {
+        if (!this.config || !this.config.triforceState.power.collected || !this.config.finalReward?.gameId) {
             return;
         }
 
@@ -239,98 +286,30 @@ class ShadowGame {
                 // Check participation
                 if (user.completedAchievements > 0) {
                     const participationKey = `shadow-participation-${this.config.finalReward.gameId}`;
-                    const stats = await this.database.getUserStats();
-                    
-                    // Get user's existing points
-                    if (!stats.users?.[username]?.bonusPoints?.some(bp => 
-                        bp.internalReason?.includes(participationKey)
-                    )) {
+                    if (!(await database.hasUserBonusPoints(username, participationKey))) {
                         await userStats.addBonusPoints(
                             username,
-                            this.config.points.participation,
-                            {
-                                reason: `${this.config.finalReward.gameName} - Shadow Game Participation`,
-                                internalReason: `${this.config.finalReward.gameName} - Shadow Game Participation (${participationKey})`
-                            }
+                            this.config.finalReward.points.participation,
+                            `${this.config.finalReward.gameName} - Shadow Challenge Begun`
                         );
                     }
                 }
 
-                // Check for specific beaten achievements (48411 or 48412)
-                const hasBeatenGame = user.achievements?.some(ach => 
-                    (ach.ID === '48411' || ach.ID === '48412') && 
-                    parseInt(ach.DateEarned) > 0
-                );
-
-                if (hasBeatenGame) {
+                // Check for completion
+                if (user.hasBeatenGame) {
                     const beatenKey = `shadow-beaten-${this.config.finalReward.gameId}`;
-                    const stats = await this.database.getUserStats();
-                    
-                    // Get user's existing points
-                    if (!stats.users?.[username]?.bonusPoints?.some(bp => 
-                        bp.internalReason?.includes(beatenKey)
-                    )) {
+                    if (!(await database.hasUserBonusPoints(username, beatenKey))) {
                         await userStats.addBonusPoints(
                             username,
-                            this.config.points.beaten,
-                            {
-                                reason: `${this.config.finalReward.gameName} - Shadow Game Beaten`,
-                                internalReason: `${this.config.finalReward.gameName} - Shadow Game Beaten (${beatenKey})`
-                            }
+                            this.config.finalReward.points.beaten,
+                            `${this.config.finalReward.gameName} - Shadow Challenge Mastered`
                         );
                     }
                 }
             }));
 
-            // Update leaderboard
-            if (global.leaderboardCache) {
-                await global.leaderboardCache.updateLeaderboards(true);
-            }
-
         } catch (error) {
             console.error('Error checking shadow game achievements:', error);
-        }
-    }
-
-   async revealShadowChallenge(message) {
-        try {
-            const reward = this.config.finalReward;
-            
-            // Ensure points structure exists with defaults
-            if (!this.config.points) {
-                this.config.points = {
-                    participation: 1,
-                    beaten: 3
-                };
-                // Save the updated config with points
-                await database.saveShadowGame(this.config);
-            }
-            
-            const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle('SYSTEM RESTORED')
-               .setDescription(
-        '```ansi\n' +
-        '\x1b[32m[HIDDEN DATA RECOVERED]\n\n' +
-        'System repairs have revealed classified data:\n\n' + 
-        `${reward.gameName} (N64)\n\n` +
-        'This challenge may be completed alongside the monthly mission.\n' +
-        'Points awarded:\n' +
-        `Participation: ${this.config.points.participation} point\n` +
-        `Game Beaten: ${this.config.points.beaten} points` +
-        '\x1b[0m```'
-    )
-                .setURL(`https://retroachievements.org/game/${reward.gameId}`)
-                .setFooter({ text: `CLEARANCE_ID: ${Date.now().toString(36).toUpperCase()}` });
-
-            await message.channel.send({ embeds: [embed] });
-            
-            // Schedule periodic achievement checks
-            setInterval(() => this.checkAchievements(), 5 * 60 * 1000); // Check every 5 minutes
-        } catch (error) {
-            console.error('Error in revealShadowChallenge:', error);
-            // Send a fallback message in case of error
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to reveal shadow challenge\n[Ready for input]█\x1b[0m```');
         }
     }
 }
