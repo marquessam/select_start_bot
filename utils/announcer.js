@@ -1,10 +1,38 @@
-// Modified version of announcer.js
+// Modified version of announcer.js with initialize method
 
 class Announcer {
     constructor(client, userStats, channelId) {
         this.client = client;
         this.userStats = userStats;
         this.announcementChannelId = channelId;
+        this.initialized = false;
+    }
+
+    async initialize() {
+        try {
+            console.log('[ANNOUNCER] Initializing...');
+            
+            // Verify channel exists
+            const channel = await this.client.channels.fetch(this.announcementChannelId);
+            if (!channel) {
+                throw new Error('Announcement channel not found');
+            }
+
+            // Schedule monthly events
+            this.setupMonthlyEvents();
+            
+            console.log('[ANNOUNCER] Initialization complete');
+            this.initialized = true;
+            return true;
+        } catch (error) {
+            console.error('[ANNOUNCER] Initialization error:', error);
+            throw error;
+        }
+    }
+
+    setupMonthlyEvents() {
+        // This can be expanded later if needed
+        console.log('[ANNOUNCER] Monthly events setup complete');
     }
 
     async handleNewMonth() {
@@ -86,6 +114,16 @@ class Announcer {
             // Save empty template as next challenge
             await database.saveChallenge(emptyTemplate, 'next');
             console.log('Saved empty template as next challenge');
+
+            // Create announcement about transition
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('CHALLENGE TRANSITION')
+                .setTerminalDescription('[SYSTEM UPDATE]\n[NEW CHALLENGE LOADED]')
+                .addTerminalField('STATUS UPDATE', 
+                    'Previous challenge archived\nNew challenge activated\nNext challenge template prepared')
+                .setTerminalFooter();
+
+            await this.makeAnnouncement(embed);
 
         } catch (error) {
             console.error('Switch error:', error);
