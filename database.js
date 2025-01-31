@@ -178,9 +178,14 @@ class Database {
 async saveChallenge(data, type = 'current') {
     try {
         const collection = await this.getCollection('challenges');
+        
+        // Remove _id from data if it exists to prevent immutable field error
+        const challengeData = { ...data };
+        delete challengeData._id;
+
         const result = await collection.updateOne(
             { _id: type },
-            { $set: data },
+            { $set: challengeData },
             { upsert: true }
         );
 
@@ -205,13 +210,13 @@ async saveChallenge(data, type = 'current') {
     }
 }
 
-// Then alias saveChallenge as saveCurrentChallenge for compatibility
-async saveCurrentChallenge(data) {
-    return this.saveChallenge(data, 'current');
-}
-
+// Also add this method to database.js for clarity:
 async saveNextChallenge(data) {
     return this.saveChallenge(data, 'next');
+}
+
+async saveCurrentChallenge(data) {
+    return this.saveChallenge(data, 'current');
 }
     // ===================
     // User Management
