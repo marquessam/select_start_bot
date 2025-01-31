@@ -1,6 +1,8 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
-const timeLeftMs = getTimeUntilMonthEnd();          // returns ms
+const { getTimeUntilMonthEnd, formatTimeRemaining } = require('../utils/timerFunctions'); // Import the timer functions
+
+const timeLeftMs = getTimeUntilMonthEnd(); // returns ms
 const timeLeftSeconds = Math.floor(timeLeftMs / 1000);
 
 const endOfMonthTimestamp = Math.floor(Date.now() / 1000) + timeLeftSeconds;
