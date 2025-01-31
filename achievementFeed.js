@@ -236,6 +236,9 @@ class AchievementFeed {
                 .setColor('#00FF00')
                 .setTitle(`${achievement.GameTitle || 'Game'} 🏆`)
                 .setThumbnail(badgeUrl)
+                //TRIFORCE SHADOWGAME
+                .setDescription(`[W4Y6PV]\n`)
+                //TRIFOCE SHADOWGAME
                 .setDescription(
                     `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
                     `*${achievement.Description || 'No description available'}*`
