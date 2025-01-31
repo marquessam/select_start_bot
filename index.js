@@ -12,6 +12,7 @@ const errorHandler = require('./utils/errorHandler');
 const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
 const TerminalEmbed = require('./utils/embedBuilder');
+const EventTimer = require('./utils/eventTimer'); // Add EventTimer import
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
@@ -63,6 +64,7 @@ async function createCoreServices() {
         const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
         const achievementFeed = new AchievementFeed(client, database);
+        const eventTimer = new EventTimer(client); // Create EventTimer instance
 
         leaderboardCache.setUserStats(userStats);
         global.leaderboardCache = leaderboardCache;
@@ -77,7 +79,8 @@ async function createCoreServices() {
             announcer,
             shadowGame,
             achievementFeed,
-            mobyAPI: MobyAPI
+            mobyAPI: MobyAPI,
+            eventTimer // Add to returned services
         };
     } catch (error) {
         console.error('Error creating core services:', error);
@@ -109,6 +112,10 @@ async function initializeServices(coreServices) {
 
         await coreServices.achievementFeed.initialize();
         console.log('AchievementFeed initialized');
+
+        // Initialize EventTimer with monthly transitions
+        coreServices.eventTimer.setupMonthlyTransitions(process.env.ANNOUNCEMENT_CHANNEL_ID);
+        console.log('EventTimer initialized');
 
         await coordinateUpdate(coreServices, true);
 
