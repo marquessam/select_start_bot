@@ -4,6 +4,13 @@ const database = require('./database');
 const { ErrorHandler } = require('./utils/errorHandler');
 
 // ---------------------------------------
+// Helper to delay execution without blocking
+// ---------------------------------------
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ---------------------------------------
 // Rate limiting setup
 // ---------------------------------------
 const rateLimiter = {
@@ -27,7 +34,7 @@ const rateLimiter = {
                 // Calculate any remaining cooldown
                 const timeToWait = Math.max(0, this.cooldown - timeSinceLast);
                 if (timeToWait > 0) {
-                    await new Promise(r => setTimeout(r, timeToWait));
+                    await delay(timeToWait);
                 }
 
                 const response = await fetch(url);
@@ -276,40 +283,54 @@ async function fetchLeaderboardData(force = false) {
 }
 
 /**
- * Parallelizes user/game progress fetch by pushing all requests to the rateLimiter at once,
- * rather than sequentially in nested loops. The rate limiter still processes them one-by-one.
+ * Break requests into small chunks to avoid sending too many requests in a burst.
+ * Each chunk is processed in parallel, then we wait before processing the next chunk.
  */
 async function batchFetchUserProgress(usernames, gameIds) {
-    const fetchPromises = [];
+    const fetchResults = [];
+    const CHUNK_SIZE = 2;          // Adjust to reduce concurrency further if needed
+    const CHUNK_DELAY_MS = 1000;   // Wait 1 second between chunks, adjust as needed
 
-    for (const username of usernames) {
-        for (const gameId of gameIds) {
-            const params = new URLSearchParams({
-                z: process.env.RA_USERNAME,
-                y: process.env.RA_API_KEY,
-                g: gameId,
-                u: username
-            });
-            const url = `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`;
+    for (let i = 0; i < usernames.length; i += CHUNK_SIZE) {
+        // Slice a chunk of users
+        const chunk = usernames.slice(i, i + CHUNK_SIZE);
 
-            // We push a Promise, which calls rateLimiter
-            fetchPromises.push(
-                rateLimiter.makeRequest(url)
-                    .then(data => ({ username, gameId, data }))
-                    .catch(error => {
+        // Build a sub-array of Promises for each user in this chunk
+        const chunkPromises = chunk.flatMap((username) => {
+            return gameIds.map((gameId) => {
+                const params = new URLSearchParams({
+                    z: process.env.RA_USERNAME,
+                    y: process.env.RA_API_KEY,
+                    g: gameId,
+                    u: username
+                });
+                const url = `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`;
+
+                return rateLimiter.makeRequest(url)
+                    .then((data) => ({ username, gameId, data }))
+                    .catch((error) => {
                         console.error(`[RA API] Error fetching progress for ${username}, game ${gameId}:`, error);
                         return { username, gameId, data: null };
-                    })
-            );
+                    });
+            });
+        });
+
+        // Wait for all requests in this chunk to finish
+        const chunkResults = await Promise.all(chunkPromises);
+        fetchResults.push(...chunkResults);
+
+        // Wait before the next chunk to be gentle on the RA API
+        if (i + CHUNK_SIZE < usernames.length) {
+            await delay(CHUNK_DELAY_MS);
         }
     }
 
-    // Wait for all requests to complete
-    return Promise.all(fetchPromises);
+    return fetchResults;
 }
 
 /**
- * Parallelizes recent achievement fetch for all valid users.
+ * Parallelizes recent achievement fetch but in small user chunks
+ * to avoid flooding the RA API.
  */
 async function fetchAllRecentAchievements() {
     try {
@@ -317,35 +338,49 @@ async function fetchAllRecentAchievements() {
 
         const validUsers = await database.getValidUsers();
 
-        // Map each user to a Promise, so they run in parallel
-        const achievementsPromises = validUsers.map(async (username) => {
-            try {
-                const params = new URLSearchParams({
-                    z: process.env.RA_USERNAME,
-                    y: process.env.RA_API_KEY,
-                    u: username,
-                    c: 50
-                });
+        const allAchievements = [];
+        const CHUNK_SIZE = 2;          // Number of users in each chunk
+        const CHUNK_DELAY_MS = 1000;   // Delay between chunks, in ms
 
-                const url = `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`;
-                const recentData = await rateLimiter.makeRequest(url);
+        for (let i = 0; i < validUsers.length; i += CHUNK_SIZE) {
+            const chunk = validUsers.slice(i, i + CHUNK_SIZE);
 
-                if (Array.isArray(recentData)) {
-                    console.log(`[RA API] Fetched recent achievements for user: ${username}`);
-                    return { username, achievements: recentData };
-                } else {
-                    console.warn(`[RA API] "recentData" was not an array for user: ${username}. Using empty array.`);
+            // Build promises for this chunk
+            const chunkPromises = chunk.map(async (username) => {
+                try {
+                    const params = new URLSearchParams({
+                        z: process.env.RA_USERNAME,
+                        y: process.env.RA_API_KEY,
+                        u: username,
+                        c: 50
+                    });
+
+                    const url = `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`;
+                    const recentData = await rateLimiter.makeRequest(url);
+
+                    if (Array.isArray(recentData)) {
+                        console.log(`[RA API] Fetched recent achievements for user: ${username}`);
+                        return { username, achievements: recentData };
+                    } else {
+                        console.warn(`[RA API] "recentData" was not an array for user: ${username}. Using empty array.`);
+                        return { username, achievements: [] };
+                    }
+                } catch (error) {
+                    console.error(`[RA API] Error fetching recent achievements for ${username}:`, error);
                     return { username, achievements: [] };
                 }
-            } catch (error) {
-                console.error(`[RA API] Error fetching recent achievements for ${username}:`, error);
-                return { username, achievements: [] };
-            }
-        });
+            });
 
-        // Wait for all user fetches
-        const allRecentAchievements = await Promise.all(achievementsPromises);
-        return allRecentAchievements;
+            const chunkResults = await Promise.all(chunkPromises);
+            allAchievements.push(...chunkResults);
+
+            // Wait before processing the next chunk of users
+            if (i + CHUNK_SIZE < validUsers.length) {
+                await delay(CHUNK_DELAY_MS);
+            }
+        }
+
+        return allAchievements;
     } catch (error) {
         console.error('[RA API] Error in fetchAllRecentAchievements:', error);
         throw error;
