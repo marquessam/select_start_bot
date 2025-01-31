@@ -1,4 +1,4 @@
-const TerminalEmbed = require('../utils/embedBuilder');
+    const TerminalEmbed = require('../utils/embedBuilder');
 
 module.exports = {
     name: 'help',
@@ -9,11 +9,12 @@ module.exports = {
         const embed = new TerminalEmbed()
             .setTerminalTitle('SELECT START TERMINAL')
             .setTerminalDescription('[AVAILABLE COMMANDS]')
-            .addTerminalField('CHALLENGE & RULES',
+            .addTerminalField('AVAILABLE COMMANDS',
                 '!rules - View all rules and information\n' +
                 '!profile <user> - View user stats and progress\n' +
                 '!leaderboard - View current rankings\n' +
-                '!viewarchive <month> - View historical rankings'
+                '!viewarchive <month> - View historical rankings\n' +
+                '!triforce - \x1b[33mCheck the Sacred Realm...\x1b[0m [C1B5NM]'  // Hidden in plain sight
             )
             .addTerminalField('ARCADE & REVIEWS', 
                 '!arcade - View arcade games and scores\n' +
