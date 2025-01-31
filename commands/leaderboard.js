@@ -1,6 +1,9 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
-const { getTimeUntilMonthEnd, formatTimeRemaining } = require('../utils/timerFunctions');
+const timeLeftMs = getTimeUntilMonthEnd();          // returns ms
+const timeLeftSeconds = Math.floor(timeLeftMs / 1000);
+
+const endOfMonthTimestamp = Math.floor(Date.now() / 1000) + timeLeftSeconds;
 
 module.exports = {
     name: 'leaderboard',
@@ -76,7 +79,7 @@ module.exports = {
                 .addTerminalField(`${monthName.toUpperCase()} CHALLENGE`, 
                     `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
                     `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}\n` +
-                    `TIME REMAINING: ${timeRemaining}`
+                    `TIME REMAINING: ${timeRemaining} (local time: ${localizedTime})`
                 );
 
             // Add top rankings
