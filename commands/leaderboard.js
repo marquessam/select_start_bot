@@ -1,5 +1,6 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
+const { getTimeUntilMonthEnd, formatTimeRemaining } = require('../utils/eventTimer');
 
 module.exports = {
     name: 'leaderboard',
@@ -62,13 +63,18 @@ module.exports = {
             // Sort and rank users
             const rankedUsers = this.rankUsersWithTies(activeUsers);
 
+            // Get time remaining
+            const timeLeft = getTimeUntilMonthEnd();
+            const timeRemaining = formatTimeRemaining(timeLeft);
+
             const embed = new TerminalEmbed()
                 .setTerminalTitle('USER RANKINGS')
                 .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
                 .addTerminalField('CURRENT CHALLENGE', 
                     `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
-                    `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}`
+                    `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}\n` +
+                    `TIME REMAINING: ${timeRemaining}`
                 );
 
             // Add top rankings
@@ -89,7 +95,7 @@ module.exports = {
             const remainingUsers = rankedUsers.filter(user => !user.displayInMain);
             if (remainingUsers.length > 0) {
                 const remainingText = remainingUsers
-                    .map(user => `RANK #${user.rank} - ${user.username} (${user.completionPercentage}%)`)
+                    .map(user => `#${user.rank} ${user.username} (${user.completionPercentage}%)`)
                     .join('\n');
 
                 embed.addTerminalField('ADDITIONAL PARTICIPANTS', remainingText);
@@ -180,7 +186,7 @@ module.exports = {
                         .map(user => {
                             const medals = ['🥇', '🥈', '🥉'];
                             const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
-                            return `${medal} ${user.rank}. ${user.username}: ${user.points} points`;
+                            return `${medal} #${user.rank} ${user.username}: ${user.points} points`;
                         })
                         .join('\n'));
             } else {
