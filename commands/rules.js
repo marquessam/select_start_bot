@@ -149,9 +149,10 @@ module.exports = {
                 '- Participation (1 point): Earn any achievement\n' +
                 '- Game Beaten (3 points): Complete the game\n' +
                 '- Mastery (3 points): 100% achievement completion\n' +
-                '- Top 3 Placement: 6/4/2 points (1st/2nd/3rd)\n\n' +
+                '- Top 3 Placement: 5/3/2 points (1st/2nd/3rd)\n\n' +
                 '**Shadow Game Points:**\n' +
                 '- Participation (1 point): Earn any achievement\n' +
+                '- FORGOTTEN RELIC [C2K4LP]`\n' +
                 '- Game Beaten (3 points): Complete the game'
             )
             .addTerminalField('COMMUNITY POINTS',
@@ -201,6 +202,7 @@ module.exports = {
     '- Submit arcade high scores with proof\n\n' +
     '**#monthly-challenge**\n' +
     '- Discuss current challenges\n' +
+    '- ANCIENT DECREE [C3R8TW]`\n' +
     '- Share tips and strategies\n\n' +
     '**#bot-terminal**\n' +
     '- All bot commands must be used here\n' +
