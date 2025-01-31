@@ -65,6 +65,9 @@ async function createCoreServices() {
         const shadowGame = new ShadowGame();
         const achievementFeed = new AchievementFeed(client, database);
         const eventTimer = new EventTimer(client); // Create EventTimer instance
+        const ChallengeAnnouncements = require('./utils/challengeAnnouncements');
+        const challengeAnnouncements = new ChallengeAnnouncements(client, process.env.ANNOUNCEMENT_CHANNEL_ID);
+challengeAnnouncements.setupAnnouncements();
 
         leaderboardCache.setUserStats(userStats);
         global.leaderboardCache = leaderboardCache;
