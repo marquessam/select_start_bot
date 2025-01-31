@@ -1,6 +1,6 @@
 // utils/timerFunctions.js
 
-// Gets the last day of the current month
+// Gets the last day of current month
 function getLastDayOfMonth() {
     const date = new Date();
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -9,8 +9,8 @@ function getLastDayOfMonth() {
 // Gets time until end of month
 function getTimeUntilMonthEnd() {
     const now = new Date();
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    return endOfMonth - now;
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    return lastDay - now;
 }
 
 // Formats milliseconds into readable time
@@ -22,17 +22,21 @@ function formatTimeRemaining(ms) {
     return `${days}d ${hours}h ${minutes}m`;
 }
 
-// Gets the end of month timestamp
-function getMonthEndTimestamp() {
-    const now = new Date();
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    // Convert to Unix time
-    return Math.floor(endOfMonth / 1000);
+// Creates a Discord timestamp string
+function createDiscordTimestamp(date, format = 'f') {
+    if (!(date instanceof Date)) {
+        date = new Date(date);
+    }
+    return `<t:${Math.floor(date.getTime() / 1000)}:${format}>`;
 }
+
+// For backward compatibility
+const createTimestamp = createDiscordTimestamp;
 
 module.exports = {
     getLastDayOfMonth,
     getTimeUntilMonthEnd,
     formatTimeRemaining,
-    getMonthEndTimestamp
+    createDiscordTimestamp,
+    createTimestamp
 };
