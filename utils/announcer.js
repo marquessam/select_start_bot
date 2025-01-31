@@ -1,4 +1,8 @@
-// Modified version of announcer.js with initialize method
+// utils/announcer.js
+
+const TerminalEmbed = require('./embedBuilder');
+const database = require('../database');
+const { fetchLeaderboardData } = require('../raAPI');
 
 class Announcer {
     constructor(client, userStats, channelId) {
