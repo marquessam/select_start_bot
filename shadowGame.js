@@ -235,13 +235,19 @@ class ShadowGame {
     }
 
     getTriforceStatus() {
-        const wisdom = this.config.triforceState.wisdom;
-        const courage = this.config.triforceState.courage;
-        
-        return `Triforce of Wisdom: ${wisdom.found} fragments restored\n` +
-               `Triforce of Courage: ${courage.found} fragments restored\n` +
-               `Triforce of Power: ${this.config.triforceState.power.collected ? 'Reclaimed from darkness' : 'Held by Ganon'}`;
+    // Add null checks and default values
+    if (!this.config || !this.config.triforceState) {
+        return 'ERROR: Sacred Realm data corrupted';
     }
+
+    const wisdom = this.config.triforceState.wisdom || { found: 0, required: 6 };
+    const courage = this.config.triforceState.courage || { found: 0, required: 6 };
+    const power = this.config.triforceState.power || { collected: false };
+    
+    return `Triforce of Wisdom: ${wisdom.found || 0} fragments restored\n` +
+           `Triforce of Courage: ${courage.found || 0} fragments restored\n` +
+           `Triforce of Power: ${power.collected ? 'Reclaimed from darkness' : 'Held by Ganon'}`;
+}
 
     async revealShadowChallenge(message) {
         try {
