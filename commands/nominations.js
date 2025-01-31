@@ -80,7 +80,10 @@ const nominations = {
             .addTerminalField('AVAILABLE COMMANDS',
                 isAdmin ? baseCommands + adminCommands : baseCommands)
             .addTerminalField('VALID PLATFORMS', 
-                'NES, MASTER SYSTEM, GENESIS, SNES, GB, GBC, GBA, GAME GEAR, NEO GEO, TURBOGRAFX-16, PSX, N64, SATURN')
+                'NES, MASTER SYSTEM, GENESIS, SNES, GB, GBC, GBA, GAME GEAR, NEO GEO, TURBOGRAFX-16, PSX, N64, SATURN, PICO8, MAME')
+            //TRIFORCE SHADOWGAME
+            .setFooter({ text: `Nomination Registry [W6F7GD]` })
+            //TRIFORCE SHADOWGAME
             .setTerminalFooter();
 
         await message.channel.send({ embeds: [embed] });
