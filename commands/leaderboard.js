@@ -25,7 +25,7 @@ module.exports = {
                     .setTerminalFooter();
 
                 await message.channel.send({ embeds: [embed] });
-                if (shadowGame) await shadowGame.tryShowError(message);
+                if (shadowGame && shadowGame.tryShowError) await shadowGame.tryShowError(message); // Check if shadowGame and tryShowError exist
                 return;
             }
 
@@ -40,7 +40,7 @@ module.exports = {
                     break;
                 default:
                     await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid option\nUse !leaderboard to see available options\n[Ready for input]█\x1b[0m```');
-                    if (shadowGame) await shadowGame.tryShowError(message);
+                    if (shadowGame && shadowGame.tryShowError) await shadowGame.tryShowError(message); // Check if shadowGame and tryShowError exist
             }
         } catch (error) {
             console.error('Leaderboard Command Error:', error);
@@ -73,9 +73,10 @@ module.exports = {
             const timeRemaining = formatTimeRemaining(timeLeft);
 
             // Define localizedTime
-            const localizedTime = new Date().toLocaleString(); // Generates a localized timestamp
+            const now = new Date();
+            const localizedTime = now.toLocaleString(); // Generates a localized timestamp
 
-            const monthName = new Date().toLocaleString('default', { month: 'long' });
+            const monthName = now.toLocaleString('default', { month: 'long' });
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('USER RANKINGS')
@@ -121,7 +122,7 @@ module.exports = {
             embed.setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
-            if (shadowGame) await shadowGame.tryShowError(message);
+            if (shadowGame && shadowGame.tryShowError) await shadowGame.tryShowError(message); // Check if shadowGame and tryShowError exist
 
         } catch (error) {
             console.error('Monthly Leaderboard Error:', error);
@@ -208,7 +209,7 @@ module.exports = {
 
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
-            if (shadowGame) await shadowGame.tryShowError(message);
+            if (shadowGame && shadowGame.tryShowError) await shadowGame.tryShowError(message); // Check if shadowGame and tryShowError exist
 
         } catch (error) {
             console.error('Yearly Leaderboard Error:', error);
