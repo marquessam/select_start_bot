@@ -1,6 +1,6 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
-const { getTimeUntilMonthEnd, formatTimeRemaining } = require('../utils/eventTimer');
+const { getTimeUntilMonthEnd, formatTimeRemaining } = require('../utils/timerFunctions');
 
 module.exports = {
     name: 'leaderboard',
@@ -67,11 +67,13 @@ module.exports = {
             const timeLeft = getTimeUntilMonthEnd();
             const timeRemaining = formatTimeRemaining(timeLeft);
 
+            const monthName = new Date().toLocaleString('default', { month: 'long' });
+
             const embed = new TerminalEmbed()
                 .setTerminalTitle('USER RANKINGS')
                 .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
-                .addTerminalField('CURRENT CHALLENGE', 
+                .addTerminalField(`${monthName.toUpperCase()} CHALLENGE`, 
                     `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
                     `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}\n` +
                     `TIME REMAINING: ${timeRemaining}`
