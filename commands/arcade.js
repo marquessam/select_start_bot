@@ -67,6 +67,10 @@ async function showGameList(message) {
             '[SELECT A GAME TO VIEW RANKINGS]\n' +
             `[EXPIRES: ${arcadeData.expiryDate}]`
         )
+        // TRIFORCE SHADOWGAME
+        .addTerminalField('SACRED TEXT',
+    `\x1b[33mAncient Score Registry [W3R8ST]\x1b[0m`)
+        // TRIFORCE SHADOWGAME
         .addTerminalField(
             'SUBMISSION REQUIREMENTS',
             'All high scores must be verified with screenshot evidence posted in the screenshot-submissions channel.'
