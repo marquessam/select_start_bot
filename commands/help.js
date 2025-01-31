@@ -1,4 +1,4 @@
-    const TerminalEmbed = require('../utils/embedBuilder');
+const TerminalEmbed = require('../utils/embedBuilder');
 
 module.exports = {
     name: 'help',
@@ -14,7 +14,7 @@ module.exports = {
                 '!profile <user> - View user stats and progress\n' +
                 '!leaderboard - View current rankings\n' +
                 '!viewarchive <month> - View historical rankings\n' +
-                              //TRIFORCE SHADOWGAME
+                //TRIFORCE SHADOWGAME
                 '!triforce - \x1b[33mCheck the Sacred Realm...'  // Hidden in plain sight
             )
             .addTerminalField('ARCADE & REVIEWS', 
@@ -39,6 +39,6 @@ module.exports = {
             .setTerminalFooter();
 
         await message.channel.send({ embeds: [embed] });
-        if (shadowGame) await shadowGame.tryShowError(message);
+        if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
     }
 };
