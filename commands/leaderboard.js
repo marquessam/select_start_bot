@@ -3,6 +3,41 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
 
+// Helper function to format date nicely
+function formatDate(date) {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                   'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    const day = date.getDate();
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    
+    // Add ordinal suffix to day
+    const suffix = ['th', 'st', 'nd', 'rd'][(day > 3 && day < 21) || day % 10 > 3 ? 0 : day % 10];
+    
+    return `${month} ${day}${suffix}, ${year} at ${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
+}
+
+// Helper function to calculate time remaining
+function getTimeRemaining(endDate) {
+    const now = new Date();
+    const timeLeft = endDate - now;
+    
+    const days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (days > 0) {
+        return `${days} day${days !== 1 ? 's' : ''} and ${hours} hour${hours !== 1 ? 's' : ''}`;
+    } else if (hours > 0) {
+        return `${hours} hour${hours !== 1 ? 's' : ''} and ${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    } else {
+        return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    }
+}
+
 module.exports = {
     name: 'leaderboard',
     description: 'Displays monthly or yearly leaderboards',
@@ -68,6 +103,7 @@ module.exports = {
             endOfMonth.setHours(23, 59, 59, 999);
 
             const monthName = new Date().toLocaleString('default', { month: 'long' });
+            const timeRemaining = getTimeRemaining(endOfMonth);
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('USER RANKINGS')
@@ -76,8 +112,8 @@ module.exports = {
                 .addTerminalField(`${monthName.toUpperCase()} CHALLENGE`, 
                     `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
                     `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}\n` +
-                    `CHALLENGE ENDS: <t:${Math.floor(endOfMonth.getTime() / 1000)}:F>\n` +
-                    `TIME REMAINING: <t:${Math.floor(endOfMonth.getTime() / 1000)}:R>`
+                    `CHALLENGE ENDS: ${formatDate(endOfMonth)}\n` +
+                    `TIME REMAINING: ${timeRemaining}`
                 );
 
             // Add top rankings
@@ -119,7 +155,6 @@ module.exports = {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
-
     rankUsersWithTies(users) {
         const sortedUsers = [...users].sort((a, b) => {
             const percentDiff = parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage);
