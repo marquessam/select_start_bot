@@ -157,7 +157,7 @@ const embed = new TerminalEmbed()
 
     // Done
     await message.channel.send(
-      '```ansi\n\x1b[32m> Search complete\n[Ready for input]█\x1b[0m```'
+      '```ansi\n\x1b[32m> ROYAL ARCHIVES Search complete\n[Ready for input] [C4Y2XQ] █\x1b[0m```'
     );
   },
 };
