@@ -48,86 +48,86 @@ module.exports = {
         }
     },
 
-   async displayMonthlyLeaderboard(message, shadowGame) {
-    try {
-        await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
+    async displayMonthlyLeaderboard(message, shadowGame) {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
 
-        // Fetch required data
-        const [leaderboardData, currentChallenge] = await Promise.all([
-            DataService.getLeaderboard('monthly'),
-            DataService.getCurrentChallenge()
-        ]);
+            // Fetch required data
+            const [leaderboardData, currentChallenge] = await Promise.all([
+                DataService.getLeaderboard('monthly'),
+                DataService.getCurrentChallenge()
+            ]);
 
-        // Get valid users and filter for active participants
-        const validUsers = await DataService.getValidUsers();
-        const activeUsers = leaderboardData.filter(user =>
-            validUsers.includes(user.username.toLowerCase()) &&
-            (user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0)
-        );
-
-        // Sort and rank users
-        const rankedUsers = this.rankUsersWithTies(activeUsers);
-
-        // Get time remaining
-        const timeLeft = getTimeUntilMonthEnd();
-        const timeRemaining = formatTimeRemaining(timeLeft);
-
-        // Define localizedTime
-        const localizedTime = new Date().toLocaleString(); // Generates a localized timestamp
-
-        const monthName = new Date().toLocaleString('default', { month: 'long' });
-
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('USER RANKINGS')
-            .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
-            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
-            .addTerminalField(`${monthName.toUpperCase()} CHALLENGE`, 
-                `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
-                `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}\n` +
-                `TIME REMAINING: ${timeRemaining} (local time: ${localizedTime})`
+            // Get valid users and filter for active participants
+            const validUsers = await DataService.getValidUsers();
+            const activeUsers = leaderboardData.filter(user =>
+                validUsers.includes(user.username.toLowerCase()) &&
+                (user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0)
             );
 
-        // Add top rankings
-        for (const user of rankedUsers) {
-            if (!user.displayInMain && user.rank > 3) continue;
+            // Sort and rank users
+            const rankedUsers = this.rankUsersWithTies(activeUsers);
 
-            const medals = ['🥇', '🥈', '🥉'];
-            const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
+            // Get time remaining
+            const timeLeft = getTimeUntilMonthEnd();
+            const timeRemaining = formatTimeRemaining(timeLeft);
 
-            embed.addTerminalField(
-                `${medal} RANK #${user.rank} - ${user.username}`,
-                `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\n` +
-                `PROGRESS: ${user.completionPercentage}%`
-            );
+            // Define localizedTime
+            const localizedTime = new Date().toLocaleString(); // Generates a localized timestamp
+
+            const monthName = new Date().toLocaleString('default', { month: 'long' });
+
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('USER RANKINGS')
+                .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
+                .addTerminalField(`${monthName.toUpperCase()} CHALLENGE`, 
+                    `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
+                    `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}\n` +
+                    `TIME REMAINING: ${timeRemaining} (local time: ${localizedTime})`
+                );
+
+            // Add top rankings
+            for (const user of rankedUsers) {
+                if (!user.displayInMain && user.rank > 3) continue;
+
+                const medals = ['🥇', '🥈', '🥉'];
+                const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
+
+                embed.addTerminalField(
+                    `${medal} RANK #${user.rank} - ${user.username}`,
+                    `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\n` +
+                    `PROGRESS: ${user.completionPercentage}%`
+                );
+            }
+
+            // Add remaining participants if any
+            const remainingUsers = rankedUsers.filter(user => !user.displayInMain);
+            if (remainingUsers.length > 0) {
+                const remainingText = remainingUsers
+                    .map(user => `#${user.rank} ${user.username} (${user.completionPercentage}%)`)
+                    .join('\n');
+
+                embed.addTerminalField('ADDITIONAL PARTICIPANTS', remainingText);
+            }
+
+            if (activeUsers.length === 0) {
+                embed.addTerminalField('STATUS', 'No active participants yet');
+            }
+
+            // TRIFORCE SHADOWGAME
+            embed.setFooter({ text: `Rankings Updated: [W2K5MN]` });
+            // TRIFORCE SHADOWGAME
+            embed.setTerminalFooter();
+
+            await message.channel.send({ embeds: [embed] });
+            if (shadowGame) await shadowGame.tryShowError(message);
+
+        } catch (error) {
+            console.error('Monthly Leaderboard Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
         }
-
-        // Add remaining participants if any
-        const remainingUsers = rankedUsers.filter(user => !user.displayInMain);
-        if (remainingUsers.length > 0) {
-            const remainingText = remainingUsers
-                .map(user => `#${user.rank} ${user.username} (${user.completionPercentage}%)`)
-                .join('\n');
-
-            embed.addTerminalField('ADDITIONAL PARTICIPANTS', remainingText);
-        }
-
-        if (activeUsers.length === 0) {
-            embed.addTerminalField('STATUS', 'No active participants yet');
-        }
-
-        // TRIFORCE SHADOWGAME
-        embed.setFooter({ text: `Rankings Updated: [W2K5MN]` });
-        // TRIFORCE SHADOWGAME
-        embed.setTerminalFooter();
-
-        await message.channel.send({ embeds: [embed] });
-        if (shadowGame) await shadowGame.tryShowError(message);
-
-    } catch (error) {
-        console.error('Monthly Leaderboard Error:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
-    }
-}
+    },
 
     rankUsersWithTies(users) {
         // Sort users by completion percentage and achievements
