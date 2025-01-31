@@ -236,15 +236,12 @@ class AchievementFeed {
                 .setColor('#00FF00')
                 .setTitle(`${achievement.GameTitle || 'Game'} 🏆`)
                 .setThumbnail(badgeUrl)
-                //TRIFORCE SHADOWGAME
-                .setDescription(`[W4Y6PV]\n`)
-                //TRIFOCE SHADOWGAME
                 .setDescription(
                     `**${username}** earned **${achievement.Title || 'Achievement'}**\n\n` +
                     `*${achievement.Description || 'No description available'}*`
                 )
                 .setFooter({
-                    text: `Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
+                    text: `[W4Y6PV]Points: ${achievement.Points || '0'} • ${new Date(achievement.Date).toLocaleTimeString()}`,
                     iconURL: userIconUrl || `https://retroachievements.org/UserPic/${username}.png`
                 })
                 .setTimestamp();
