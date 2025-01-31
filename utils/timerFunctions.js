@@ -21,9 +21,17 @@ function formatTimeRemaining(ms) {
     
     return `${days}d ${hours}h ${minutes}m`;
 }
+function getMonthEndTimestamp() {
+    const now = new Date();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    // Convert to Unix time
+    return Math.floor(endOfMonth / 1000);
+}
+
 
 module.exports = {
     getLastDayOfMonth,
     getTimeUntilMonthEnd,
-    formatTimeRemaining
+    formatTimeRemaining,
+    getMonthEndTimestamp
 };
