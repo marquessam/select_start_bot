@@ -30,6 +30,7 @@ module.exports = {
             )
             .addTerminalField('SACRED KNOWLEDGE',
                  '[C1B5NM]\n\n' +
+            )
             .addTerminalField('NOTES',
                 '- All commands must be used in #bot-terminal\n' +
                 '- Discord roles required for some features\n' +
