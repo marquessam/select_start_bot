@@ -107,7 +107,7 @@ module.exports = {
                 embed.addTerminalField('STATUS', 'No active participants yet');
             }
                 //TRIFORCE SHADOWGAME
-.setFooter({ text: `Rankings Updated: ${timestamp} [W2K5MN]` })
+             embed.setFooter({ text: `Rankings Updated: ${timestamp} [W2K5MN]` })
             //TRIFORCE SHADOWGAME
             embed.setTerminalFooter();
             
