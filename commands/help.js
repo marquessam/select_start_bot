@@ -29,7 +29,7 @@ module.exports = {
                 '!search <game> - Search for game information'
             )
             .addTerminalField('SACRED KNOWLEDGE',
-                 '[C1B5NM]\n\n' +
+                 '[C1B5NM]'
             )
             .addTerminalField('NOTES',
                 '- All commands must be used in #bot-terminal\n' +
