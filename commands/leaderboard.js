@@ -74,7 +74,7 @@ module.exports = {
 
             // Define localizedTime
             const now = new Date();
-            const localizedTime = now.toLocaleString(); // Generates a localized timestamp
+            const localizedTime = now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }); // Use Taipei time zone
 
             const monthName = now.toLocaleString('default', { month: 'long' });
 
