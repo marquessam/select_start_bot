@@ -157,6 +157,10 @@ module.exports = {
                 .addTerminalField('RANKINGS',
                     `MONTHLY RANK: ${monthlyRankText}\n` +
                     `YEARLY RANK: ${yearlyRankText}`)
+                //TRIFORCE SHADOWGAME
+                .addTerminalField('SACRED SCROLL',
+                    `\x1b[33m[W1X4BY] Ancient writing appears here...\x1b[0m`)
+                //TRIFORCE SHADOWGAME
                 .addTerminalField(`${currentYear} STATISTICS`,
                     `ACHIEVEMENTS EARNED: ${yearlyData.achievementsUnlocked || userProgress.completedAchievements || 0}\n` +
                     `GAMES PARTICIPATED: ${yearlyStats.participations}\n` +
