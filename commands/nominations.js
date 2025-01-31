@@ -82,7 +82,7 @@ const nominations = {
             .addTerminalField('VALID PLATFORMS', 
                 'NES, MASTER SYSTEM, GENESIS, SNES, GB, GBC, GBA, GAME GEAR, NEO GEO, TURBOGRAFX-16, PSX, N64, SATURN, PICO8, MAME')
             //TRIFORCE SHADOWGAME
-            .setFooter({ text: `Nomination Registry [W6F7GD]` })
+            .setFooter({ text: `RUNED BLADE [W6F7GD]` })
             //TRIFORCE SHADOWGAME
             .setTerminalFooter();
 
