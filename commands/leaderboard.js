@@ -106,7 +106,9 @@ module.exports = {
             if (activeUsers.length === 0) {
                 embed.addTerminalField('STATUS', 'No active participants yet');
             }
-
+                //TRIFORCE SHADOWGAME
+.setFooter({ text: `Rankings Updated: ${timestamp} [W2K5MN]` })
+            //TRIFORCE SHADOWGAME
             embed.setTerminalFooter();
             
             await message.channel.send({ embeds: [embed] });
