@@ -175,7 +175,44 @@ class Database {
         const collection = await this.getCollection('challenges');
         return await fetchData(collection, { _id: 'next' }, null);
     }
+async saveChallenge(data, type = 'current') {
+    try {
+        const collection = await this.getCollection('challenges');
+        const result = await collection.updateOne(
+            { _id: type },
+            { $set: data },
+            { upsert: true }
+        );
 
+        // Add to history if it's a current challenge
+        if (type === 'current') {
+            await this.addGameToHistory({
+                gameId: data.gameId,
+                gameName: data.gameName,
+                gameIcon: data.gameIcon,
+                startDate: data.startDate,
+                endDate: data.endDate,
+                month: new Date().toLocaleString('default', { month: 'long' }),
+                year: new Date().getFullYear().toString(),
+                date: new Date().toISOString()
+            });
+        }
+
+        return true;
+    } catch (error) {
+        console.error('Error saving challenge:', error);
+        throw error;
+    }
+}
+
+// Then alias saveChallenge as saveCurrentChallenge for compatibility
+async saveCurrentChallenge(data) {
+    return this.saveChallenge(data, 'current');
+}
+
+async saveNextChallenge(data) {
+    return this.saveChallenge(data, 'next');
+}
     // ===================
     // User Management
     // ===================
