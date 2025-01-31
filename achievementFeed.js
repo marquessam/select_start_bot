@@ -309,7 +309,7 @@ class AchievementFeed {
                     iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
                     url: `https://retroachievements.org/user/${username}`
                 })
-                .setTitle('🏆 Points Awarded!')
+                .setTitle('🏆 Points Awarded![C6H7JD]')
                 .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
                 .setTimestamp();
 
