@@ -166,7 +166,7 @@ async function handleRecheckPoints(message, args, services) {
         return;
     }
 
-    await message.channel.send('```ansi\n\x1b[32m> Rechecking achievements...\x1b[0m\n```');
+    await message.channel.send('```ansi\n\x1b[32m> Fetching achievement data...\x1b[0m\n```');
 
     try {
         const validUsers = await DataService.getValidUsers();
@@ -179,6 +179,11 @@ async function handleRecheckPoints(message, args, services) {
             return;
         }
 
+        const gameIds = Object.keys(pointsManager.gameConfig);
+        
+        // Fetch all historical progress
+        const progressData = await raAPI.fetchHistoricalProgress(usersToCheck, gameIds);
+
         const results = {
             processed: 0,
             pointsAwarded: 0,
@@ -187,22 +192,29 @@ async function handleRecheckPoints(message, args, services) {
 
         for (const username of usersToCheck) {
             try {
-                const allAchievements = await raAPI.fetchAllRecentAchievements();
-                const userAchievements = allAchievements.find(u => 
-                    u.username.toLowerCase() === username.toLowerCase()
-                )?.achievements || [];
+                const userProgress = progressData.get(username);
+                if (!userProgress) {
+                    results.errors.push({ username, error: 'No achievement data found' });
+                    continue;
+                }
 
-                // Check each game
-                for (const gameId of Object.keys(pointsManager.gameConfig)) {
+                for (const [gameId, achievements] of userProgress.entries()) {
                     const points = await pointsManager.recheckHistoricalPoints(
                         username,
-                        userAchievements,
+                        achievements,
                         gameId
                     );
                     results.pointsAwarded += points.length;
                 }
 
                 results.processed++;
+                
+                // Send progress update for long operations
+                if (usersToCheck.length > 1 && results.processed % 5 === 0) {
+                    await message.channel.send(
+                        `\`\`\`ansi\n\x1b[32m> Progress: ${results.processed}/${usersToCheck.length} users processed\x1b[0m\n\`\`\``
+                    );
+                }
             } catch (error) {
                 console.error(`Error processing ${username}:`, error);
                 results.errors.push({ username, error: error.message });
