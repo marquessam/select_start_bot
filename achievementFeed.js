@@ -56,31 +56,6 @@ class AchievementFeed {
         }
     }
 
-    async queueAnnouncement(messageOptions) {
-        this.announcementQueue.push(messageOptions);
-        if (!this.isProcessingQueue) {
-            await this.processAnnouncementQueue();
-        }
-    }
-
-    async processAnnouncementQueue() {
-        if (this.isProcessingQueue || this.announcementQueue.length === 0) return;
-
-        this.isProcessingQueue = true;
-        try {
-            const channel = await this.client.channels.fetch(this.feedChannel);
-            while (this.announcementQueue.length > 0) {
-                const messageOptions = this.announcementQueue.shift();
-                await channel.send(messageOptions);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-        } catch (error) {
-            console.error('[ACHIEVEMENT FEED] Error processing announcements:', error);
-        } finally {
-            this.isProcessingQueue = false;
-        }
-    }
-
     async checkNewAchievements() {
         if (this._processingAchievements) {
             console.log('[ACHIEVEMENT FEED] Already processing, skipping...');
@@ -135,19 +110,21 @@ class AchievementFeed {
 
             const userIconUrl = await DataService.getRAProfileImage(username) || `https://retroachievements.org/UserPic/${username}.png`;
 
-            // Check if this achievement is for the Monthly Challenge or Shadow Game
+            // ✅ Correctly label Monthly Challenge & Shadow Game
             let authorName = '';
             let authorIconUrl = '';
             let files = [];
 
-            if (achievement.GameID === '355') {
-                authorName = 'MONTHLY CHALLENGE';
-                files = [{ attachment: './logo_simple.png', name: 'game_logo.png' }];
-                authorIconUrl = 'attachment://game_logo.png';
-            } else if (achievement.GameID === '274') { // Replace with the actual ID for Shadow Game
+            if (achievement.GameID === '274') { // Shadow Game
                 authorName = 'SHADOW GAME';
                 files = [{ attachment: './logo_simple.png', name: 'game_logo.png' }];
                 authorIconUrl = 'attachment://game_logo.png';
+            } else if (achievement.GameID === '355') { // Monthly Challenge
+                authorName = 'MONTHLY CHALLENGE';
+                files = [{ attachment: './logo_simple.png', name: 'game_logo.png' }];
+                authorIconUrl = 'attachment://game_logo.png';
+            } else if (achievement.GameID === '319') { 
+                console.log(`[ACHIEVEMENT FEED] Tracking game ID 319, but not labeling it as Monthly Challenge.`);
             }
 
             const embed = new EmbedBuilder()
