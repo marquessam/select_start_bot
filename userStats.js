@@ -1,9 +1,8 @@
-// userStats.js
+const database = require('./database');
+const pointsManager = require('./pointsConfig');
 
 class UserStats {
-    constructor(database, pointsManager) {
-        this.database = database;
-        this.pointsManager = pointsManager;
+    constructor() {
         this.cache = {
             stats: {
                 users: {},
@@ -26,203 +25,60 @@ class UserStats {
         this._savePromise = null;
         this._pendingSaves = new Set();
         this._activeOperations = new Map();
+
+        // ✅ Ensure processUserPoints is correctly bound
+        this.processUserPoints = this.processUserPoints.bind(this);
+        this.recheckAllPoints = this.recheckAllPoints.bind(this);
     }
 
-    async loadStats(userTracker) {
+    async initialize() {
         if (this.isInitializing) {
-            console.log('[USER STATS] Already initializing, returning existing init promise...');
-            return this._initializingPromise;
+            console.log('[USER STATS] Already initializing...');
+            while (this.isInitializing) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            return;
         }
 
         this.isInitializing = true;
-
-        this._initializingPromise = (async () => {
-            try {
-                console.log('[USER STATS] Starting stats load...');
-                const dbStats = await this.database.getUserStats();
-
-                this.cache.stats = {
-                    users: dbStats.users || {},
-                    yearlyStats: dbStats.yearlyStats || {},
-                    monthlyStats: dbStats.monthlyStats || {},
-                    gamesBeaten: dbStats.gamesBeaten || dbStats.gameCompletions || {},
-                    achievementStats: dbStats.achievementStats || {},
-                    communityRecords: dbStats.communityRecords || {}
-                };
-
-                const users = await userTracker.getValidUsers();
-                this.cache.validUsers = new Set(users.map(u => u.toLowerCase()));
-
-                for (const username of this.cache.validUsers) {
-                    await this.initializeUserIfNeeded(username);
-                }
-
-                await this.saveStats();
-                this.cache.lastUpdate = Date.now();
-                this.initializationComplete = true;
-
-                console.log('[USER STATS] Stats load complete');
-            } catch (error) {
-                console.error('[USER STATS] Error loading stats:', error);
-                throw error;
-            } finally {
-                this.isInitializing = false;
-            }
-        })();
-
-        return this._initializingPromise;
-    }
-
-    async saveStats() {
-        if (this._savePromise) {
-            console.log('[USER STATS] Another save is in progress, waiting...');
-            await this._savePromise;
-        }
-
-        const saveId = Date.now().toString();
-        this._pendingSaves.add(saveId);
-
-        this._savePromise = (async () => {
-            try {
-                console.log('[USER STATS] Saving stats...');
-                await this.database.saveUserStats(this.cache.stats);
-                this.cache.lastUpdate = Date.now();
-                this.cache.pendingUpdates.clear();
-                console.log('[USER STATS] Stats saved successfully');
-            } catch (error) {
-                console.error('[USER STATS] Error saving stats:', error);
-                throw error;
-            } finally {
-                this._pendingSaves.delete(saveId);
-                this._savePromise = null;
-            }
-        })();
-
-        return this._savePromise;
-    }
-
-    async savePendingUpdates() {
-        if (this.cache.pendingUpdates.size > 0) {
-            await this.saveStats();
-        }
-    }
-
-    async refreshCache() {
-        if (this.shouldRefreshCache()) {
-            try {
-                const dbStats = await this.database.getUserStats();
-                this.cache.stats = dbStats;
-                this.cache.lastUpdate = Date.now();
-            } catch (error) {
-                console.error('[USER STATS] Error refreshing cache:', error);
-            }
-        }
-    }
-
-    shouldRefreshCache() {
-        return !this.cache.lastUpdate || 
-               (Date.now() - this.cache.lastUpdate > this.cache.updateInterval);
-    }
-
-    async initializeUserIfNeeded(username) {
-        if (!username) return;
-        const cleanUsername = username.trim().toLowerCase();
-        if (!cleanUsername) return;
-
-        if (!this.cache.stats.users[cleanUsername]) {
-            this.cache.stats.users[cleanUsername] = {
-                yearlyStats: {},
-                completedGames: {},
-                monthlyAchievements: {},
-                yearlyPoints: {}
-            };
-
-            const currentYear = this.currentYear.toString();
-            
-            // Initialize yearly stats
-            this.cache.stats.users[cleanUsername].yearlyStats[currentYear] = {
-                monthlyParticipations: 0,
-                totalAchievementsUnlocked: 0,
-                gamesBeaten: 0,
-                hardcoreCompletions: 0,
-                softcoreCompletions: 0,
-                perfectMonths: 0,
-                averageCompletion: 0,
-                longestStreak: 0,
-                currentStreak: 0,
-                highestSingleDay: 0,
-                mastery100Count: 0,
-                participationRate: 0,
-                rareAchievements: 0,
-                personalBests: {
-                    fastestCompletion: null,
-                    highestPoints: 0,
-                    bestRank: 0
-                },
-                achievementsPerMonth: {},
-                dailyActivity: {}
-            };
-
-            this.cache.pendingUpdates.add(cleanUsername);
-
-            if (global.leaderboardCache) {
-                await global.leaderboardCache.updateLeaderboards();
-            }
-        }
-    }
-
-    async removeUser(username) {
         try {
-            const cleanUsername = username.trim().toLowerCase();
-            if (this.cache.stats.users[cleanUsername]) {
-                delete this.cache.stats.users[cleanUsername];
-                this.cache.validUsers.delete(cleanUsername);
-                this.cache.pendingUpdates.add(cleanUsername);
-                await this.saveStats();
-            }
+            console.log('[USER STATS] Initializing...');
+
+            const users = await database.getAllUsers();
+            this.cache.validUsers = new Set(users);
+
+            this.initializationComplete = true;
+            console.log('[USER STATS] Initialization complete.');
         } catch (error) {
-            console.error('[USER STATS] Error removing user:', error);
-            throw error;
+            console.error('[USER STATS] Initialization error:', error);
+        } finally {
+            this.isInitializing = false;
         }
     }
 
-    async processAchievementPoints(username, achievements, gameId) {
+    async processUserPoints(username, member = null) {
         try {
-            const pointsToAward = await this.pointsManager.checkGamePoints(username, achievements, gameId);
-            
-            for (const point of pointsToAward) {
-                await this.pointsManager.awardPoints(
-                    username,
-                    point.points,
-                    point.reason,
-                    gameId
-                );
+            console.log(`[USER STATS] Processing points for ${username}...`);
+
+            const userData = await database.getUserStats(username);
+            if (!userData) {
+                console.warn(`[USER STATS] No data found for user: ${username}`);
+                return;
             }
 
-            // Update achievement stats
-            const currentYear = this.currentYear.toString();
-            const user = this.cache.stats.users[username.toLowerCase()];
-            
-            if (user) {
-                const monthlyKey = `${currentYear}-${new Date().getMonth()}`;
-                if (!user.monthlyAchievements[currentYear]) {
-                    user.monthlyAchievements[currentYear] = {};
+            let newPoints = userData.points || 0;
+            const earnedAchievements = await database.getUserAchievements(username);
+
+            if (earnedAchievements.length > 0) {
+                for (const achievement of earnedAchievements) {
+                    newPoints += achievement.points;
                 }
-                
-                user.monthlyAchievements[currentYear][monthlyKey] = 
-                    achievements.filter(a => parseInt(a.DateEarned) > 0).length;
-
-                user.yearlyStats[currentYear].totalAchievementsUnlocked =
-                    Object.values(user.monthlyAchievements[currentYear])
-                        .reduce((total, count) => total + count, 0);
-
-                this.cache.pendingUpdates.add(username.toLowerCase());
             }
 
-            return pointsToAward.length > 0;
+            await database.updateUserPoints(username, newPoints);
+            console.log(`[USER STATS] Updated points for ${username}: ${newPoints}`);
         } catch (error) {
-            console.error('[USER STATS] Error processing achievement points:', error);
-            return false;
+            console.error(`[USER STATS] Error processing points for ${username}:`, error);
         }
     }
 
@@ -246,7 +102,13 @@ class UserStats {
                         }
                     }
 
-                    await this.processUserPoints(username, member);
+                    // ✅ Ensure function exists before calling it
+                    if (typeof this.processUserPoints === "function") {
+                        await this.processUserPoints(username, member);
+                    } else {
+                        console.error(`processUserPoints is not a function in UserStats.`);
+                    }
+
                     processedUsers.push(username);
                 } catch (error) {
                     console.error(`Error processing ${username}:`, error);
@@ -265,106 +127,69 @@ class UserStats {
         }
     }
 
-    async archiveLeaderboard(data) {
-        try {
-            if (!data?.leaderboard || !data?.gameInfo) {
-                throw new Error('Invalid leaderboard data for archiving');
-            }
-
-            const currentMonth = new Date().toLocaleString('default', { month: 'long' });
-            const currentYear = this.currentYear.toString();
-
-            const archiveEntry = {
-                month: currentMonth,
-                year: currentYear,
-                gameInfo: data.gameInfo,
-                leaderboard: data.leaderboard.map(user => ({
-                    username: user.username,
-                    completedAchievements: user.completedAchievements,
-                    totalAchievements: user.totalAchievements,
-                    completionPercentage: user.completionPercentage,
-                    hasBeatenGame: user.hasBeatenGame
-                })),
-                date: new Date().toISOString()
-            };
-
-            if (!this.cache.stats.monthlyStats[currentYear]) {
-                this.cache.stats.monthlyStats[currentYear] = {};
-            }
-            
-            this.cache.stats.monthlyStats[currentYear][currentMonth] = archiveEntry;
-
-            await this.database.addGameToHistory({
-                ...data.gameInfo,
-                month: currentMonth,
-                year: currentYear,
-                date: archiveEntry.date
-            });
-
-            await this.saveStats();
-
-            return {
-                month: currentMonth,
-                year: currentYear,
-                rankings: archiveEntry.leaderboard
-            };
-        } catch (error) {
-            console.error('[USER STATS] Error archiving leaderboard:', error);
-            throw error;
-        }
-    }
-
-    async getYearlyLeaderboard(year = null, allParticipants = []) {
-        try {
-            const targetYear = year || this.currentYear.toString();
-            if (!this.cache.stats.users) return [];
-
-            const leaderboard = await Promise.all(
-                Object.entries(this.cache.stats.users)
-                    .filter(([username]) => allParticipants.includes(username.toLowerCase()))
-                    .map(async ([username, stats]) => {
-                        const bonusPoints = await this.pointsManager.getUserPoints(username, targetYear);
-                        const totalPoints = bonusPoints.reduce((sum, p) => sum + p.points, 0);
-
-                        return {
-                            username,
-                            points: totalPoints,
-                            gamesBeaten: stats.yearlyStats?.[targetYear]?.gamesBeaten || 0,
-                            achievementsUnlocked: stats.yearlyStats?.[targetYear]?.totalAchievementsUnlocked || 0,
-                            monthlyParticipations: stats.yearlyStats?.[targetYear]?.monthlyParticipations || 0
-                        };
-                    })
-            );
-
-            return leaderboard.sort((a, b) => b.points - a.points || b.gamesBeaten - a.gamesBeaten);
-        } catch (error) {
-            console.error('[USER STATS] Error getting yearly leaderboard:', error);
-            return [];
-        }
-    }
-
     async getAllUsers() {
         try {
-            return Array.from(this.cache.validUsers);
+            if (!this.cache.validUsers || this.cache.validUsers.size === 0) {
+                const users = await database.getAllUsers();
+                this.cache.validUsers = new Set(users);
+            }
+            return [...this.cache.validUsers];
         } catch (error) {
-            console.error('[USER STATS] Error getting all users:', error);
+            console.error('[USER STATS] Error fetching all users:', error);
             return [];
         }
     }
 
-    async getUserStats(username) {
+    async updateLeaderboard() {
         try {
-            const cleanUsername = username.trim().toLowerCase();
-            await this.refreshCache();
+            console.log('[USER STATS] Updating leaderboard...');
+            const leaderboardData = await database.getLeaderboard();
+            this.cache.stats.leaderboard = leaderboardData;
+            console.log('[USER STATS] Leaderboard updated.');
+        } catch (error) {
+            console.error('[USER STATS] Error updating leaderboard:', error);
+        }
+    }
 
-            if (!this.cache.stats.users[cleanUsername]) {
-                await this.initializeUserIfNeeded(cleanUsername);
+    async updateUserStats(username) {
+        try {
+            if (!this.cache.stats.users[username]) {
+                this.cache.stats.users[username] = { points: 0, achievements: [] };
             }
 
-            return this.cache.stats.users[cleanUsername] || null;
+            const userStats = await database.getUserStats(username);
+            if (!userStats) return;
+
+            this.cache.stats.users[username] = {
+                points: userStats.points || 0,
+                achievements: userStats.achievements || []
+            };
+
+            console.log(`[USER STATS] Updated cache for ${username}`);
         } catch (error) {
-            console.error('[USER STATS] Error getting user stats:', error);
-            return null;
+            console.error(`[USER STATS] Error updating user stats for ${username}:`, error);
+        }
+    }
+
+    async updateStatsCache() {
+        try {
+            console.log('[USER STATS] Updating stats cache...');
+            const allStats = await database.getAllUserStats();
+            this.cache.stats.users = allStats;
+            this.cache.lastUpdate = Date.now();
+            console.log('[USER STATS] Stats cache updated.');
+        } catch (error) {
+            console.error('[USER STATS] Error updating stats cache:', error);
+        }
+    }
+
+    async saveUserStats(username, stats) {
+        try {
+            if (!username || !stats) return;
+            await database.saveUserStats(username, stats);
+            console.log(`[USER STATS] Saved stats for ${username}`);
+        } catch (error) {
+            console.error(`[USER STATS] Error saving stats for ${username}:`, error);
         }
     }
 }
