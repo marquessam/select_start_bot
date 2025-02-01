@@ -294,40 +294,30 @@ async saveCurrentChallenge(data) {
         }
     }
 
-    async addUserBonusPoints(username, pointRecord) {
+  async addUserBonusPoints(username, pointRecord) {
     try {
         const collection = await this.getCollection('bonusPoints');
         
-        // First, check if this point type already exists
+        // Check for existing points with same technical key for this year
         const existingPoint = await collection.findOne({
             username: username.toLowerCase(),
             year: pointRecord.year,
-            internalReason: pointRecord.internalReason
+            technicalKey: pointRecord.technicalKey
         });
 
-        // If it exists and is newer, don't add the new one
-        if (existingPoint && new Date(existingPoint.date) > new Date(pointRecord.date)) {
+        if (existingPoint) {
+            console.log(`[DATABASE] Points already exist for ${username} - ${pointRecord.technicalKey}`);
             return false;
         }
 
-        // Update or insert the point
-        const result = await collection.updateOne(
-            {
-                username: username.toLowerCase(),
-                year: pointRecord.year,
-                internalReason: pointRecord.internalReason
-            },
-            {
-                $set: {
-                    ...pointRecord,
-                    username: username.toLowerCase(),
-                    timestamp: new Date()
-                }
-            },
-            { upsert: true }
-        );
+        // Insert new point record
+        const result = await collection.insertOne({
+            ...pointRecord,
+            username: username.toLowerCase(),
+            timestamp: new Date()
+        });
 
-        return result.modifiedCount > 0 || result.upsertedCount > 0;
+        return result.acknowledged;
     } catch (error) {
         if (error.code === 11000) { // Duplicate key error
             console.log(`[DATABASE] Duplicate points prevented for ${username}`);
@@ -337,6 +327,7 @@ async saveCurrentChallenge(data) {
         throw error;
     }
 }
+    
     async getUserBonusPoints(username) {
         try {
             const collection = await this.getCollection('bonusPoints');
