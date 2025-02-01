@@ -21,41 +21,43 @@ class AchievementFeed {
         setInterval(() => this.checkNewAchievements(), this.checkInterval);
     }
 
-    async initialize() {
-        if (this.isInitializing) {
-            console.log('[ACHIEVEMENT FEED] Already initializing...');
-            while (this.isInitializing) {
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            return;
+   async initialize() {
+    if (this.isInitializing) {
+        console.log('[ACHIEVEMENT FEED] Already initializing...');
+        while (this.isInitializing) {
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
-
-        this.isInitializing = true;
-        try {
-            console.log('[ACHIEVEMENT FEED] Initializing...');
-            
-            const [allAchievements, storedTimestamps] = await Promise.all([
-                raAPI.fetchAllRecentAchievements(),
-                database.getLastAchievementTimestamps()
-            ]);
-
-            for (const { username, achievements } of allAchievements) {
-                if (achievements.length > 0 && !storedTimestamps[username.toLowerCase()]) {
-                    const mostRecentTime = new Date(achievements[0].Date).getTime();
-                    await database.updateLastAchievementTimestamp(username.toLowerCase(), mostRecentTime);
-                }
-            }
-
-            this.initializationComplete = true;
-            this.startPeriodicCheck();
-            console.log('[ACHIEVEMENT FEED] Initialized successfully.');
-        } catch (error) {
-            console.error('[ACHIEVEMENT FEED] Initialization error:', error);
-        } finally {
-            this.isInitializing = false;
-        }
+        return;
     }
 
+    this.isInitializing = true;
+    try {
+        console.log('[ACHIEVEMENT FEED] Initializing...');
+        
+        let allAchievements = await raAPI.fetchAllRecentAchievements();
+        if (!Array.isArray(allAchievements)) {
+            console.warn('[ACHIEVEMENT FEED] Warning: fetchAllRecentAchievements() returned a non-array, defaulting to empty list.');
+            allAchievements = [];
+        }
+
+        const storedTimestamps = await database.getLastAchievementTimestamps();
+
+        for (const { username, achievements } of allAchievements) {
+            if (achievements.length > 0 && !storedTimestamps[username.toLowerCase()]) {
+                const mostRecentTime = new Date(achievements[0].Date).getTime();
+                await database.updateLastAchievementTimestamp(username.toLowerCase(), mostRecentTime);
+            }
+        }
+
+        this.initializationComplete = true;
+        this.startPeriodicCheck();
+        console.log('[ACHIEVEMENT FEED] Initialized successfully.');
+    } catch (error) {
+        console.error('[ACHIEVEMENT FEED] Initialization error:', error);
+    } finally {
+        this.isInitializing = false;
+    }
+}
     async checkNewAchievements() {
         if (this._processingAchievements) {
             console.log('[ACHIEVEMENT FEED] Already processing, skipping...');
