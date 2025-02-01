@@ -92,7 +92,7 @@ async function initializeServices(coreServices) {
         await coreServices.userStats.loadStats(coreServices.userTracker);
         console.log('UserStats initialized');
 
-        await coreServices.shadowGame.loadConfig();
+       await coreServices.shadowGame.initialize();
         console.log('ShadowGame initialized');
 
         await coreServices.announcer.initialize();
