@@ -11,8 +11,6 @@ const ShadowGame = require('./shadowGame');
 const errorHandler = require('./utils/errorHandler');
 const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
-const TerminalEmbed = require('./utils/embedBuilder');
-const EventTimer = require('./utils/eventTimer'); // Add EventTimer import
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
@@ -28,8 +26,6 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessageReactions,
-        GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.DirectMessageReactions
     ]
 });
 
@@ -64,10 +60,6 @@ async function createCoreServices() {
         const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
         const achievementFeed = new AchievementFeed(client, database);
-        const eventTimer = new EventTimer(client); // Create EventTimer instance
-        const ChallengeAnnouncements = require('./utils/challengeAnnouncements');
-        const challengeAnnouncements = new ChallengeAnnouncements(client, process.env.ANNOUNCEMENT_CHANNEL_ID);
-challengeAnnouncements.setupAnnouncements();
 
         leaderboardCache.setUserStats(userStats);
         global.leaderboardCache = leaderboardCache;
@@ -82,8 +74,7 @@ challengeAnnouncements.setupAnnouncements();
             announcer,
             shadowGame,
             achievementFeed,
-            mobyAPI: MobyAPI,
-            eventTimer // Add to returned services
+            mobyAPI: MobyAPI
         };
     } catch (error) {
         console.error('Error creating core services:', error);
@@ -116,10 +107,6 @@ async function initializeServices(coreServices) {
         await coreServices.achievementFeed.initialize();
         console.log('AchievementFeed initialized');
 
-        // Initialize EventTimer with monthly transitions
-        coreServices.eventTimer.setupMonthlyTransitions(process.env.ANNOUNCEMENT_CHANNEL_ID);
-        console.log('EventTimer initialized');
-
         await coordinateUpdate(coreServices, true);
 
         console.log('All services initialized successfully');
@@ -144,18 +131,11 @@ async function setupBot() {
     }
 }
 
-/**
- * Waits (non-blocking) for userStats to finish initializing.
- * Returns immediately if already initialized, otherwise polls
- * every 100ms until initialization is complete.
- */
-function waitForUserStatsInitialization(userStats) {
-    // If already initialized, no need to wait
+async function waitForUserStatsInitialization(userStats) {
     if (!userStats.isInitializing && userStats.initializationComplete) {
         return Promise.resolve();
     }
 
-    // Poll every 100ms until ready
     return new Promise((resolve) => {
         const timer = setInterval(() => {
             if (!userStats.isInitializing && userStats.initializationComplete) {
@@ -180,7 +160,6 @@ async function coordinateUpdate(services, force = false) {
     }
 
     try {
-        // Instead of while-loop blocking, we wait with a small helper
         if (services.userStats.isInitializing || !services.userStats.initializationComplete) {
             console.log('[UPDATE] Waiting for UserStats initialization...');
             await waitForUserStatsInitialization(services.userStats);
@@ -208,51 +187,10 @@ async function coordinateUpdate(services, force = false) {
 }
 
 async function handleMessage(message, services) {
-    // Add debug logs
-    console.log('Message received:', {
-        isDM: !message.guild,
-        channelType: message.channel.type,
-        content: message.content,
-        author: message.author.tag
-    });
+    if (message.author.bot || !services) return;
+    
     const { userTracker, shadowGame, commandHandler } = services;
     const tasks = [];
-
-    const isDM = !message.guild;
-
-    if (isDM && !message.author.bot) {
-        console.log('Processing DM message');  // Debug log
-        // Check for first-time DM interaction
-        const hasInteracted = await message.channel.messages.fetch({ limit: 2 })
-            .then(messages => messages.size > 1)
-            .catch(() => true);
-
-        if (!hasInteracted) {
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('SELECT START BOT - DIRECT MESSAGES')
-                .setTerminalDescription(
-                    '[WELCOME TO SELECT START BOT]\n' +
-                    'You can use several commands directly in DMs for quick access to information.'
-                )
-                .addTerminalField('AVAILABLE DM COMMANDS',
-                    '!profile <username> - Check RetroAchievements stats\n' +
-                    '!leaderboard - View challenge rankings\n' +
-                    '!challenge - See current monthly challenge\n' +
-                    '!search <game> - Look up game information\n' +
-                    '!nominations - View/submit game nominations\n' +
-                    '!review - Read/write game reviews\n' +
-                    '!help - Show all available commands'
-                )
-                .addTerminalField('IMPORTANT NOTE',
-                    'Achievement announcements and point updates will still appear in the server\'s bot terminal channel.\n\n' +
-                    'DMs are for quick access to information and submissions only.'
-                )
-                .setTerminalFooter();
-
-            await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type any command to begin\n[Ready for input]█\x1b[0m```');
-        }
-    }
 
     if (message.channel.id === process.env.RA_CHANNEL_ID) {
         tasks.push(userTracker.processMessage(message));
