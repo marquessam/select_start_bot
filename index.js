@@ -11,6 +11,7 @@ const ShadowGame = require('./shadowGame');
 const errorHandler = require('./utils/errorHandler');
 const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
+const PointsManager = require('./managers/pointsManager');
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
@@ -53,7 +54,8 @@ async function createCoreServices() {
     try {
         console.log('Creating core services...');
         
-        const userStats = new UserStats(database);
+        const pointsManager = new PointsManager(database);
+        const userStats = new UserStats(database, pointsManager);
         const userTracker = new UserTracker(database, userStats);
         const leaderboardCache = createLeaderboardCache(database);
         const commandHandler = new CommandHandler();
@@ -67,6 +69,7 @@ async function createCoreServices() {
 
         console.log('Core services created successfully');
         return {
+            pointsManager,
             userStats,
             userTracker,
             leaderboardCache,
@@ -86,13 +89,18 @@ async function initializeServices(coreServices) {
     try {
         console.log('Initializing services...');
 
+        // Initialize Points System first
+        console.log('Initializing Points System...');
+        await coreServices.pointsManager.migrateExistingPoints();
+        console.log('Points System initialized');
+
         await coreServices.userTracker.initialize();
         console.log('UserTracker initialized');
 
         await coreServices.userStats.loadStats(coreServices.userTracker);
         console.log('UserStats initialized');
 
-       await coreServices.shadowGame.initialize();
+        await coreServices.shadowGame.initialize();
         console.log('ShadowGame initialized');
 
         await coreServices.announcer.initialize();
