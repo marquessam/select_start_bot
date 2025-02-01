@@ -1,5 +1,6 @@
-// In shadowinit.js
+// commands/admin/shadowinit.js
 
+const TerminalEmbed = require('../../utils/embedBuilder');
 const database = require('../../database');
 
 module.exports = {
@@ -9,6 +10,8 @@ module.exports = {
     
     async execute(message, args) {
         try {
+            await message.channel.send('```ansi\n\x1b[32m> Initializing shadow game data...\x1b[0m\n```');
+
             // Create base shadow game data structure
             const shadowGameData = {
                 active: true,
@@ -64,9 +67,13 @@ module.exports = {
                     'Shadow game data structure created\n' +
                     'Triforce pieces reset\n' +
                     'Final reward configured')
+                .addTerminalField('NEXT STEPS',
+                    '1. Use !triforce to verify initialization\n' +
+                    '2. Test fragment collection with !triforce wisdom <code>')
                 .setTerminalFooter();
 
             await message.channel.send({ embeds: [embed] });
+            await message.channel.send('```ansi\n\x1b[32m> Type !triforce to verify initialization\n[Ready for input]█\x1b[0m```');
 
         } catch (error) {
             console.error('Shadow Init Error:', error);
