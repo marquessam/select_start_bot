@@ -82,10 +82,6 @@ class Database {
         return this.db.collection(collectionName);
     }
 
-  Let's start with adding the new indexes for the bonusPoints collection and then handle the migration.
-First, find this section in database.js where indexes are created:
-javascriptCopy// In database.js - Find the createIndexes() method and update it:
-
 async createIndexes() {
     try {
         // Keep existing indexes
