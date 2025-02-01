@@ -19,35 +19,38 @@ class ShadowGame {
                typeof state.courage.found === 'number';
     }
 
-    async loadConfig() {
-        try {
-            this.config = await database.getShadowGame();
-            
-            // Validate config structure
-            if (!this.config || !this.isValidTriforceState(this.config.triforceState)) {
-                console.error('Invalid shadow game configuration detected');
-                return false;
-            }
-            
-            // Ensure Sets are properly initialized
-            if (this.config.triforceState.wisdom.collected && !(this.config.triforceState.wisdom.collected instanceof Set)) {
-                console.log('Wisdom collected before:', this.config.triforceState.wisdom.collected);
-                this.config.triforceState.wisdom.collected = new Set(this.config.triforceState.wisdom.collected);
-                console.log('Wisdom collected after:', this.config.triforceState.wisdom.collected);
-            }
-            if (this.config.triforceState.courage.collected && !(this.config.triforceState.courage.collected instanceof Set)) {
-                console.log('Courage collected before:', this.config.triforceState.courage.collected);
-                this.config.triforceState.courage.collected = new Set(this.config.triforceState.courage.collected);
-                console.log('Courage collected after:', this.config.triforceState.courage.collected);
-            }
-
-            return true;
-        } catch (error) {
-            console.error('Error loading shadow game config:', error);
+async loadConfig() {
+    try {
+        this.config = await database.getShadowGame();
+        
+        // Validate config structure
+        if (!this.config || !this.isValidTriforceState(this.config.triforceState)) {
+            console.error('Invalid shadow game configuration detected');
             return false;
         }
-    }
+        
+        // Ensure Sets are properly initialized
+        if (this.config.triforceState.wisdom.collected && !(this.config.triforceState.wisdom.collected instanceof Set)) {
+            if (!Array.isArray(this.config.triforceState.wisdom.collected)) {
+                console.error('Wisdom collected is not an array:', this.config.triforceState.wisdom.collected);
+                this.config.triforceState.wisdom.collected = [];
+            }
+            this.config.triforceState.wisdom.collected = new Set(this.config.triforceState.wisdom.collected);
+        }
+        if (this.config.triforceState.courage.collected && !(this.config.triforceState.courage.collected instanceof Set)) {
+            if (!Array.isArray(this.config.triforceState.courage.collected)) {
+                console.error('Courage collected is not an array:', this.config.triforceState.courage.collected);
+                this.config.triforceState.courage.collected = [];
+            }
+            this.config.triforceState.courage.collected = new Set(this.config.triforceState.courage.collected);
+        }
 
+        return true;
+    } catch (error) {
+        console.error('Error loading shadow game config:', error);
+        return false;
+    }
+}
     async initialize() {
         try {
             const shadowGameData = {
