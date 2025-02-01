@@ -42,7 +42,7 @@ class UserStats {
         try {
             console.log('[USER STATS] Initializing...');
 
-            const users = await this.database.getAllUsers();
+            const users = await this.database.getValidUsers();
             this.cache.validUsers = new Set(users);
 
             this.initializationComplete = true;
@@ -79,7 +79,7 @@ async initializeUserIfNeeded(username) {
             throw new Error('[USER STATS] getUserStats() is not defined in database.js');
         }
 
-        const validUsers = await this.getAllUsers(); // Ensure all users are fetched
+        const validUsers = await this.getValidUsers(); // Ensure all users are fetched
         if (!Array.isArray(validUsers) || validUsers.length === 0) {
             console.warn('[USER STATS] No valid users found.');
             this.cache.stats.users = {};
@@ -138,7 +138,7 @@ async initializeUserIfNeeded(username) {
 
     async recheckAllPoints(guild) {
         try {
-            const validUsers = await this.getAllUsers();
+            const validUsers = await this.getValidUsers();
             const processedUsers = [];
             const errors = [];
 
@@ -181,10 +181,10 @@ async initializeUserIfNeeded(username) {
         }
     }
 
-    async getAllUsers() {
+    async getValidUsers() {
         try {
             if (!this.cache.validUsers || this.cache.validUsers.size === 0) {
-                const users = await this.database.getAllUsers();
+                const users = await this.database.getValidUsers();
                 this.cache.validUsers = new Set(users);
             }
             return [...this.cache.validUsers];
@@ -228,7 +228,7 @@ async initializeUserIfNeeded(username) {
     async updateStatsCache() {
         try {
             console.log('[USER STATS] Updating stats cache...');
-            const allStats = await this.database.getAllUserStats();
+            const allStats = await this.database.getValidUserstats();
             this.cache.stats.users = allStats;
             this.cache.lastUpdate = Date.now();
             console.log('[USER STATS] Stats cache updated.');
