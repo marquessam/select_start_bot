@@ -82,8 +82,13 @@ class Database {
         return this.db.collection(collectionName);
     }
 
-   async createIndexes() {
+  Let's start with adding the new indexes for the bonusPoints collection and then handle the migration.
+First, find this section in database.js where indexes are created:
+javascriptCopy// In database.js - Find the createIndexes() method and update it:
+
+async createIndexes() {
     try {
+        // Keep existing indexes
         await this.db.collection('userstats').createIndex({ _id: 1 });
         await this.db.collection('challenges').createIndex({ _id: 1 });
         await this.db.collection('records').createIndex({ _id: 1 });
@@ -92,26 +97,20 @@ class Database {
         await this.db.collection('users').createIndex({ username: 1 });
         await this.db.collection('achievements').createIndex({ _id: 1 });
 
-        // Remove illegal wildcard index (commented out)
-        /*
-        await this.db.collection('userstats').createIndex(
-            {
-                'users.$**.year': 1,
-                'users.$**.internalReason': 1
-            },
-            { 
-                unique: true,
-                sparse: true,
-                name: 'unique_bonus_points'
-            }
-        );
-        */
-
-        // Create unique index on bonusPoints collection
+        // Add new indexes for bonusPoints collection
         await this.db.collection('bonusPoints').createIndex(
-            { username: 1, year: 1, internalReason: 1 },
-            { unique: true, sparse: true, name: 'unique_bonus_points' }
+            { 
+                username: 1,
+                year: 1,
+                internalReason: 1 
+            },
+            { unique: true }
         );
+
+        // Add additional indexes for common queries
+        await this.db.collection('bonusPoints').createIndex({ username: 1 });
+        await this.db.collection('bonusPoints').createIndex({ year: 1 });
+        await this.db.collection('bonusPoints').createIndex({ timestamp: 1 });
 
         console.log('Indexes created successfully');
     } catch (error) {
@@ -119,7 +118,7 @@ class Database {
         throw error;
     }
 }
-
+    
     // ==================
     // Challenge Methods
     // ==================
