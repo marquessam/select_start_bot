@@ -111,7 +111,7 @@ class ShadowGame {
 
     async handlePowerCollection(message) {
         if (this.config.triforceState.wisdom.found < 6 || this.config.triforceState.courage.found < 6) {
-            return await message.channel.send('```ansi\n\x1b[31mThe Triforce of Power remains in Ganon\'s grasp, protected by his dark magic...\x1b[0m```');
+            return await message.channel.send('```ansi\n\x1b[31mGanon\'s dark magic still protects the Triforce of Power...\nNone have yet proven strong enough to break his seal.\x1b[0m```');
         }
 
         this.config.triforceState.power.collected = true;
