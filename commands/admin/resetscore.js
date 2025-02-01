@@ -4,69 +4,60 @@ const database = require('../../database');
 
 module.exports = {
     name: 'resetscore',
-    description: 'Reset scores for an arcade game',
+    description: 'Reset arcade high scores',
     async execute(message, args) {
         try {
             if (args.length < 1) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !resetscore <game_number> [username]\nExample: !resetscore 4       (resets all Ms. Pac-Man scores)\nExample: !resetscore 4 username (removes specific user\'s score)\n[Ready for input]█\x1b[0m```');
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !resetscore <game_number> [username]\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
             const gameNum = parseInt(args[0]);
-            const username = args[1]?.toLowerCase();  // Optional username
+            const username = args[1]?.toLowerCase();
 
-            // Get arcade data
-            const arcadeData = await database.getArcadeScores();
-            const games = Object.entries(arcadeData.games);
+            const arcadeScores = await database.getArcadeScores();
+            const gameList = Object.keys(arcadeScores.games);
 
-            if (gameNum < 1 || gameNum > games.length) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number. Use !arcade to see available games\n[Ready for input]█\x1b[0m```');
+            if (gameNum < 1 || gameNum > gameList.length) {
+                await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid game number\nUse !arcade to see available games\n[Ready for input]█\x1b[0m```');
                 return;
             }
 
-            const [gameName, gameData] = games[gameNum - 1];
-            const oldScores = [...(gameData.scores || [])];
+            const gameName = gameList[gameNum - 1];
+            const previousScores = [...arcadeScores.games[gameName].scores];
 
             if (username) {
-                // Remove specific user's score
                 await database.removeArcadeScore(gameName, username);
             } else {
-                // Reset all scores for the game
                 await database.resetArcadeScores(gameName);
             }
 
-            // Get updated data
-            const updatedData = await database.getArcadeScores();
-            const updatedScores = updatedData.games[gameName].scores;
+            const updatedScores = (await database.getArcadeScores()).games[gameName].scores;
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`${gameName} - SCORES RESET`)
-                .setTerminalDescription('[UPDATE COMPLETE]\n[DISPLAYING CHANGES]')
-                .addTerminalField('ACTION TAKEN', 
-                    username ? `Removed score for user: ${username}` : 'Reset all scores for game');
-
-            if (oldScores.length > 0) {
-                embed.addTerminalField('PREVIOUS RANKINGS',
-                    oldScores.map((score, index) => {
+                .setTerminalDescription('[UPDATE SUCCESSFUL]')
+                .addTerminalField('ACTION',
+                    username ? 
+                    `Removed score for: ${username}` :
+                    'Reset all scores')
+                .addTerminalField('PREVIOUS RANKINGS',
+                    previousScores.length > 0 ?
+                    previousScores.map((s, i) => {
                         const medals = ['🥇', '🥈', '🥉'];
-                        return `${medals[index]} ${score.username}: ${score.score.toLocaleString()}`;
-                    }).join('\n') || 'No scores recorded'
-                );
-            }
-
-            embed.addTerminalField('CURRENT RANKINGS',
-                updatedScores.length > 0 ? 
-                    updatedScores.map((score, index) => {
-                        const medals = ['🥇', '🥈', '🥉'];
-                        return `${medals[index]} ${score.username}: ${score.score.toLocaleString()}`;
+                        return `${medals[i] || ''} ${s.username}: ${s.score.toLocaleString()}`;
                     }).join('\n') :
-                    'No scores recorded'
-            );
+                    'No previous scores')
+                .addTerminalField('CURRENT RANKINGS',
+                    updatedScores.length > 0 ?
+                    updatedScores.map((s, i) => {
+                        const medals = ['🥇', '🥈', '🥉'];
+                        return `${medals[i] || ''} ${s.username}: ${s.score.toLocaleString()}`;
+                    }).join('\n') :
+                    'No scores recorded')
+                .setTerminalFooter();
 
-            embed.setTerminalFooter();
-            
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Type !arcade to verify changes\n[Ready for input]█\x1b[0m```');
 
         } catch (error) {
             console.error('Reset Score Error:', error);
