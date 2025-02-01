@@ -1,4 +1,3 @@
-// shadowGame.js
 const { EmbedBuilder } = require('discord.js');
 const database = require('./database');
 const { fetchLeaderboardData } = require('./raAPI');
@@ -32,10 +31,14 @@ class ShadowGame {
             
             // Ensure Sets are properly initialized
             if (this.config.triforceState.wisdom.collected && !(this.config.triforceState.wisdom.collected instanceof Set)) {
+                console.log('Wisdom collected before:', this.config.triforceState.wisdom.collected);
                 this.config.triforceState.wisdom.collected = new Set(this.config.triforceState.wisdom.collected);
+                console.log('Wisdom collected after:', this.config.triforceState.wisdom.collected);
             }
             if (this.config.triforceState.courage.collected && !(this.config.triforceState.courage.collected instanceof Set)) {
+                console.log('Courage collected before:', this.config.triforceState.courage.collected);
                 this.config.triforceState.courage.collected = new Set(this.config.triforceState.courage.collected);
+                console.log('Courage collected after:', this.config.triforceState.courage.collected);
             }
 
             return true;
@@ -238,6 +241,12 @@ class ShadowGame {
             return;
         }
 
+        if (!(triforce.collected instanceof Set)) {
+            console.error('triforce.collected is not a Set:', triforce.collected);
+            await message.channel.send('```ansi\n\x1b[31mTriforce data corrupted...\x1b[0m```');
+            return;
+        }
+
         if (triforce.collected.has(code)) {
             await message.channel.send('```ansi\n\x1b[33mThis ancient power has already been restored to the Sacred Realm...\x1b[0m```');
             return;
@@ -258,7 +267,20 @@ class ShadowGame {
             
             await message.channel.send({ embeds: [embed] });
             await this.handleTriforceProgress(message, piece);
-            await database.saveShadowGame(this.config);
+            await database.saveShadowGame({
+                ...this.config,
+                triforceState: {
+                    wisdom: {
+                        ...this.config.triforceState.wisdom,
+                        collected: Array.from(this.config.triforceState.wisdom.collected)
+                    },
+                    courage: {
+                        ...this.config.triforceState.courage,
+                        collected: Array.from(this.config.triforceState.courage.collected)
+                    },
+                    power: this.config.triforceState.power
+                }
+            });
         } else {
             await message.channel.send('```ansi\n\x1b[31mThis incantation holds no power here...\x1b[0m```');
         }
@@ -457,4 +479,3 @@ class ShadowGame {
 }
 
 module.exports = ShadowGame;
-                //
