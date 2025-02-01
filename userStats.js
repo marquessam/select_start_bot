@@ -2,7 +2,8 @@ const database = require('./database');
 const pointsManager = require('./pointsConfig');
 
 class UserStats {
-    constructor() {
+    constructor(database) {
+        this.database = database;
         this.cache = {
             stats: {
                 users: {},
@@ -21,14 +22,11 @@ class UserStats {
         this.currentYear = new Date().getFullYear();
         this.isInitializing = false;
         this.initializationComplete = false;
-        this._initializingPromise = null;
-        this._savePromise = null;
-        this._pendingSaves = new Set();
-        this._activeOperations = new Map();
 
-        // ✅ Ensure processUserPoints is correctly bound
+        // ✅ Ensure functions are properly bound
         this.processUserPoints = this.processUserPoints.bind(this);
         this.recheckAllPoints = this.recheckAllPoints.bind(this);
+        this.loadStats = this.loadStats.bind(this);
     }
 
     async initialize() {
@@ -44,7 +42,7 @@ class UserStats {
         try {
             console.log('[USER STATS] Initializing...');
 
-            const users = await database.getAllUsers();
+            const users = await this.database.getAllUsers();
             this.cache.validUsers = new Set(users);
 
             this.initializationComplete = true;
@@ -56,18 +54,38 @@ class UserStats {
         }
     }
 
+    async loadStats() {
+        try {
+            console.log('[USER STATS] Loading user stats...');
+            const allUserStats = await this.database.getAllUserStats();
+
+            if (!allUserStats) {
+                console.warn('[USER STATS] No user stats found.');
+                return;
+            }
+
+            this.cache.stats.users = allUserStats;
+            this.cache.lastUpdate = Date.now();
+
+            console.log('[USER STATS] Successfully loaded user stats.');
+        } catch (error) {
+            console.error('[USER STATS] Error loading stats:', error);
+            throw error;
+        }
+    }
+
     async processUserPoints(username, member = null) {
         try {
             console.log(`[USER STATS] Processing points for ${username}...`);
 
-            const userData = await database.getUserStats(username);
+            const userData = await this.database.getUserStats(username);
             if (!userData) {
                 console.warn(`[USER STATS] No data found for user: ${username}`);
                 return;
             }
 
             let newPoints = userData.points || 0;
-            const earnedAchievements = await database.getUserAchievements(username);
+            const earnedAchievements = await this.database.getUserAchievements(username);
 
             if (earnedAchievements.length > 0) {
                 for (const achievement of earnedAchievements) {
@@ -75,7 +93,7 @@ class UserStats {
                 }
             }
 
-            await database.updateUserPoints(username, newPoints);
+            await this.database.updateUserPoints(username, newPoints);
             console.log(`[USER STATS] Updated points for ${username}: ${newPoints}`);
         } catch (error) {
             console.error(`[USER STATS] Error processing points for ${username}:`, error);
@@ -130,7 +148,7 @@ class UserStats {
     async getAllUsers() {
         try {
             if (!this.cache.validUsers || this.cache.validUsers.size === 0) {
-                const users = await database.getAllUsers();
+                const users = await this.database.getAllUsers();
                 this.cache.validUsers = new Set(users);
             }
             return [...this.cache.validUsers];
@@ -143,7 +161,7 @@ class UserStats {
     async updateLeaderboard() {
         try {
             console.log('[USER STATS] Updating leaderboard...');
-            const leaderboardData = await database.getLeaderboard();
+            const leaderboardData = await this.database.getLeaderboard();
             this.cache.stats.leaderboard = leaderboardData;
             console.log('[USER STATS] Leaderboard updated.');
         } catch (error) {
@@ -157,7 +175,7 @@ class UserStats {
                 this.cache.stats.users[username] = { points: 0, achievements: [] };
             }
 
-            const userStats = await database.getUserStats(username);
+            const userStats = await this.database.getUserStats(username);
             if (!userStats) return;
 
             this.cache.stats.users[username] = {
@@ -174,7 +192,7 @@ class UserStats {
     async updateStatsCache() {
         try {
             console.log('[USER STATS] Updating stats cache...');
-            const allStats = await database.getAllUserStats();
+            const allStats = await this.database.getAllUserStats();
             this.cache.stats.users = allStats;
             this.cache.lastUpdate = Date.now();
             console.log('[USER STATS] Stats cache updated.');
@@ -186,7 +204,7 @@ class UserStats {
     async saveUserStats(username, stats) {
         try {
             if (!username || !stats) return;
-            await database.saveUserStats(username, stats);
+            await this.database.saveUserStats(username, stats);
             console.log(`[USER STATS] Saved stats for ${username}`);
         } catch (error) {
             console.error(`[USER STATS] Error saving stats for ${username}:`, error);
