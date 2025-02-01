@@ -295,37 +295,48 @@ async saveCurrentChallenge(data) {
     }
 
     async addUserBonusPoints(username, pointRecord) {
-        try {
-            const collection = await this.getCollection('bonusPoints');
-            
-            // Attempt to upsert a unique bonus point document
-            const result = await collection.updateOne(
-                {
-                    username: username.toLowerCase(),
-                    year: pointRecord.year,
-                    internalReason: pointRecord.internalReason
-                },
-                {
-                    $setOnInsert: {
-                        ...pointRecord,
-                        username: username.toLowerCase(),
-                        timestamp: new Date()
-                    }
-                },
-                { upsert: true }
-            );
+    try {
+        const collection = await this.getCollection('bonusPoints');
+        
+        // First, check if this point type already exists
+        const existingPoint = await collection.findOne({
+            username: username.toLowerCase(),
+            year: pointRecord.year,
+            internalReason: pointRecord.internalReason
+        });
 
-            return result.upsertedCount === 1;
-        } catch (error) {
-            if (error.code === 11000) { // Duplicate key error
-                console.log(`[DATABASE] Duplicate points prevented for ${username}`);
-                return false;
-            }
-            console.error('[DATABASE] Error adding bonus points:', error);
-            throw error;
+        // If it exists and is newer, don't add the new one
+        if (existingPoint && new Date(existingPoint.date) > new Date(pointRecord.date)) {
+            return false;
         }
-    }
 
+        // Update or insert the point
+        const result = await collection.updateOne(
+            {
+                username: username.toLowerCase(),
+                year: pointRecord.year,
+                internalReason: pointRecord.internalReason
+            },
+            {
+                $set: {
+                    ...pointRecord,
+                    username: username.toLowerCase(),
+                    timestamp: new Date()
+                }
+            },
+            { upsert: true }
+        );
+
+        return result.modifiedCount > 0 || result.upsertedCount > 0;
+    } catch (error) {
+        if (error.code === 11000) { // Duplicate key error
+            console.log(`[DATABASE] Duplicate points prevented for ${username}`);
+            return false;
+        }
+        console.error('[DATABASE] Error adding bonus points:', error);
+        throw error;
+    }
+}
     async getUserBonusPoints(username) {
         try {
             const collection = await this.getCollection('bonusPoints');
