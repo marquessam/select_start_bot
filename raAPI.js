@@ -23,7 +23,7 @@ const rateLimiter = {
 
         this.processing = true;
         while (this.queue.length > 0) {
-            const { url, resolve, reject } = this.queue.shift(); 
+            const { url, resolve, reject } = this.queue.shift();
 
             try {
                 const now = Date.now();
@@ -54,39 +54,55 @@ const rateLimiter = {
     async makeRequest(url) {
         return new Promise((resolve, reject) => {
             this.queue.push({ url, resolve, reject });
-            this.processQueue(); 
+            this.processQueue();
         });
     }
 };
 
 // ---------------------------------------
-// API Functions
+// Fetch User Profile (✅ FIXED)
+// ---------------------------------------
+async function fetchUserProfile(username) {
+    try {
+        const params = new URLSearchParams({
+            z: process.env.RA_USERNAME,
+            y: process.env.RA_API_KEY,
+            u: username
+        });
+
+        const url = `https://retroachievements.org/API/API_GetUserSummary.php?${params}`;
+        const response = await rateLimiter.makeRequest(url);
+
+        if (!response || !response.UserPic) return null;
+        return `https://retroachievements.org${response.UserPic}`;
+    } catch (error) {
+        console.error(`[RA API] Error fetching user profile for ${username}:`, error);
+        return null;
+    }
+}
+
+// ---------------------------------------
+// Fetch Leaderboard Data
 // ---------------------------------------
 async function fetchLeaderboardData(force = false) {
     try {
         console.log('[RA API] Fetching leaderboard data...');
-        
+
         const challenge = await database.getCurrentChallenge();
         if (!challenge || !challenge.gameId) {
             throw new Error('[RA API] No active challenge found in database');
         }
 
-        const shadowGame = await database.getShadowGame();
-        const shadowGameId = shadowGame?.finalReward?.gameId ? String(shadowGame.finalReward.gameId) : null;
-        
-        // ✅ Tracking: Monthly Challenge (355), ShadowGame (274), and Mastery (319)
-        const gamesToCheck = ['355', '274', '319']; 
-
         const validUsers = await database.getValidUsers();
-        console.log(`[RA API] Tracking games: ${gamesToCheck.join(', ')} for ${validUsers.length} users.`);
+        console.log(`[RA API] Tracking games for ${validUsers.length} users.`);
 
-        const userProgressData = await batchFetchUserProgress(validUsers, gamesToCheck);
+        const userProgressData = await batchFetchUserProgress(validUsers, ['355', '274', '319']);
 
         const usersProgress = [];
         for (const username of validUsers) {
             try {
-                let allGameAchievements = [];
                 const userEntries = userProgressData.filter(p => p.username === username);
+                let allGameAchievements = [];
 
                 for (const entry of userEntries) {
                     if (entry.data?.Achievements) {
@@ -119,7 +135,7 @@ async function fetchLeaderboardData(force = false) {
                     achievements: allGameAchievements
                 });
 
-                console.log(`[RA API] Processed achievements for ${username}: ${completed}/${numAchievements} achievements (Tracked Games: ${gamesToCheck.join(', ')})`);
+                console.log(`[RA API] Processed achievements for ${username}: ${completed}/${numAchievements} achievements.`);
             } catch (error) {
                 console.error(`[RA API] Error processing data for ${username}:`, error);
             }
@@ -137,12 +153,12 @@ async function fetchLeaderboardData(force = false) {
 }
 
 // ---------------------------------------
-// Fetch user progress for multiple games
+// Fetch User Progress for Multiple Games
 // ---------------------------------------
 async function batchFetchUserProgress(usernames, gameIds) {
     const fetchResults = [];
-    const CHUNK_SIZE = 2;        
-    const CHUNK_DELAY_MS = 1000; 
+    const CHUNK_SIZE = 2;
+    const CHUNK_DELAY_MS = 1000;
 
     for (let i = 0; i < usernames.length; i += CHUNK_SIZE) {
         const chunk = usernames.slice(i, i + CHUNK_SIZE);
@@ -177,14 +193,17 @@ async function batchFetchUserProgress(usernames, gameIds) {
     return fetchResults;
 }
 
+// ---------------------------------------
+// Fetch All Recent Achievements
+// ---------------------------------------
 async function fetchAllRecentAchievements() {
     try {
         console.log('[RA API] Fetching ALL recent achievements...');
 
         const validUsers = await database.getValidUsers();
         const allAchievements = [];
-        const CHUNK_SIZE = 2;        
-        const CHUNK_DELAY_MS = 1000; 
+        const CHUNK_SIZE = 2;
+        const CHUNK_DELAY_MS = 1000;
 
         for (let i = 0; i < validUsers.length; i += CHUNK_SIZE) {
             const chunk = validUsers.slice(i, i + CHUNK_SIZE);
@@ -225,5 +244,6 @@ async function fetchAllRecentAchievements() {
 
 module.exports = {
     fetchLeaderboardData,
-    fetchAllRecentAchievements
+    fetchAllRecentAchievements,
+    fetchUserProfile // ✅ Added to exports
 };
