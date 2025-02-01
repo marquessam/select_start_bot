@@ -29,6 +29,9 @@ module.exports = {
                 case 'recheck':
                     await handleRecheckPoints(message, services);
                     break;
+                case 'cleanup':
+                    await handleCleanupPoints(message, pointsManager);
+                    break;
                 default:
                     await showHelp(message);
             }
@@ -93,7 +96,26 @@ async function handleAddPoints(message, args, pointsManager) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to award points\n[Ready for input]█\x1b[0m```');
     }
 }
+    async function handleCleanupPoints(message, pointsManager) {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Starting points cleanup...\x1b[0m\n```');
+        
+            const removedCount = await pointsManager.cleanupDuplicatePoints();
+        
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('POINTS CLEANUP COMPLETE')
+                .setTerminalDescription('[DATABASE UPDATE SUCCESSFUL]')
+                .addTerminalField('RESULTS',
+                    `Removed ${removedCount} duplicate points\n` +
+                    'Leaderboard has been updated')
+                .setTerminalFooter();
 
+            await message.channel.send({ embeds: [embed] });
+        } catch (error) {
+            console.error('Points cleanup error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to cleanup points\n[Ready for input]█\x1b[0m```');
+        }
+    }
 async function handleRemovePoints(message, args, pointsManager) {
     if (args.length < 3) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !points remove <username> <points> <reason>\n[Ready for input]█\x1b[0m```');
