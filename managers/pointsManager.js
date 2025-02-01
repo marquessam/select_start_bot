@@ -1,104 +1,90 @@
-// pointsManager.js
-const { withTransaction } = require('./utils/transactions');
-const ErrorHandler = require('./utils/errorHandler');
+const { withTransaction } = require('../utils/transactions');
+const ErrorHandler = require('../utils/errorHandler');
 
 class PointsManager {
     constructor(database) {
         this.database = database;
+        
+        // Cache configuration
         this.cache = {
             pendingUpdates: new Set(),
             lastUpdate: null,
             updateInterval: 5 * 60 * 1000 // 5 minutes
         };
         
-        // Points configuration
+        // Points configuration for monthly challenges
         this.pointTypes = {
             participation: { value: 1, key: 'participation' },
             beaten: { value: 3, key: 'beaten' },
             mastery: { value: 3, key: 'mastery' }
         };
+
+        // Track operations
+        this._activeOperations = new Map();
+    }
+
+    // Helper method to create point reason
+    createPointReason(gameName, achievementType, technicalKey) {
+        return {
+            display: `${gameName} - ${achievementType}`,
+            internal: `${gameName} - ${achievementType} (${technicalKey})`,
+            key: technicalKey
+        };
+    }
+
+    // Helper method to create bonus point object
+    createBonusPointObject(username, gameId, points, pointType, reason) {
+        return {
+            points,
+            reason: reason.display,
+            internalReason: reason.internal,
+            technicalKey: `${pointType}-${gameId}`,
+            pointType,
+            gameId,
+            year: new Date().getFullYear().toString(),
+            date: new Date().toISOString()
+        };
     }
 
     async awardPoints(username, points, reason, gameId = null) {
         const operationId = `points-${username}-${Date.now()}`;
-        
+        this._activeOperations.set(operationId, true);
+
         try {
+            console.log(`[POINTS] Awarding ${points} points to "${username}" for: ${reason}`);
+            
             const cleanUsername = username.toLowerCase().trim();
             const year = new Date().getFullYear().toString();
 
-            // Validate point award
-            if (!await this.validatePointAward(cleanUsername, points, reason)) {
-                return false;
-            }
-
-            // Create point record
+            // Create standardized point record
             const pointRecord = {
                 points,
-                reason: reason.displayReason || reason,
-                internalReason: reason.internalReason || reason,
+                reason: reason.display || reason,
+                internalReason: reason.internal || reason,
                 technicalKey: gameId ? `${reason.key || 'bonus'}-${gameId}` : null,
                 year,
                 date: new Date().toISOString()
             };
 
             // Award points with transaction
-            await withTransaction(this.database, async (session) => {
-                await this.database.addUserBonusPoints(cleanUsername, pointRecord);
+            const success = await withTransaction(this.database, async (session) => {
+                return await this.database.addUserBonusPoints(cleanUsername, pointRecord);
             });
 
-            this.cache.pendingUpdates.add(cleanUsername);
-            return true;
+            if (success) {
+                this.cache.pendingUpdates.add(cleanUsername);
+                console.log(`[POINTS] Successfully awarded points to ${username}`);
+            }
+
+            return success;
 
         } catch (error) {
             ErrorHandler.logError(error, `Award Points - ${username}`);
             return false;
+        } finally {
+            this._activeOperations.delete(operationId);
         }
     }
-
-    async validatePointAward(username, points, reason) {
-        // Add validation logic here
-        return true; // Placeholder
-    }
-
-    async checkGameProgress(username, achievements, gameId) {
-        const gamePoints = [];
-        const gameConfig = this.getGameConfig(gameId);
-
-        if (!gameConfig) return gamePoints;
-
-        // Check participation
-        if (await this.checkParticipation(username, achievements, gameId)) {
-            gamePoints.push({
-                type: 'participation',
-                points: this.pointTypes.participation.value
-            });
-        }
-
-        // Check completion
-        if (await this.checkCompletion(username, achievements, gameId)) {
-            gamePoints.push({
-                type: 'beaten',
-                points: this.pointTypes.beaten.value
-            });
-        }
-
-        // Check mastery
-        if (await this.checkMastery(username, achievements, gameId)) {
-            gamePoints.push({
-                type: 'mastery',
-                points: this.pointTypes.mastery.value
-            });
-        }
-
-        return gamePoints;
-    }
-
-    getGameConfig(gameId) {
-        // Add game configuration logic here
-        return null; // Placeholder
-    }
-
-    // Add other helper methods as needed
 }
 
 module.exports = PointsManager;
