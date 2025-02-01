@@ -260,6 +260,40 @@ class PointsManager {
         return [];
     }
 }
+    async cleanupDuplicatePoints(username) {
+    try {
+        const collection = await this.database.getCollection('bonusPoints');
+        const points = await collection.find({ 
+            username: username.toLowerCase() 
+        }).toArray();
+
+        // Group points by year and internal reason
+        const groupedPoints = points.reduce((acc, point) => {
+            const key = `${point.year}-${point.internalReason}`;
+            if (!acc[key]) {
+                acc[key] = [];
+            }
+            acc[key].push(point);
+            return acc;
+        }, {});
+
+        // For each group, keep only the newest point
+        for (const [key, groupPoints] of Object.entries(groupedPoints)) {
+            if (groupPoints.length > 1) {
+                // Sort by date descending
+                groupPoints.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
+                // Keep the newest one, delete the rest
+                const toDelete = groupPoints.slice(1);
+                await collection.deleteMany({
+                    _id: { $in: toDelete.map(p => p._id) }
+                });
+            }
+        }
+    } catch (error) {
+        console.error('[POINTS] Error cleaning up duplicate points:', error);
+    }
+}
     async migrateExistingPoints() {
     try {
         console.log('[POINTS] Checking for points to migrate...');
