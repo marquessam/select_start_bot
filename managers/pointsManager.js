@@ -232,24 +232,34 @@ class PointsManager {
             return false;
         }
     }
-     async getUserPoints(username, year = null) {
-        try {
-            const targetYear = year || new Date().getFullYear().toString();
-            const cleanUsername = username.toLowerCase().trim();
-            
-            const bonusPoints = await this.database.getUserBonusPoints(cleanUsername);
-            
-            // Filter points by year if specified
-            return bonusPoints.filter(point => 
-                point.year === targetYear
-            ).sort((a, b) => 
-                new Date(b.date) - new Date(a.date)
-            );
-        } catch (error) {
-            console.error('[POINTS] Error getting user points:', error);
-            return [];
-        }
+    async getUserPoints(username, year = null) {
+    try {
+        const targetYear = year || new Date().getFullYear().toString();
+        const cleanUsername = username.toLowerCase().trim();
+        
+        const bonusPoints = await this.database.getUserBonusPoints(cleanUsername);
+        
+        // Group by internal reason to prevent duplicates
+        const uniquePoints = Object.values(
+            bonusPoints.reduce((acc, point) => {
+                // Only consider points from the target year
+                if (point.year !== targetYear) return acc;
+
+                const key = point.internalReason || point.reason;
+                // If we already have this point type, only keep the newer one
+                if (!acc[key] || new Date(point.date) > new Date(acc[key].date)) {
+                    acc[key] = point;
+                }
+                return acc;
+            }, {})
+        );
+
+        return uniquePoints.sort((a, b) => new Date(b.date) - new Date(a.date));
+    } catch (error) {
+        console.error('[POINTS] Error getting user points:', error);
+        return [];
     }
+}
     async migrateExistingPoints() {
     try {
         console.log('[POINTS] Checking for points to migrate...');
