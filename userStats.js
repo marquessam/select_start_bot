@@ -54,25 +54,44 @@ class UserStats {
         }
     }
 
-    async loadStats() {
-        try {
-            console.log('[USER STATS] Loading user stats...');
-            const allUserStats = await this.database.getAllUserStats();
+   async loadStats() {
+    try {
+        console.log('[USER STATS] Loading user stats...');
 
-            if (!allUserStats) {
-                console.warn('[USER STATS] No user stats found.');
-                return;
+        if (!this.database || typeof this.database.getUserStats !== 'function') {
+            throw new Error('[USER STATS] getUserStats() is not defined in database.js');
+        }
+
+        const validUsers = await this.getAllUsers(); // Ensure all users are fetched
+        if (!Array.isArray(validUsers) || validUsers.length === 0) {
+            console.warn('[USER STATS] No valid users found.');
+            this.cache.stats.users = {};
+            return;
+        }
+
+        this.cache.stats.users = {}; // Reset cache
+
+        for (const username of validUsers) {
+            const userStats = await this.database.getUserStats(username);
+            if (!userStats) {
+                console.warn(`[USER STATS] No stats found for ${username}`);
+                continue;
             }
 
-            this.cache.stats.users = allUserStats;
-            this.cache.lastUpdate = Date.now();
-
-            console.log('[USER STATS] Successfully loaded user stats.');
-        } catch (error) {
-            console.error('[USER STATS] Error loading stats:', error);
-            throw error;
+            this.cache.stats.users[username] = {
+                points: userStats.points || 0,
+                achievements: userStats.achievements || []
+            };
         }
+
+        this.cache.lastUpdate = Date.now();
+        console.log('[USER STATS] Successfully loaded user stats.');
+    } catch (error) {
+        console.error('[USER STATS] Error loading stats:', error);
+        throw error;
     }
+}
+
 
     async processUserPoints(username, member = null) {
         try {
