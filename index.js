@@ -91,7 +91,6 @@ async function initializeServices(coreServices) {
 
         // Initialize Points System first
         console.log('Initializing Points System...');
-        await coreServices.pointsManager.migrateExistingPoints();
         console.log('Points System initialized');
 
         await coreServices.userTracker.initialize();
