@@ -7,8 +7,8 @@ module.exports = {
     description: 'Manage user points system',
     async execute(message, args, services) {
         try {
-            const userStats = services?.userStats;
-            if (!userStats) {
+            const { pointsManager } = services;
+            if (!pointsManager) {
                 await message.channel.send('```ansi\n\x1b[32m[ERROR] Points system unavailable\n[Ready for input]█\x1b[0m```');
                 return;
             }
@@ -21,13 +21,13 @@ module.exports = {
 
             switch (subcommand.toLowerCase()) {
                 case 'add':
-                    await handleAddPoints(message, subArgs, userStats);
+                    await handleAddPoints(message, subArgs, pointsManager);
                     break;
-                case 'reset':
-                    await handleResetPoints(message, subArgs, userStats);
+                case 'remove':
+                    await handleRemovePoints(message, subArgs, pointsManager);
                     break;
-                case 'resetall':
-                    await handleResetAllPoints(message, userStats);
+                case 'recheck':
+                    await handleRecheckPoints(message, services);
                     break;
                 default:
                     await showHelp(message);
@@ -44,15 +44,15 @@ async function showHelp(message) {
         .setTerminalTitle('POINTS MANAGEMENT')
         .setTerminalDescription('[COMMAND USAGE]')
         .addTerminalField('AVAILABLE COMMANDS',
-            '!points add <username> <points> <reason> - Add/remove points\n' +
-            '!points reset <username> - Reset user points\n' +
-            '!points resetall - Reset all points')
+            '!points add <username> <points> <reason> - Add points\n' +
+            '!points remove <username> <points> <reason> - Remove points\n' +
+            '!points recheck <username> - Recheck achievements for points')
         .setTerminalFooter();
 
     await message.channel.send({ embeds: [embed] });
 }
 
-async function handleAddPoints(message, args, userStats) {
+async function handleAddPoints(message, args, pointsManager) {
     if (args.length < 3) {
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !points add <username> <points> <reason>\n[Ready for input]█\x1b[0m```');
         return;
@@ -73,47 +73,15 @@ async function handleAddPoints(message, args, userStats) {
         return;
     }
 
-    try {
-        const success = await userStats.addBonusPoints(username, points, reason);
-        if (success) {
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('POINTS ADDED')
-                .setTerminalDescription('[UPDATE SUCCESSFUL]')
-                .addTerminalField('DETAILS', 
-                    `USER: ${username}\n` +
-                    `POINTS: ${points}\n` +
-                    `REASON: ${reason}`)
-                .setTerminalFooter();
-
-            await message.channel.send({ embeds: [embed] });
-
-            if (global.leaderboardCache) {
-                await global.leaderboardCache.updateLeaderboards(true);
-            }
-        } else {
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to add points (possible duplicate)\n[Ready for input]█\x1b[0m```');
-        }
-    } catch (error) {
-        console.error('Error adding points:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to add points\n[Ready for input]█\x1b[0m```');
-    }
-}
-
-async function handleResetPoints(message, args, userStats) {
-    if (args.length !== 1) {
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !points reset <username>\n[Ready for input]█\x1b[0m```');
-        return;
-    }
-
-    const username = args[0];
-    
-    try {
-        await userStats.resetUserPoints(username);
-        
+    const success = await pointsManager.awardPoints(username, points, reason);
+    if (success) {
         const embed = new TerminalEmbed()
-            .setTerminalTitle('POINTS RESET')
+            .setTerminalTitle('POINTS AWARDED')
             .setTerminalDescription('[UPDATE SUCCESSFUL]')
-            .addTerminalField('DETAILS', `Reset points for: ${username}`)
+            .addTerminalField('DETAILS', 
+                `USER: ${username}\n` +
+                `POINTS: ${points}\n` +
+                `REASON: ${reason}`)
             .setTerminalFooter();
 
         await message.channel.send({ embeds: [embed] });
@@ -121,42 +89,77 @@ async function handleResetPoints(message, args, userStats) {
         if (global.leaderboardCache) {
             await global.leaderboardCache.updateLeaderboards(true);
         }
-    } catch (error) {
-        console.error('Error resetting points:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to reset points\n[Ready for input]█\x1b[0m```');
+    } else {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to award points\n[Ready for input]█\x1b[0m```');
     }
 }
 
-async function handleResetAllPoints(message, userStats) {
-    const embed = new TerminalEmbed()
-        .setTerminalTitle('CONFIRM RESET ALL')
-        .setTerminalDescription('[WARNING]')
-        .addTerminalField('CAUTION', 'This will reset ALL user points\nType "CONFIRM" to proceed')
-        .setTerminalFooter();
+async function handleRemovePoints(message, args, pointsManager) {
+    if (args.length < 3) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !points remove <username> <points> <reason>\n[Ready for input]█\x1b[0m```');
+        return;
+    }
 
-    await message.channel.send({ embeds: [embed] });
+    const [username, pointsStr, ...reasonArr] = args;
+    const points = parseInt(pointsStr);
+    const reason = reasonArr.join(' ');
+
+    if (isNaN(points)) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid points value\n[Ready for input]█\x1b[0m```');
+        return;
+    }
+
+    // Remove points by awarding negative points
+    const success = await pointsManager.awardPoints(username, -Math.abs(points), reason);
+    if (success) {
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('POINTS REMOVED')
+            .setTerminalDescription('[UPDATE SUCCESSFUL]')
+            .addTerminalField('DETAILS', 
+                `USER: ${username}\n` +
+                `POINTS REMOVED: ${points}\n` +
+                `REASON: ${reason}`)
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [embed] });
+
+        if (global.leaderboardCache) {
+            await global.leaderboardCache.updateLeaderboards(true);
+        }
+    } else {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to remove points\n[Ready for input]█\x1b[0m```');
+    }
+}
+
+async function handleRecheckPoints(message, services) {
+    const { userStats } = services;
+    if (!userStats) {
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] User stats service unavailable\n[Ready for input]█\x1b[0m```');
+        return;
+    }
+
+    await message.channel.send('```ansi\n\x1b[32m> Rechecking points...\x1b[0m\n```');
 
     try {
-        const filter = m => m.author.id === message.author.id;
-        const collected = await message.channel.awaitMessages({
-            filter,
-            max: 1,
-            time: 30000
-        });
+        const result = await userStats.recheckAllPoints(message.guild);
+        
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('POINTS RECHECK COMPLETE')
+            .setTerminalDescription('[UPDATE SUCCESSFUL]')
+            .addTerminalField('RESULTS', 
+                `Processed Users: ${result.processed.length}\n` +
+                `Errors: ${result.errors.length}`)
+            .setTerminalFooter();
 
-        if (collected.first().content === 'CONFIRM') {
-            await userStats.resetAllPoints();
-            
-            await message.channel.send('```ansi\n\x1b[32m[SUCCESS] All points have been reset\n[Ready for input]█\x1b[0m```');
-
-            if (global.leaderboardCache) {
-                await global.leaderboardCache.updateLeaderboards(true);
-            }
-        } else {
-            await message.channel.send('```ansi\n\x1b[32m[NOTICE] Reset cancelled\n[Ready for input]█\x1b[0m```');
+        if (result.errors.length > 0) {
+            embed.addTerminalField('ERRORS',
+                result.errors.map(e => `${e.username}: ${e.error}`).join('\n'));
         }
+
+        await message.channel.send({ embeds: [embed] });
+
     } catch (error) {
-        console.error('Error resetting all points:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to reset points\n[Ready for input]█\x1b[0m```');
+        console.error('Points recheck error:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to recheck points\n[Ready for input]█\x1b[0m```');
     }
 }
