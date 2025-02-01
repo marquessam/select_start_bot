@@ -121,37 +121,58 @@ class AchievementFeed {
         }
     }
 
-    async sendAchievementNotification(channel, username, achievement) {
-        try {
-            if (!channel || !username || !achievement) return;
+   async sendAchievementNotification(channel, username, achievement) {
+    try {
+        if (!channel || !username || !achievement) return;
 
-            const achievementKey = `${username}-${achievement.ID}-${achievement.GameTitle}-${achievement.Title}`;
-            if (this.announcementHistory.has(achievementKey)) return;
+        const achievementKey = `${username}-${achievement.ID}-${achievement.GameTitle}-${achievement.Title}`;
+        if (this.announcementHistory.has(achievementKey)) return;
 
-            const badgeUrl = achievement.BadgeName
-                ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
-                : 'https://media.retroachievements.org/Badge/00000.png';
+        const badgeUrl = achievement.BadgeName
+            ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
+            : 'https://media.retroachievements.org/Badge/00000.png';
 
-            const userIconUrl = await DataService.getRAProfileImage(username) || `https://retroachievements.org/UserPic/${username}.png`;
+        const userIconUrl = await DataService.getRAProfileImage(username) || `https://retroachievements.org/UserPic/${username}.png`;
 
-            const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle(`${achievement.GameTitle} 🏆`)
-                .setThumbnail(badgeUrl)
-                .setDescription(`**${username}** earned **${achievement.Title}**\n\n*${achievement.Description || 'No description available'}*`)
-                .setFooter({ text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`, iconURL: userIconUrl })
-                .setTimestamp();
+        // Check if achievement is from Monthly Challenge or Shadow Game
+        let authorName = '';
+        let authorIconUrl = '';
+        let files = [];
 
-            await this.queueAnnouncement({ embeds: [embed] });
-            this.announcementHistory.add(achievementKey);
-
-            if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
-
-            console.log(`[ACHIEVEMENT FEED] Sent achievement notification for ${username}: ${achievement.Title}`);
-        } catch (error) {
-            console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
+        if (achievement.GameID === '274') { // Shadow Game
+            authorName = 'SHADOW GAME';
+            files = [{ attachment: './logo_simple.png', name: 'game_logo.png' }];
+            authorIconUrl = 'attachment://game_logo.png';
+        } else if (achievement.GameID === '355') { // Monthly Challenge
+            authorName = 'MONTHLY CHALLENGE';
+            files = [{ attachment: './logo_simple.png', name: 'game_logo.png' }];
+            authorIconUrl = 'attachment://game_logo.png';
         }
+
+        const embed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setTitle(`${achievement.GameTitle} 🏆`)
+            .setThumbnail(badgeUrl)
+            .setDescription(`**${username}** earned **${achievement.Title}**\n\n*${achievement.Description || 'No description available'}*`)
+            .setFooter({ text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`, iconURL: userIconUrl })
+            .setTimestamp();
+
+        // Add author info if it's a special game
+        if (authorName) {
+            embed.setAuthor({ name: authorName, iconURL: authorIconUrl });
+        }
+
+        // Queue the announcement with files if present
+        await this.queueAnnouncement({ embeds: [embed], files });
+        this.announcementHistory.add(achievementKey);
+
+        if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
+
+        console.log(`[ACHIEVEMENT FEED] Sent achievement notification for ${username}: ${achievement.Title}`);
+    } catch (error) {
+        console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
     }
+}
 
     // ✅ Fix: Re-added `announcePointsAward` function
     async announcePointsAward(username, points, reason) {
