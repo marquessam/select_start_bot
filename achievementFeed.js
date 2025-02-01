@@ -140,11 +140,11 @@ class AchievementFeed {
             let authorIconUrl = '';
             let files = [];
 
-            if (achievement.GameID === '355' || achievement.GameID === '274' || achievement.GameID === '319') {
+            if (achievement.GameID === '355') {
                 authorName = 'MONTHLY CHALLENGE';
                 files = [{ attachment: './logo_simple.png', name: 'game_logo.png' }];
                 authorIconUrl = 'attachment://game_logo.png';
-            } else if (achievement.GameID === 'SHADOW_GAME_ID') { // Replace with the actual ID for Shadow Game
+            } else if (achievement.GameID === '274') { // Replace with the actual ID for Shadow Game
                 authorName = 'SHADOW GAME';
                 files = [{ attachment: './logo_simple.png', name: 'game_logo.png' }];
                 authorIconUrl = 'attachment://game_logo.png';
