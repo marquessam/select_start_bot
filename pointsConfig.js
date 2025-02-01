@@ -57,7 +57,12 @@ async function canAwardPoints(username, gameId, pointType) {
     }
 
     // Check if point type exists in points config
-    return !!gameConfig.points[pointType];
+    if (!gameConfig.points[pointType]) {
+        console.log(`[POINTS CONFIG] Point type ${pointType} not found for game ${gameId}`);
+        return false;
+    }
+
+    return true;
 }
 
 const pointChecks = {
@@ -76,11 +81,16 @@ const pointChecks = {
         });
         console.log(`[POINTS] Found ${gameAchievements.length} achievements for game ${gameId}`);
 
+        // Debug: Log all achievements for the game
+        console.log(`[POINTS] Achievements for ${gameId}:`, gameAchievements);
+
         const pointsToAward = [];
 
         // Check participation (except for Chrono Trigger)
         if (gameId !== "319") {
             const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
+            console.log(`[POINTS] Participation check for ${username}:`, hasParticipation);
+
             if (hasParticipation && await canAwardPoints(username, gameId, 'participation')) {
                 const participationKey = `participation-${gameId}`;
                 const reason = createPointReason(gameConfig.name, "Participation", participationKey);
@@ -102,6 +112,8 @@ const pointChecks = {
                 } else {
                     console.log(`[POINTS] Duplicate participation points prevented for ${username} on game ${gameId}`);
                 }
+            } else {
+                console.log(`[POINTS] Participation points not awarded for ${username} on game ${gameId}`);
             }
         }
 
