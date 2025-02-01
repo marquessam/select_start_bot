@@ -20,20 +20,6 @@ class AchievementFeed {
         setInterval(() => this.checkNewAchievements(), this.checkInterval);
     }
 
-    async retryOperation(operation, retries = 3, delay = 5000) {
-        for (let attempt = 1; attempt <= retries; attempt++) {
-            try {
-                return await operation();
-            } catch (error) {
-                if (attempt === retries || !['EAI_AGAIN', 'FetchError', 'ECONNRESET'].includes(error.code)) {
-                    throw error;
-                }
-                console.log(`[ACHIEVEMENT FEED] Retry ${attempt} failed, retrying in ${delay / 1000}s...`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-            }
-        }
-    }
-
     async initialize() {
         if (this.isInitializing) {
             console.log('[ACHIEVEMENT FEED] Already initializing...');
@@ -48,7 +34,7 @@ class AchievementFeed {
             console.log('[ACHIEVEMENT FEED] Initializing...');
             
             const [allAchievements, storedTimestamps] = await Promise.all([
-                this.retryOperation(() => raAPI.fetchAllRecentAchievements()),
+                raAPI.fetchAllRecentAchievements(),
                 database.getLastAchievementTimestamps()
             ]);
 
@@ -103,7 +89,7 @@ class AchievementFeed {
         this._processingAchievements = true;
         try {
             const [allAchievements, storedTimestamps] = await Promise.all([
-                this.retryOperation(() => raAPI.fetchAllRecentAchievements()),
+                raAPI.fetchAllRecentAchievements(),
                 database.getLastAchievementTimestamps()
             ]);
             
@@ -142,13 +128,6 @@ class AchievementFeed {
             const achievementKey = `${username}-${achievement.ID}-${achievement.GameTitle}-${achievement.Title}`;
             if (this.announcementHistory.has(achievementKey)) return;
 
-            const currentChallenge = await database.getCurrentChallenge();
-            const shadowGame = await database.getShadowGame();
-            const achievementGameId = String(achievement.GameID);
-
-            const isMonthlyChallenge = currentChallenge?.gameId === achievementGameId;
-            const isShadowGame = shadowGame?.active && shadowGame?.finalReward?.gameId === achievementGameId;
-
             const badgeUrl = achievement.BadgeName
                 ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
                 : 'https://media.retroachievements.org/Badge/00000.png';
@@ -163,20 +142,52 @@ class AchievementFeed {
                 .setFooter({ text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`, iconURL: userIconUrl })
                 .setTimestamp();
 
-            if (isMonthlyChallenge) {
-                embed.setAuthor({ name: 'MONTHLY CHALLENGE', iconURL: 'https://example.com/game_logo.png' });
-            } else if (isShadowGame) {
-                embed.setAuthor({ name: 'SHADOW GAME', iconURL: 'https://example.com/shadow_logo.png' });
-            }
-
             await this.queueAnnouncement({ embeds: [embed] });
             this.announcementHistory.add(achievementKey);
 
             if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
 
-            console.log(`[ACHIEVEMENT FEED] Sent ${isMonthlyChallenge ? 'monthly challenge' : isShadowGame ? 'shadow game' : 'regular'} achievement notification for ${username}: ${achievement.Title}`);
+            console.log(`[ACHIEVEMENT FEED] Sent achievement notification for ${username}: ${achievement.Title}`);
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
+        }
+    }
+
+    // ✅ Fix: Re-added `announcePointsAward` function
+    async announcePointsAward(username, points, reason) {
+        try {
+            if (!this.feedChannel) {
+                console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
+                return;
+            }
+
+            const awardKey = `${username}-${points}-${reason}-${Date.now()}`;
+            if (this.announcementHistory.has(awardKey)) {
+                console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${awardKey}`);
+                return;
+            }
+
+            this.announcementHistory.add(awardKey);
+
+            const userProfile = await DataService.getRAProfileImage(username);
+            
+            const embed = new EmbedBuilder()
+                .setColor('#FFD700')
+                .setAuthor({
+                    name: username,
+                    iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
+                    url: `https://retroachievements.org/user/${username}`
+                })
+                .setTitle('🏆 Points Awarded!')
+                .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
+                .setTimestamp();
+
+            await this.queueAnnouncement({ embeds: [embed] });
+
+            console.log(`[ACHIEVEMENT FEED] Queued points announcement for ${username}: ${points} points (${reason})`);
+        } catch (error) {
+            console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
+            this.announcementHistory.delete(awardKey);
         }
     }
 }
