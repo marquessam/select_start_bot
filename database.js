@@ -374,47 +374,33 @@ async cleanupDuplicatePoints() {
         throw error;
     }
 }
-   async addUserBonusPoints(username, bonusPoint) {
+   // Add to database.js
+async addUserBonusPoints(username, pointRecord) {
     try {
-        console.log(`[DATABASE] Adding bonus points for ${username}: ${bonusPoint.points} points for ${bonusPoint.reason}`);
-        
-        // Get the bonusPoints collection
+        if (!username || !pointRecord) {
+            throw new Error('Invalid points record data');
+        }
+
         const collection = await this.getCollection('bonusPoints');
         
-        // Attempt to upsert a unique bonus point document
+        // Try to insert the bonus point record
         const result = await collection.updateOne(
             {
                 username: username,
-                year: bonusPoint.year,
-                internalReason: bonusPoint.internalReason
+                year: pointRecord.year,
+                internalReason: pointRecord.internalReason
             },
             {
-                $setOnInsert: {
-                    username,
-                    year: bonusPoint.year,
-                    internalReason: bonusPoint.internalReason,
-                    reason: bonusPoint.reason,
-                    displayReason: bonusPoint.displayReason,
-                    points: bonusPoint.points,
-                    date: bonusPoint.date
-                }
+                $setOnInsert: pointRecord
             },
             { upsert: true }
         );
 
-        if (result.upsertedCount === 0) {
-            console.log(`[DATABASE] Duplicate points prevented for ${username}: ${bonusPoint.internalReason}`);
-            return false;
-        }
-
-        console.log(`[DATABASE] Successfully added ${bonusPoint.points} points to ${username}`);
-        return true;
+        return result.upsertedCount === 1;
     } catch (error) {
         if (error.code === 11000) { // Duplicate key error
-            console.log(`[DATABASE] Duplicate key error prevented duplicate points for ${username}`);
             return false;
         }
-        console.error('[DATABASE] Error adding bonus points:', error);
         throw error;
     }
 }
