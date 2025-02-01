@@ -3,6 +3,10 @@ const pointsManager = require('./pointsConfig');
 
 class UserStats {
     constructor(database) {
+        if (!database) {
+            throw new Error('[USER STATS] Database instance is required!');
+        }
+
         this.database = database;
         this.cache = {
             stats: {
@@ -42,8 +46,17 @@ class UserStats {
         try {
             console.log('[USER STATS] Initializing...');
 
+            if (!this.database || typeof this.database.getValidUsers !== 'function') {
+                throw new Error('[USER STATS] getValidUsers() is not defined in database.js');
+            }
+
             const users = await this.database.getValidUsers();
-            this.cache.validUsers = new Set(users);
+            if (!Array.isArray(users) || users.length === 0) {
+                console.warn('[USER STATS] No valid users found.');
+                this.cache.validUsers = new Set();
+            } else {
+                this.cache.validUsers = new Set(users);
+            }
 
             this.initializationComplete = true;
             console.log('[USER STATS] Initialization complete.');
@@ -53,62 +66,62 @@ class UserStats {
             this.isInitializing = false;
         }
     }
-async initializeUserIfNeeded(username) {
-    try {
-        console.log(`[USER STATS] Checking if user ${username} needs initialization...`);
 
-        const userStats = await this.database.getUserStats(username);
-        if (!userStats) {
-            console.log(`[USER STATS] No stats found for ${username}, initializing...`);
-            await this.database.createUserStats(username); // Ensure `createUserStats` exists in `database.js`
-            return { username, initialized: true };
-        }
+    async initializeUserIfNeeded(username) {
+        try {
+            console.log(`[USER STATS] Checking if user ${username} needs initialization...`);
 
-        return { username, initialized: false };
-    } catch (error) {
-        console.error(`[USER STATS] Error initializing user ${username}:`, error);
-        return { username, initialized: false, error };
-    }
-}
-
-   async loadStats() {
-    try {
-        console.log('[USER STATS] Loading user stats...');
-
-        if (!this.database || typeof this.database.getUserStats !== 'function') {
-            throw new Error('[USER STATS] getUserStats() is not defined in database.js');
-        }
-
-        const validUsers = await this.getValidUsers(); // Ensure all users are fetched
-        if (!Array.isArray(validUsers) || validUsers.length === 0) {
-            console.warn('[USER STATS] No valid users found.');
-            this.cache.stats.users = {};
-            return;
-        }
-
-        this.cache.stats.users = {}; // Reset cache
-
-        for (const username of validUsers) {
             const userStats = await this.database.getUserStats(username);
             if (!userStats) {
-                console.warn(`[USER STATS] No stats found for ${username}`);
-                continue;
+                console.log(`[USER STATS] No stats found for ${username}, initializing...`);
+                await this.database.createUserStats(username);
+                return { username, initialized: true };
             }
 
-            this.cache.stats.users[username] = {
-                points: userStats.points || 0,
-                achievements: userStats.achievements || []
-            };
+            return { username, initialized: false };
+        } catch (error) {
+            console.error(`[USER STATS] Error initializing user ${username}:`, error);
+            return { username, initialized: false, error };
         }
-
-        this.cache.lastUpdate = Date.now();
-        console.log('[USER STATS] Successfully loaded user stats.');
-    } catch (error) {
-        console.error('[USER STATS] Error loading stats:', error);
-        throw error;
     }
-}
 
+    async loadStats() {
+        try {
+            console.log('[USER STATS] Loading user stats...');
+
+            if (!this.database || typeof this.database.getValidUsers !== 'function') {
+                throw new Error('[USER STATS] getValidUsers() is not defined in database.js');
+            }
+
+            const validUsers = await this.database.getValidUsers();
+            if (!Array.isArray(validUsers) || validUsers.length === 0) {
+                console.warn('[USER STATS] No valid users found.');
+                this.cache.stats.users = {};
+                return;
+            }
+
+            this.cache.stats.users = {};
+
+            for (const username of validUsers) {
+                const userStats = await this.database.getUserStats(username);
+                if (!userStats) {
+                    console.warn(`[USER STATS] No stats found for ${username}`);
+                    continue;
+                }
+
+                this.cache.stats.users[username] = {
+                    points: userStats.points || 0,
+                    achievements: userStats.achievements || []
+                };
+            }
+
+            this.cache.lastUpdate = Date.now();
+            console.log('[USER STATS] Successfully loaded user stats.');
+        } catch (error) {
+            console.error('[USER STATS] Error loading stats:', error);
+            throw error;
+        }
+    }
 
     async processUserPoints(username, member = null) {
         try {
@@ -136,51 +149,6 @@ async initializeUserIfNeeded(username) {
         }
     }
 
-    async recheckAllPoints(guild) {
-        try {
-            const validUsers = await this.getValidUsers();
-            const processedUsers = [];
-            const errors = [];
-
-            for (const username of validUsers) {
-                try {
-                    let member = null;
-                    if (guild) {
-                        try {
-                            const guildMembers = await guild.members.fetch();
-                            member = guildMembers.find(m =>
-                                m.displayName.toLowerCase() === username.toLowerCase()
-                            );
-                        } catch (e) {
-                            console.warn(`Could not find Discord member for ${username}:`, e);
-                        }
-                    }
-
-                    // ✅ Ensure function exists before calling it
-                    if (typeof this.processUserPoints === "function") {
-                        await this.processUserPoints(username, member);
-                    } else {
-                        console.error(`processUserPoints is not a function in UserStats.`);
-                    }
-
-                    processedUsers.push(username);
-                } catch (error) {
-                    console.error(`Error processing ${username}:`, error);
-                    errors.push({ username, error: error.message });
-                }
-            }
-
-            if (global.leaderboardCache) {
-                await global.leaderboardCache.updateLeaderboards(true);
-            }
-
-            return { processed: processedUsers, errors };
-        } catch (error) {
-            console.error('[USER STATS] Error in recheckAllPoints:', error);
-            throw error;
-        }
-    }
-
     async getValidUsers() {
         try {
             if (!this.cache.validUsers || this.cache.validUsers.size === 0) {
@@ -189,7 +157,7 @@ async initializeUserIfNeeded(username) {
             }
             return [...this.cache.validUsers];
         } catch (error) {
-            console.error('[USER STATS] Error fetching all users:', error);
+            console.error('[USER STATS] Error fetching valid users:', error);
             return [];
         }
     }
@@ -205,45 +173,30 @@ async initializeUserIfNeeded(username) {
         }
     }
 
-    async updateUserStats(username) {
-        try {
-            if (!this.cache.stats.users[username]) {
-                this.cache.stats.users[username] = { points: 0, achievements: [] };
-            }
-
-            const userStats = await this.database.getUserStats(username);
-            if (!userStats) return;
-
-            this.cache.stats.users[username] = {
-                points: userStats.points || 0,
-                achievements: userStats.achievements || []
-            };
-
-            console.log(`[USER STATS] Updated cache for ${username}`);
-        } catch (error) {
-            console.error(`[USER STATS] Error updating user stats for ${username}:`, error);
-        }
-    }
-
     async updateStatsCache() {
         try {
             console.log('[USER STATS] Updating stats cache...');
-            const allStats = await this.database.getValidUserstats();
-            this.cache.stats.users = allStats;
+            if (!this.database || typeof this.database.getValidUsers !== 'function') {
+                throw new Error('[USER STATS] getValidUsers() is not defined in database.js');
+            }
+
+            const users = await this.database.getValidUsers();
+            const stats = {};
+            for (const username of users) {
+                const userStats = await this.database.getUserStats(username);
+                if (userStats) {
+                    stats[username] = {
+                        points: userStats.points || 0,
+                        achievements: userStats.achievements || []
+                    };
+                }
+            }
+
+            this.cache.stats.users = stats;
             this.cache.lastUpdate = Date.now();
             console.log('[USER STATS] Stats cache updated.');
         } catch (error) {
             console.error('[USER STATS] Error updating stats cache:', error);
-        }
-    }
-
-    async saveUserStats(username, stats) {
-        try {
-            if (!username || !stats) return;
-            await this.database.saveUserStats(username, stats);
-            console.log(`[USER STATS] Saved stats for ${username}`);
-        } catch (error) {
-            console.error(`[USER STATS] Error saving stats for ${username}:`, error);
         }
     }
 }
