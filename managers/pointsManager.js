@@ -271,40 +271,57 @@ class PointsManager {
     }
 }
     
-    async cleanupDuplicatePoints(username) {
+   async cleanupDuplicatePoints() {
     try {
+        console.log('[POINTS] Starting duplicate points cleanup...');
         const collection = await this.database.getCollection('bonusPoints');
-        const points = await collection.find({ 
-            username: username.toLowerCase() 
-        }).toArray();
-
-        // Group points by year and internal reason
-        const groupedPoints = points.reduce((acc, point) => {
-            const key = `${point.year}-${point.internalReason}`;
-            if (!acc[key]) {
-                acc[key] = [];
+        
+        // Get all points
+        const allPoints = await collection.find({}).toArray();
+        
+        // Group points by unique combinations
+        const pointGroups = allPoints.reduce((groups, point) => {
+            const key = `${point.username}-${point.year}-${point.technicalKey}`;
+            if (!groups[key]) {
+                groups[key] = [];
             }
-            acc[key].push(point);
-            return acc;
+            groups[key].push(point);
+            return groups;
         }, {});
 
-        // For each group, keep only the newest point
-        for (const [key, groupPoints] of Object.entries(groupedPoints)) {
-            if (groupPoints.length > 1) {
-                // Sort by date descending
-                groupPoints.sort((a, b) => new Date(b.date) - new Date(a.date));
+        let removedCount = 0;
+
+        // For each group of duplicates, keep only the newest one
+        for (const points of Object.values(pointGroups)) {
+            if (points.length > 1) {
+                // Sort by date, newest first
+                points.sort((a, b) => new Date(b.date) - new Date(a.date));
                 
-                // Keep the newest one, delete the rest
-                const toDelete = groupPoints.slice(1);
-                await collection.deleteMany({
-                    _id: { $in: toDelete.map(p => p._id) }
+                // Keep the first one, remove the rest
+                const toRemove = points.slice(1);
+                const result = await collection.deleteMany({
+                    _id: { $in: toRemove.map(p => p._id) }
                 });
+                
+                removedCount += result.deletedCount;
+                console.log(`[POINTS] Removed ${result.deletedCount} duplicate points for ${points[0].username} - ${points[0].technicalKey}`);
             }
         }
+
+        console.log(`[POINTS] Cleanup complete. Removed ${removedCount} duplicate points.`);
+        
+        // Force a leaderboard update
+        if (global.leaderboardCache) {
+            await global.leaderboardCache.updateLeaderboards(true);
+        }
+
+        return removedCount;
     } catch (error) {
         console.error('[POINTS] Error cleaning up duplicate points:', error);
+        throw error;
     }
 }
+    
     async migrateExistingPoints() {
     try {
         console.log('[POINTS] Checking for points to migrate...');
