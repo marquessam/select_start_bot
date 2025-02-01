@@ -2,6 +2,7 @@ const { EmbedBuilder } = require('discord.js');
 const raAPI = require('./raAPI');
 const DataService = require('./services/dataService');
 const database = require('./database');
+const fs = require('fs');
 
 class AchievementFeed {
     constructor(client) {
@@ -134,6 +135,21 @@ class AchievementFeed {
 
             const userIconUrl = await DataService.getRAProfileImage(username) || `https://retroachievements.org/UserPic/${username}.png`;
 
+            // Check if this achievement is for the Monthly Challenge or Shadow Game
+            let authorName = '';
+            let authorIconUrl = '';
+            let files = [];
+
+            if (achievement.GameID === '355' || achievement.GameID === '274' || achievement.GameID === '319') {
+                authorName = 'MONTHLY CHALLENGE';
+                files = [{ attachment: './logo_simple.png', name: 'game_logo.png' }];
+                authorIconUrl = 'attachment://game_logo.png';
+            } else if (achievement.GameID === 'SHADOW_GAME_ID') { // Replace with the actual ID for Shadow Game
+                authorName = 'SHADOW GAME';
+                files = [{ attachment: './logo_simple.png', name: 'game_logo.png' }];
+                authorIconUrl = 'attachment://game_logo.png';
+            }
+
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
                 .setTitle(`${achievement.GameTitle} 🏆`)
@@ -142,7 +158,11 @@ class AchievementFeed {
                 .setFooter({ text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`, iconURL: userIconUrl })
                 .setTimestamp();
 
-            await this.queueAnnouncement({ embeds: [embed] });
+            if (authorName) {
+                embed.setAuthor({ name: authorName, iconURL: authorIconUrl });
+            }
+
+            await this.queueAnnouncement({ embeds: [embed], files });
             this.announcementHistory.add(achievementKey);
 
             if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
@@ -150,44 +170,6 @@ class AchievementFeed {
             console.log(`[ACHIEVEMENT FEED] Sent achievement notification for ${username}: ${achievement.Title}`);
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
-        }
-    }
-
-    // ✅ Fix: Re-added `announcePointsAward` function
-    async announcePointsAward(username, points, reason) {
-        try {
-            if (!this.feedChannel) {
-                console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
-                return;
-            }
-
-            const awardKey = `${username}-${points}-${reason}-${Date.now()}`;
-            if (this.announcementHistory.has(awardKey)) {
-                console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${awardKey}`);
-                return;
-            }
-
-            this.announcementHistory.add(awardKey);
-
-            const userProfile = await DataService.getRAProfileImage(username);
-            
-            const embed = new EmbedBuilder()
-                .setColor('#FFD700')
-                .setAuthor({
-                    name: username,
-                    iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
-                    url: `https://retroachievements.org/user/${username}`
-                })
-                .setTitle('🏆 Points Awarded!')
-                .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
-                .setTimestamp();
-
-            await this.queueAnnouncement({ embeds: [embed] });
-
-            console.log(`[ACHIEVEMENT FEED] Queued points announcement for ${username}: ${points} points (${reason})`);
-        } catch (error) {
-            console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
-            this.announcementHistory.delete(awardKey);
         }
     }
 }
