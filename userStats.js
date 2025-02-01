@@ -53,6 +53,23 @@ class UserStats {
             this.isInitializing = false;
         }
     }
+async initializeUserIfNeeded(username) {
+    try {
+        console.log(`[USER STATS] Checking if user ${username} needs initialization...`);
+
+        const userStats = await this.database.getUserStats(username);
+        if (!userStats) {
+            console.log(`[USER STATS] No stats found for ${username}, initializing...`);
+            await this.database.createUserStats(username); // Ensure `createUserStats` exists in `database.js`
+            return { username, initialized: true };
+        }
+
+        return { username, initialized: false };
+    } catch (error) {
+        console.error(`[USER STATS] Error initializing user ${username}:`, error);
+        return { username, initialized: false, error };
+    }
+}
 
    async loadStats() {
     try {
