@@ -232,6 +232,54 @@ class PointsManager {
             return false;
         }
     }
+    async migrateExistingPoints() {
+    try {
+        console.log('[POINTS] Checking for points to migrate...');
+        
+        // Get old stats
+        const userstats = await this.database.getUserStats();
+        if (!userstats?.users) {
+            console.log('[POINTS] No user stats found to migrate');
+            return;
+        }
+
+        let migratedCount = 0;
+        
+        // Process each user's bonus points
+        for (const [username, userData] of Object.entries(userstats.users)) {
+            if (!userData.bonusPoints?.length) continue;
+
+            for (const point of userData.bonusPoints) {
+                try {
+                    // Create new format point record
+                    const pointRecord = {
+                        points: point.points,
+                        reason: point.reason,
+                        internalReason: point.internalReason || point.reason,
+                        technicalKey: point.technicalKey,
+                        year: point.year || new Date(point.date).getFullYear().toString(),
+                        date: point.date
+                    };
+
+                    // Try to add the points using our existing method
+                    const success = await this.database.addUserBonusPoints(username, pointRecord);
+                    if (success) {
+                        migratedCount++;
+                    }
+                } catch (error) {
+                    console.error(`[POINTS] Error migrating point for ${username}:`, error);
+                }
+            }
+        }
+
+        if (migratedCount > 0) {
+            console.log(`[POINTS] Successfully migrated ${migratedCount} points`);
+        }
+
+    } catch (error) {
+        console.error('[POINTS] Migration error:', error);
+        }
+    }
 }
 
 module.exports = PointsManager;
