@@ -14,7 +14,7 @@ function delay(ms) {
 // ---------------------------------------
 const rateLimiter = {
     requests: new Map(),
-    cooldown: 1250, // ⬆ Increased cooldown to reduce rate limit risk
+    cooldown: 1250, // Slightly increased cooldown to prevent rate limits
     queue: [],
     processing: false,
 
@@ -177,44 +177,52 @@ async function fetchLeaderboardData(force = false) {
 }
 
 // ---------------------------------------
-// Fetch User Progress for Multiple Games (Optimized Rate Limit)
+// Fetch All Recent Achievements
 // ---------------------------------------
-async function batchFetchUserProgress(usernames, gameIds) {
-    const fetchResults = [];
-    const CHUNK_SIZE = 1; // ⬇ Reduced chunk size for safer execution
-    const CHUNK_DELAY_MS = 1500; // ⬆ Slightly increased delay
+async function fetchAllRecentAchievements() {
+    try {
+        console.log('[RA API] Fetching ALL recent achievements...');
 
-    for (let i = 0; i < usernames.length; i += CHUNK_SIZE) {
-        const chunk = usernames.slice(i, i + CHUNK_SIZE);
+        const validUsers = await database.getValidUsers();
+        const allAchievements = [];
+        const CHUNK_SIZE = 1;
+        const CHUNK_DELAY_MS = 1500;
 
-        const chunkPromises = chunk.flatMap(username => {
-            return gameIds.map(gameId => {
-                const params = new URLSearchParams({
-                    z: process.env.RA_USERNAME,
-                    y: process.env.RA_API_KEY,
-                    g: gameId,
-                    u: username
-                });
-                const url = `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`;
+        for (let i = 0; i < validUsers.length; i += CHUNK_SIZE) {
+            const chunk = validUsers.slice(i, i + CHUNK_SIZE);
 
-                return rateLimiter.makeRequest(url)
-                    .then(data => ({ username, gameId, data }))
-                    .catch(error => {
-                        console.error(`[RA API] Error fetching progress for ${username}, game ${gameId}:`, error);
-                        return { username, gameId, data: null };
+            const chunkPromises = chunk.map(async username => {
+                try {
+                    const params = new URLSearchParams({
+                        z: process.env.RA_USERNAME,
+                        y: process.env.RA_API_KEY,
+                        u: username,
+                        c: 50
                     });
+
+                    const url = `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`;
+                    const recentData = await rateLimiter.makeRequest(url);
+
+                    return { username, achievements: Array.isArray(recentData) ? recentData : [] };
+                } catch (error) {
+                    console.error(`[RA API] Error fetching achievements for ${username}:`, error);
+                    return { username, achievements: [] };
+                }
             });
-        });
 
-        const chunkResults = await Promise.all(chunkPromises);
-        fetchResults.push(...chunkResults);
+            const chunkResults = await Promise.all(chunkPromises);
+            allAchievements.push(...chunkResults);
 
-        if (i + CHUNK_SIZE < usernames.length) {
-            await delay(CHUNK_DELAY_MS);
+            if (i + CHUNK_SIZE < validUsers.length) {
+                await delay(CHUNK_DELAY_MS);
+            }
         }
-    }
 
-    return fetchResults;
+        return allAchievements;
+    } catch (error) {
+        console.error('[RA API] Error in fetchAllRecentAchievements:', error);
+        throw error;
+    }
 }
 
 module.exports = {
