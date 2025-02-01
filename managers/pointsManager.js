@@ -232,6 +232,24 @@ class PointsManager {
             return false;
         }
     }
+     async getUserPoints(username, year = null) {
+        try {
+            const targetYear = year || new Date().getFullYear().toString();
+            const cleanUsername = username.toLowerCase().trim();
+            
+            const bonusPoints = await this.database.getUserBonusPoints(cleanUsername);
+            
+            // Filter points by year if specified
+            return bonusPoints.filter(point => 
+                point.year === targetYear
+            ).sort((a, b) => 
+                new Date(b.date) - new Date(a.date)
+            );
+        } catch (error) {
+            console.error('[POINTS] Error getting user points:', error);
+            return [];
+        }
+    }
     async migrateExistingPoints() {
     try {
         console.log('[POINTS] Checking for points to migrate...');
