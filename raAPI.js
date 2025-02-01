@@ -14,7 +14,7 @@ function delay(ms) {
 // ---------------------------------------
 const rateLimiter = {
     requests: new Map(),
-    cooldown: 1000, // 1 second between requests
+    cooldown: 1250, // ⬆ Increased cooldown to reduce rate limit risk
     queue: [],
     processing: false,
 
@@ -23,7 +23,7 @@ const rateLimiter = {
 
         this.processing = true;
         while (this.queue.length > 0) {
-            const { url, resolve, reject } = this.queue.shift();
+            const { url, resolve, reject, retries } = this.queue.shift();
 
             try {
                 const now = Date.now();
@@ -39,6 +39,12 @@ const rateLimiter = {
                 this.requests.set(url, Date.now());
 
                 if (!response.ok) {
+                    if (response.status === 429 && retries < 3) { // Rate limit hit, retry with backoff
+                        console.warn(`[RA API] Rate limit hit. Retrying in ${(this.cooldown * 2) / 1000} sec...`);
+                        await delay(this.cooldown * 2);
+                        this.queue.push({ url, resolve, reject, retries: retries + 1 });
+                        continue;
+                    }
                     throw new Error(`Failed to fetch: ${response.statusText}`);
                 }
 
@@ -53,16 +59,29 @@ const rateLimiter = {
 
     async makeRequest(url) {
         return new Promise((resolve, reject) => {
-            this.queue.push({ url, resolve, reject });
+            this.queue.push({ url, resolve, reject, retries: 0 });
             this.processQueue();
         });
     }
 };
 
 // ---------------------------------------
-// Fetch User Profile (✅ FIXED)
+// Caching Setup
+// ---------------------------------------
+const cache = {
+    leaderboard: null,
+    leaderboardTimestamp: 0,
+    userProfiles: new Map()
+};
+
+// ---------------------------------------
+// Fetch User Profile (Optimized with Cache)
 // ---------------------------------------
 async function fetchUserProfile(username) {
+    if (cache.userProfiles.has(username)) {
+        return cache.userProfiles.get(username);
+    }
+
     try {
         const params = new URLSearchParams({
             z: process.env.RA_USERNAME,
@@ -74,7 +93,10 @@ async function fetchUserProfile(username) {
         const response = await rateLimiter.makeRequest(url);
 
         if (!response || !response.UserPic) return null;
-        return `https://retroachievements.org${response.UserPic}`;
+
+        const profileUrl = `https://retroachievements.org${response.UserPic}`;
+        cache.userProfiles.set(username, profileUrl);
+        return profileUrl;
     } catch (error) {
         console.error(`[RA API] Error fetching user profile for ${username}:`, error);
         return null;
@@ -82,9 +104,15 @@ async function fetchUserProfile(username) {
 }
 
 // ---------------------------------------
-// Fetch Leaderboard Data
+// Fetch Leaderboard Data (Caching Added)
 // ---------------------------------------
 async function fetchLeaderboardData(force = false) {
+    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+    if (!force && cache.leaderboard && (Date.now() - cache.leaderboardTimestamp) < CACHE_DURATION) {
+        return cache.leaderboard;
+    }
+
     try {
         console.log('[RA API] Fetching leaderboard data...');
 
@@ -98,54 +126,50 @@ async function fetchLeaderboardData(force = false) {
 
         const userProgressData = await batchFetchUserProgress(validUsers, ['355', '274', '319']);
 
-        const usersProgress = [];
-        for (const username of validUsers) {
-            try {
-                const userEntries = userProgressData.filter(p => p.username === username);
-                let allGameAchievements = [];
+        const usersProgress = validUsers.map(username => {
+            const userEntries = userProgressData.filter(p => p.username === username);
+            let allGameAchievements = [];
 
-                for (const entry of userEntries) {
-                    if (entry.data?.Achievements) {
-                        const gameAchievements = Object.values(entry.data.Achievements).map(ach => ({
-                            ...ach,
-                            GameID: entry.gameId
-                        }));
-                        allGameAchievements.push(...gameAchievements);
-                    }
+            for (const entry of userEntries) {
+                if (entry.data?.Achievements) {
+                    const gameAchievements = Object.values(entry.data.Achievements).map(ach => ({
+                        ...ach,
+                        GameID: entry.gameId
+                    }));
+                    allGameAchievements.push(...gameAchievements);
                 }
-
-                const mainGameAchievements = allGameAchievements.filter(a => a.GameID === '355');
-                const numAchievements = mainGameAchievements.length;
-                const completed = mainGameAchievements.filter(ach => parseInt(ach.DateEarned, 10) > 0).length;
-
-                const hasBeatenGame = mainGameAchievements.some(ach => {
-                    const isWinCondition = (ach.Flags & 2) === 2;
-                    const isEarned = parseInt(ach.DateEarned, 10) > 0;
-                    return isWinCondition && isEarned;
-                });
-
-                usersProgress.push({
-                    username,
-                    profileImage: `https://retroachievements.org/UserPic/${username}.png`,
-                    profileUrl: `https://retroachievements.org/user/${username}`,
-                    completedAchievements: completed,
-                    totalAchievements: numAchievements,
-                    completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : '0.00',
-                    hasBeatenGame: !!hasBeatenGame,
-                    achievements: allGameAchievements
-                });
-
-                console.log(`[RA API] Processed achievements for ${username}: ${completed}/${numAchievements} achievements.`);
-            } catch (error) {
-                console.error(`[RA API] Error processing data for ${username}:`, error);
             }
-        }
 
-        return {
+            const mainGameAchievements = allGameAchievements.filter(a => a.GameID === '355');
+            const numAchievements = mainGameAchievements.length;
+            const completed = mainGameAchievements.filter(ach => parseInt(ach.DateEarned, 10) > 0).length;
+
+            const hasBeatenGame = mainGameAchievements.some(ach => {
+                const isWinCondition = (ach.Flags & 2) === 2;
+                const isEarned = parseInt(ach.DateEarned, 10) > 0;
+                return isWinCondition && isEarned;
+            });
+
+            return {
+                username,
+                profileImage: `https://retroachievements.org/UserPic/${username}.png`,
+                profileUrl: `https://retroachievements.org/user/${username}`,
+                completedAchievements: completed,
+                totalAchievements: numAchievements,
+                completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : '0.00',
+                hasBeatenGame: !!hasBeatenGame,
+                achievements: allGameAchievements
+            };
+        });
+
+        cache.leaderboard = {
             leaderboard: usersProgress.sort((a, b) => parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage)),
             gameInfo: challenge,
             lastUpdated: new Date().toISOString()
         };
+        cache.leaderboardTimestamp = Date.now();
+
+        return cache.leaderboard;
     } catch (error) {
         console.error('[RA API] Error fetching leaderboard data:', error);
         throw error;
@@ -153,12 +177,12 @@ async function fetchLeaderboardData(force = false) {
 }
 
 // ---------------------------------------
-// Fetch User Progress for Multiple Games
+// Fetch User Progress for Multiple Games (Optimized Rate Limit)
 // ---------------------------------------
 async function batchFetchUserProgress(usernames, gameIds) {
     const fetchResults = [];
-    const CHUNK_SIZE = 2;
-    const CHUNK_DELAY_MS = 1000;
+    const CHUNK_SIZE = 1; // ⬇ Reduced chunk size for safer execution
+    const CHUNK_DELAY_MS = 1500; // ⬆ Slightly increased delay
 
     for (let i = 0; i < usernames.length; i += CHUNK_SIZE) {
         const chunk = usernames.slice(i, i + CHUNK_SIZE);
@@ -193,57 +217,8 @@ async function batchFetchUserProgress(usernames, gameIds) {
     return fetchResults;
 }
 
-// ---------------------------------------
-// Fetch All Recent Achievements
-// ---------------------------------------
-async function fetchAllRecentAchievements() {
-    try {
-        console.log('[RA API] Fetching ALL recent achievements...');
-
-        const validUsers = await database.getValidUsers();
-        const allAchievements = [];
-        const CHUNK_SIZE = 2;
-        const CHUNK_DELAY_MS = 1000;
-
-        for (let i = 0; i < validUsers.length; i += CHUNK_SIZE) {
-            const chunk = validUsers.slice(i, i + CHUNK_SIZE);
-
-            const chunkPromises = chunk.map(async username => {
-                try {
-                    const params = new URLSearchParams({
-                        z: process.env.RA_USERNAME,
-                        y: process.env.RA_API_KEY,
-                        u: username,
-                        c: 50
-                    });
-
-                    const url = `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`;
-                    const recentData = await rateLimiter.makeRequest(url);
-
-                    return { username, achievements: Array.isArray(recentData) ? recentData : [] };
-                } catch (error) {
-                    console.error(`[RA API] Error fetching achievements for ${username}:`, error);
-                    return { username, achievements: [] };
-                }
-            });
-
-            const chunkResults = await Promise.all(chunkPromises);
-            allAchievements.push(...chunkResults);
-
-            if (i + CHUNK_SIZE < validUsers.length) {
-                await delay(CHUNK_DELAY_MS);
-            }
-        }
-
-        return allAchievements;
-    } catch (error) {
-        console.error('[RA API] Error in fetchAllRecentAchievements:', error);
-        throw error;
-    }
-}
-
 module.exports = {
     fetchLeaderboardData,
     fetchAllRecentAchievements,
-    fetchUserProfile // ✅ Added to exports
+    fetchUserProfile
 };
