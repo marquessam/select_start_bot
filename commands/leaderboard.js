@@ -1,4 +1,4 @@
-// commands/leaderboard.js
+// commands/leaderboard.js 
 
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
@@ -14,13 +14,11 @@ function formatDate(date) {
     const hours = date.getHours();
     const minutes = date.getMinutes();
     
-    // Add ordinal suffix to day
     const suffix = ['th', 'st', 'nd', 'rd'][(day > 3 && day < 21) || day % 10 > 3 ? 0 : day % 10];
     
     return `${month} ${day}${suffix}, ${year} at ${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
 }
 
-// Helper function to calculate time remaining
 function getTimeRemaining(endDate) {
     const now = new Date();
     const timeLeft = endDate - now;
@@ -42,7 +40,7 @@ module.exports = {
     name: 'leaderboard',
     description: 'Displays monthly or yearly leaderboards',
 
-    async execute(message, args, { shadowGame }) {
+    async execute(message, args, { shadowGame, pointsManager }) {
         try {
             if (!args.length) {
                 await message.channel.send('```ansi\n\x1b[32m> Accessing leaderboard options...\x1b[0m\n```');
@@ -68,7 +66,7 @@ module.exports = {
                     await this.displayMonthlyLeaderboard(message, shadowGame);
                     break;
                 case 'year':
-                    await this.displayYearlyLeaderboard(message, shadowGame);
+                    await this.displayYearlyLeaderboard(message, shadowGame, pointsManager);
                     break;
                 default:
                     await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid option\nUse !leaderboard to see available options\n[Ready for input]█\x1b[0m```');
@@ -97,10 +95,9 @@ module.exports = {
 
             const rankedUsers = this.rankUsersWithTies(activeUsers);
             
-            // Create end of month date
             const endOfMonth = new Date();
             endOfMonth.setMonth(endOfMonth.getMonth() + 1);
-            endOfMonth.setDate(0); // Last day of current month
+            endOfMonth.setDate(0);
             endOfMonth.setHours(23, 59, 59, 999);
 
             const monthName = new Date().toLocaleString('default', { month: 'long' });
@@ -131,7 +128,7 @@ module.exports = {
                 );
             }
 
-            // Add remaining participants if any
+            // Add remaining participants
             const remainingUsers = rankedUsers.filter(user => !user.displayInMain);
             if (remainingUsers.length > 0) {
                 const remainingText = remainingUsers
@@ -156,6 +153,62 @@ module.exports = {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
         }
     },
+
+    async displayYearlyLeaderboard(message, shadowGame, pointsManager) {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Accessing HERO\'S RECORD...\x1b[0m\n```');
+
+            const validUsers = await DataService.getValidUsers();
+            const year = new Date().getFullYear().toString();
+
+            // Get points for all users
+            const userPoints = await Promise.all(
+                validUsers.map(async username => {
+                    const points = await pointsManager.getUserPoints(username, year);
+                    return {
+                        username,
+                        points: points.reduce((sum, p) => sum + p.points, 0),
+                        achievements: points.length
+                    };
+                })
+            );
+
+            // Filter and sort users
+            const rankedUsers = userPoints
+                .filter(user => user.points > 0)
+                .sort((a, b) => b.points - a.points || b.achievements - a.achievements)
+                .map((user, index) => ({
+                    ...user,
+                    rank: index + 1
+                }));
+
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('YEARLY RANKINGS')
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS][C5V5BN]');
+
+            if (rankedUsers.length > 0) {
+                embed.addTerminalField('TOP USERS',
+                    rankedUsers
+                        .map(user => {
+                            const medals = ['🥇', '🥈', '🥉'];
+                            const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
+                            return `${medal} #${user.rank} ${user.username}: ${user.points} points`;
+                        })
+                        .join('\n'));
+            } else {
+                embed.addTerminalField('STATUS', 'No rankings available');
+            }
+
+            embed.setTerminalFooter();
+            await message.channel.send({ embeds: [embed] });
+            if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
+
+        } catch (error) {
+            console.error('Yearly Leaderboard Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
+        }
+    },
+
     rankUsersWithTies(users) {
         const sortedUsers = [...users].sort((a, b) => {
             const percentDiff = parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage);
@@ -184,58 +237,5 @@ module.exports = {
                 displayInMain
             };
         });
-    },
-
-    async displayYearlyLeaderboard(message, shadowGame) {
-        try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing HERO\'S RECORD...\x1b[0m\n```');
-
-            const yearlyLeaderboard = await DataService.getLeaderboard('yearly');
-            const validUsers = await DataService.getValidUsers();
-
-            const activeUsers = yearlyLeaderboard
-                .filter(user => validUsers.includes(user.username.toLowerCase()) && user.points > 0)
-                .sort((a, b) => b.points - a.points);
-
-            let currentRank = 1;
-            let previousPoints = null;
-
-            const rankedLeaderboard = activeUsers.map((user, index) => {
-                if (previousPoints !== user.points) {
-                    currentRank = index + 1;
-                    previousPoints = user.points;
-                }
-                
-                return {
-                    ...user,
-                    rank: currentRank
-                };
-            });
-
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('YEARLY RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS][C5V5BN]');
-
-            if (rankedLeaderboard.length > 0) {
-                embed.addTerminalField('TOP USERS',
-                    rankedLeaderboard
-                        .map(user => {
-                            const medals = ['🥇', '🥈', '🥉'];
-                            const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
-                            return `${medal} #${user.rank} ${user.username}: ${user.points} points`;
-                        })
-                        .join('\n'));
-            } else {
-                embed.addTerminalField('STATUS', 'No rankings available');
-            }
-
-            embed.setTerminalFooter();
-            await message.channel.send({ embeds: [embed] });
-            if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
-
-        } catch (error) {
-            console.error('Yearly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
-        }
     }
 };
