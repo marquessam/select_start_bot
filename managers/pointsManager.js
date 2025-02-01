@@ -64,43 +64,53 @@ class PointsManager {
         };
     }
 
-    async awardPoints(username, points, reason, gameId = null) {
-        const operationId = `points-${username}-${Date.now()}`;
-        this._activeOperations.set(operationId, true);
+  async awardPoints(username, points, reason, gameId = null) {
+    const operationId = `points-${username}-${Date.now()}`;
+    this._activeOperations.set(operationId, true);
 
-        try {
-            console.log(`[POINTS] Awarding ${points} points to "${username}" for: ${reason}`);
-            
-            const cleanUsername = username.toLowerCase().trim();
-            const year = new Date().getFullYear().toString();
+    try {
+        const cleanUsername = username.toLowerCase().trim();
+        const year = new Date().getFullYear().toString();
+        const technicalKey = gameId ? `${reason.key || 'bonus'}-${gameId}` : reason.key || reason;
 
-            const pointRecord = {
-                points,
-                reason: reason.display || reason,
-                internalReason: reason.internal || reason,
-                technicalKey: gameId ? `${reason.key || 'bonus'}-${gameId}` : null,
-                year,
-                date: new Date().toISOString()
-            };
+        // Check if this point type already exists for this year
+        const existingPoints = await this.getUserPoints(cleanUsername, year);
+        const hasExistingPoints = existingPoints.some(p => p.technicalKey === technicalKey);
 
-            const success = await withTransaction(this.database, async (session) => {
-                return await this.database.addUserBonusPoints(cleanUsername, pointRecord);
-            });
-
-            if (success) {
-                this.cache.pendingUpdates.add(cleanUsername);
-                console.log(`[POINTS] Successfully awarded points to ${username}`);
-            }
-
-            return success;
-
-        } catch (error) {
-            ErrorHandler.logError(error, `Award Points - ${username}`);
+        if (hasExistingPoints) {
+            console.log(`[POINTS] Points of type ${technicalKey} already awarded to ${username} for ${year}`);
             return false;
-        } finally {
-            this._activeOperations.delete(operationId);
         }
+
+        // Create point record
+        const pointRecord = {
+            points,
+            reason: reason.display || reason,
+            internalReason: reason.internal || reason,
+            technicalKey,
+            year,
+            date: new Date().toISOString()
+        };
+
+        // Award points with transaction
+        const success = await withTransaction(this.database, async (session) => {
+            return await this.database.addUserBonusPoints(cleanUsername, pointRecord);
+        });
+
+        if (success) {
+            this.cache.pendingUpdates.add(cleanUsername);
+            console.log(`[POINTS] Successfully awarded points to ${username}`);
+        }
+
+        return success;
+
+    } catch (error) {
+        console.error(`[POINTS] Error awarding points to ${username}:`, error);
+        return false;
+    } finally {
+        this._activeOperations.delete(operationId);
     }
+}
 
     async checkGamePoints(username, achievements, gameId) {
         try {
@@ -232,34 +242,35 @@ class PointsManager {
             return false;
         }
     }
-    async getUserPoints(username, year = null) {
+   async getUserPoints(username, year = null) {
     try {
         const targetYear = year || new Date().getFullYear().toString();
         const cleanUsername = username.toLowerCase().trim();
         
         const bonusPoints = await this.database.getUserBonusPoints(cleanUsername);
         
-        // Group by internal reason to prevent duplicates
-        const uniquePoints = Object.values(
-            bonusPoints.reduce((acc, point) => {
-                // Only consider points from the target year
-                if (point.year !== targetYear) return acc;
-
-                const key = point.internalReason || point.reason;
-                // If we already have this point type, only keep the newer one
-                if (!acc[key] || new Date(point.date) > new Date(acc[key].date)) {
-                    acc[key] = point;
+        // Use Map to ensure uniqueness by technicalKey
+        const uniquePoints = new Map();
+        
+        bonusPoints
+            .filter(point => point.year === targetYear)
+            .forEach(point => {
+                const key = point.technicalKey || point.internalReason;
+                // Only keep the newest point for each unique key
+                if (!uniquePoints.has(key) || 
+                    new Date(point.date) > new Date(uniquePoints.get(key).date)) {
+                    uniquePoints.set(key, point);
                 }
-                return acc;
-            }, {})
-        );
+            });
 
-        return uniquePoints.sort((a, b) => new Date(b.date) - new Date(a.date));
+        return Array.from(uniquePoints.values())
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
     } catch (error) {
         console.error('[POINTS] Error getting user points:', error);
         return [];
     }
 }
+    
     async cleanupDuplicatePoints(username) {
     try {
         const collection = await this.database.getCollection('bonusPoints');
