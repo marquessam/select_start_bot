@@ -52,6 +52,7 @@ module.exports = {
                     .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT AN OPTION]\n')
                     .addTerminalField('USAGE',
                         '1. !leaderboard month - View monthly challenge leaderboard\n' +
+                        ' Secret Chime - [W2K5MN]\n' +
                         '2. !leaderboard year - View yearly challenge leaderboard')
                     .setTerminalFooter();
 
