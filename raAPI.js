@@ -221,8 +221,56 @@ async function batchFetchUserProgress(usernames, gameIds) {
 // Fetch All Recent Achievements
 // ---------------------------------------
 async function fetchAllRecentAchievements() {
-    // Function remains the same as in the previous fix
+    try {
+        console.log('[RA API] Fetching ALL recent achievements...');
+
+        const validUsers = await database.getValidUsers();
+        if (!Array.isArray(validUsers) || validUsers.length === 0) {
+            console.warn('[RA API] No valid users found, returning empty achievements list.');
+            return [];
+        }
+
+        const allAchievements = [];
+        const CHUNK_SIZE = 1;
+        const CHUNK_DELAY_MS = 1500;
+
+        for (let i = 0; i < validUsers.length; i += CHUNK_SIZE) {
+            const chunk = validUsers.slice(i, i + CHUNK_SIZE);
+
+            const chunkPromises = chunk.map(async username => {
+                try {
+                    const params = new URLSearchParams({
+                        z: process.env.RA_USERNAME,
+                        y: process.env.RA_API_KEY,
+                        u: username,
+                        c: 50
+                    });
+
+                    const url = `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`;
+                    const recentData = await rateLimiter.makeRequest(url);
+
+                    return { username, achievements: Array.isArray(recentData) ? recentData : [] };
+                } catch (error) {
+                    console.error(`[RA API] Error fetching achievements for ${username}:`, error);
+                    return { username, achievements: [] };
+                }
+            });
+
+            const chunkResults = await Promise.all(chunkPromises);
+            allAchievements.push(...chunkResults);
+
+            if (i + CHUNK_SIZE < validUsers.length) {
+                await delay(CHUNK_DELAY_MS);
+            }
+        }
+
+        return allAchievements.length > 0 ? allAchievements : [];
+    } catch (error) {
+        console.error('[RA API] Error in fetchAllRecentAchievements:', error);
+        return [];
+    }
 }
+
 
 module.exports = {
     fetchLeaderboardData,
