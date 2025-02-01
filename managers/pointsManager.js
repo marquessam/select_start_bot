@@ -21,7 +21,7 @@ class PointsManager {
             mastery: { value: 3, key: 'mastery' }
         };
 
-        // Valid game IDs for different challenges
+        // Game configurations
         this.gameConfig = {
             "319": {  // Chrono Trigger
                 name: "Chrono Trigger",
@@ -43,6 +43,134 @@ class PointsManager {
         this._activeOperations = new Map();
     }
 
+    async getUserPoints(username, year = null) {
+        try {
+            const targetYear = year || new Date().getFullYear().toString();
+            const cleanUsername = username.toLowerCase().trim();
+            
+            const bonusPoints = await this.database.getUserBonusPoints(cleanUsername);
+            
+            // Use Map to ensure uniqueness by technicalKey
+            const uniquePoints = new Map();
+            
+            bonusPoints
+                .filter(point => point.year === targetYear)
+                .forEach(point => {
+                    const key = point.technicalKey || point.internalReason;
+                    // Only keep the newest point for each unique key
+                    if (!uniquePoints.has(key) || 
+                        new Date(point.date) > new Date(uniquePoints.get(key).date)) {
+                        uniquePoints.set(key, point);
+                    }
+                });
+
+            return Array.from(uniquePoints.values())
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+        } catch (error) {
+            console.error('[POINTS] Error getting user points:', error);
+            return [];
+        }
+    }
+
+    async awardPoints(username, points, reason, gameId = null) {
+        const operationId = `points-${username}-${Date.now()}`;
+        this._activeOperations.set(operationId, true);
+
+        try {
+            const cleanUsername = username.toLowerCase().trim();
+            const year = new Date().getFullYear().toString();
+            const technicalKey = gameId ? `${reason.key || 'bonus'}-${gameId}` : reason.key || reason;
+
+            // Check if this point type already exists for this year
+            const existingPoints = await this.getUserPoints(cleanUsername, year);
+            const hasExistingPoints = existingPoints.some(p => p.technicalKey === technicalKey);
+
+            if (hasExistingPoints) {
+                console.log(`[POINTS] Points of type ${technicalKey} already awarded to ${username} for ${year}`);
+                return false;
+            }
+
+            const pointRecord = {
+                points,
+                reason: reason.display || reason,
+                internalReason: reason.internal || reason,
+                technicalKey,
+                year,
+                date: new Date().toISOString()
+            };
+
+            const success = await withTransaction(this.database, async (session) => {
+                return await this.database.addUserBonusPoints(cleanUsername, pointRecord);
+            });
+
+            if (success) {
+                this.cache.pendingUpdates.add(cleanUsername);
+                console.log(`[POINTS] Successfully awarded points to ${username}`);
+
+                // Announce points if achievement feed exists
+                if (global.achievementFeed) {
+                    await global.achievementFeed.announcePointsAward(
+                        username, 
+                        points, 
+                        pointRecord.reason
+                    );
+                }
+            }
+
+            return success;
+        } catch (error) {
+            console.error(`[POINTS] Error awarding points to ${username}:`, error);
+            return false;
+        } finally {
+            this._activeOperations.delete(operationId);
+        }
+    }
+
+    async cleanupDuplicatePoints() {
+        try {
+            console.log('[POINTS] Starting duplicate points cleanup...');
+            const collection = await this.database.getCollection('bonusPoints');
+            
+            const allPoints = await collection.find({}).toArray();
+            
+            const pointGroups = allPoints.reduce((groups, point) => {
+                const key = `${point.username}-${point.year}-${point.technicalKey}`;
+                if (!groups[key]) {
+                    groups[key] = [];
+                }
+                groups[key].push(point);
+                return groups;
+            }, {});
+
+            let removedCount = 0;
+
+            for (const points of Object.values(pointGroups)) {
+                if (points.length > 1) {
+                    points.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    
+                    const toRemove = points.slice(1);
+                    const result = await collection.deleteMany({
+                        _id: { $in: toRemove.map(p => p._id) }
+                    });
+                    
+                    removedCount += result.deletedCount;
+                    console.log(`[POINTS] Removed ${result.deletedCount} duplicate points for ${points[0].username} - ${points[0].technicalKey}`);
+                }
+            }
+
+            console.log(`[POINTS] Cleanup complete. Removed ${removedCount} duplicate points.`);
+            
+            if (global.leaderboardCache) {
+                await global.leaderboardCache.updateLeaderboards(true);
+            }
+
+            return removedCount;
+        } catch (error) {
+            console.error('[POINTS] Error cleaning up duplicate points:', error);
+            throw error;
+        }
+    }
+
     createPointReason(gameName, achievementType, technicalKey) {
         return {
             display: `${gameName} - ${achievementType}`,
@@ -50,67 +178,6 @@ class PointsManager {
             key: technicalKey
         };
     }
-
-    createBonusPointObject(username, gameId, points, pointType, reason) {
-        return {
-            points,
-            reason: reason.display,
-            internalReason: reason.internal,
-            technicalKey: `${pointType}-${gameId}`,
-            pointType,
-            gameId,
-            year: new Date().getFullYear().toString(),
-            date: new Date().toISOString()
-        };
-    }
-
-  async awardPoints(username, points, reason, gameId = null) {
-    const operationId = `points-${username}-${Date.now()}`;
-    this._activeOperations.set(operationId, true);
-
-    try {
-        const cleanUsername = username.toLowerCase().trim();
-        const year = new Date().getFullYear().toString();
-        const technicalKey = gameId ? `${reason.key || 'bonus'}-${gameId}` : reason.key || reason;
-
-        // Check if this point type already exists for this year
-        const existingPoints = await this.getUserPoints(cleanUsername, year);
-        const hasExistingPoints = existingPoints.some(p => p.technicalKey === technicalKey);
-
-        if (hasExistingPoints) {
-            console.log(`[POINTS] Points of type ${technicalKey} already awarded to ${username} for ${year}`);
-            return false;
-        }
-
-        // Create point record
-        const pointRecord = {
-            points,
-            reason: reason.display || reason,
-            internalReason: reason.internal || reason,
-            technicalKey,
-            year,
-            date: new Date().toISOString()
-        };
-
-        // Award points with transaction
-        const success = await withTransaction(this.database, async (session) => {
-            return await this.database.addUserBonusPoints(cleanUsername, pointRecord);
-        });
-
-        if (success) {
-            this.cache.pendingUpdates.add(cleanUsername);
-            console.log(`[POINTS] Successfully awarded points to ${username}`);
-        }
-
-        return success;
-
-    } catch (error) {
-        console.error(`[POINTS] Error awarding points to ${username}:`, error);
-        return false;
-    } finally {
-        this._activeOperations.delete(operationId);
-    }
-}
 
     async checkGamePoints(username, achievements, gameId) {
         try {
@@ -123,7 +190,7 @@ class PointsManager {
             const year = new Date().getFullYear().toString();
 
             // Check participation (only if not a mastery-only game)
-            if (!gameConfig.masteryOnly && !await this.hasExistingPoints(username, gameId, 'participation', year)) {
+            if (!gameConfig.masteryOnly) {
                 if (achievements.some(a => parseInt(a.DateEarned) > 0)) {
                     points.push({
                         type: 'participation',
@@ -139,37 +206,33 @@ class PointsManager {
 
             // Check game beaten
             if (!gameConfig.masteryOnly && await this.checkGameBeaten(achievements, gameConfig)) {
-                if (!await this.hasExistingPoints(username, gameId, 'beaten', year)) {
-                    points.push({
-                        type: 'beaten',
-                        points: this.pointTypes.beaten.value,
-                        reason: this.createPointReason(
-                            achievements[0].GameTitle || gameConfig.name,
-                            'Game Beaten',
-                            `beaten-${gameId}`
-                        )
-                    });
-                }
+                points.push({
+                    type: 'beaten',
+                    points: this.pointTypes.beaten.value,
+                    reason: this.createPointReason(
+                        achievements[0].GameTitle || gameConfig.name,
+                        'Game Beaten',
+                        `beaten-${gameId}`
+                    )
+                });
             }
 
             // Check mastery
             if (gameConfig.masteryCheck && await this.checkGameMastery(achievements)) {
-                if (!await this.hasExistingPoints(username, gameId, 'mastery', year)) {
-                    points.push({
-                        type: 'mastery',
-                        points: this.pointTypes.mastery.value,
-                        reason: this.createPointReason(
-                            achievements[0].GameTitle || gameConfig.name,
-                            'Mastery',
-                            `mastery-${gameId}`
-                        )
-                    });
-                }
+                points.push({
+                    type: 'mastery',
+                    points: this.pointTypes.mastery.value,
+                    reason: this.createPointReason(
+                        achievements[0].GameTitle || gameConfig.name,
+                        'Mastery',
+                        `mastery-${gameId}`
+                    )
+                });
             }
 
             return points;
         } catch (error) {
-            ErrorHandler.logError(error, `Check Game Points - ${username}`);
+            console.error('[POINTS] Error checking game points:', error);
             return [];
         }
     }
@@ -180,7 +243,6 @@ class PointsManager {
 
             let hasBeaten = true;
 
-            // Check progression achievements if required
             if (gameConfig.requireProgression && gameConfig.progression) {
                 hasBeaten = gameConfig.progression.every(achId =>
                     achievements.some(a => 
@@ -190,7 +252,6 @@ class PointsManager {
                 );
             }
 
-            // Check win condition achievements
             if (hasBeaten) {
                 if (gameConfig.requireAllWinConditions) {
                     hasBeaten = gameConfig.winCondition.every(achId =>
@@ -211,7 +272,7 @@ class PointsManager {
 
             return hasBeaten;
         } catch (error) {
-            ErrorHandler.logError(error, 'Check Game Beaten');
+            console.error('[POINTS] Error checking game beaten:', error);
             return false;
         }
     }
@@ -225,149 +286,8 @@ class PointsManager {
 
             return totalAchievements > 0 && totalAchievements === earnedAchievements;
         } catch (error) {
-            ErrorHandler.logError(error, 'Check Game Mastery');
+            console.error('[POINTS] Error checking game mastery:', error);
             return false;
-        }
-    }
-
-    async hasExistingPoints(username, gameId, pointType, year) {
-        try {
-            const bonusPoints = await this.database.getUserBonusPoints(username);
-            return bonusPoints.some(bp => 
-                bp.year === year && 
-                bp.technicalKey === `${pointType}-${gameId}`
-            );
-        } catch (error) {
-            ErrorHandler.logError(error, `Check Existing Points - ${username}`);
-            return false;
-        }
-    }
-   async getUserPoints(username, year = null) {
-    try {
-        const targetYear = year || new Date().getFullYear().toString();
-        const cleanUsername = username.toLowerCase().trim();
-        
-        const bonusPoints = await this.database.getUserBonusPoints(cleanUsername);
-        
-        // Use Map to ensure uniqueness by technicalKey
-        const uniquePoints = new Map();
-        
-        bonusPoints
-            .filter(point => point.year === targetYear)
-            .forEach(point => {
-                const key = point.technicalKey || point.internalReason;
-                // Only keep the newest point for each unique key
-                if (!uniquePoints.has(key) || 
-                    new Date(point.date) > new Date(uniquePoints.get(key).date)) {
-                    uniquePoints.set(key, point);
-                }
-            });
-
-        return Array.from(uniquePoints.values())
-            .sort((a, b) => new Date(b.date) - new Date(a.date));
-    } catch (error) {
-        console.error('[POINTS] Error getting user points:', error);
-        return [];
-    }
-}
-    
-   async cleanupDuplicatePoints() {
-    try {
-        console.log('[POINTS] Starting duplicate points cleanup...');
-        const collection = await this.database.getCollection('bonusPoints');
-        
-        // Get all points
-        const allPoints = await collection.find({}).toArray();
-        
-        // Group points by unique combinations
-        const pointGroups = allPoints.reduce((groups, point) => {
-            const key = `${point.username}-${point.year}-${point.technicalKey}`;
-            if (!groups[key]) {
-                groups[key] = [];
-            }
-            groups[key].push(point);
-            return groups;
-        }, {});
-
-        let removedCount = 0;
-
-        // For each group of duplicates, keep only the newest one
-        for (const points of Object.values(pointGroups)) {
-            if (points.length > 1) {
-                // Sort by date, newest first
-                points.sort((a, b) => new Date(b.date) - new Date(a.date));
-                
-                // Keep the first one, remove the rest
-                const toRemove = points.slice(1);
-                const result = await collection.deleteMany({
-                    _id: { $in: toRemove.map(p => p._id) }
-                });
-                
-                removedCount += result.deletedCount;
-                console.log(`[POINTS] Removed ${result.deletedCount} duplicate points for ${points[0].username} - ${points[0].technicalKey}`);
-            }
-        }
-
-        console.log(`[POINTS] Cleanup complete. Removed ${removedCount} duplicate points.`);
-        
-        // Force a leaderboard update
-        if (global.leaderboardCache) {
-            await global.leaderboardCache.updateLeaderboards(true);
-        }
-
-        return removedCount;
-    } catch (error) {
-        console.error('[POINTS] Error cleaning up duplicate points:', error);
-        throw error;
-    }
-}
-    
-    async migrateExistingPoints() {
-    try {
-        console.log('[POINTS] Checking for points to migrate...');
-        
-        // Get old stats
-        const userstats = await this.database.getUserStats();
-        if (!userstats?.users) {
-            console.log('[POINTS] No user stats found to migrate');
-            return;
-        }
-
-        let migratedCount = 0;
-        
-        // Process each user's bonus points
-        for (const [username, userData] of Object.entries(userstats.users)) {
-            if (!userData.bonusPoints?.length) continue;
-
-            for (const point of userData.bonusPoints) {
-                try {
-                    // Create new format point record
-                    const pointRecord = {
-                        points: point.points,
-                        reason: point.reason,
-                        internalReason: point.internalReason || point.reason,
-                        technicalKey: point.technicalKey,
-                        year: point.year || new Date(point.date).getFullYear().toString(),
-                        date: point.date
-                    };
-
-                    // Try to add the points using our existing method
-                    const success = await this.database.addUserBonusPoints(username, pointRecord);
-                    if (success) {
-                        migratedCount++;
-                    }
-                } catch (error) {
-                    console.error(`[POINTS] Error migrating point for ${username}:`, error);
-                }
-            }
-        }
-
-        if (migratedCount > 0) {
-            console.log(`[POINTS] Successfully migrated ${migratedCount} points`);
-        }
-
-    } catch (error) {
-        console.error('[POINTS] Migration error:', error);
         }
     }
 }
