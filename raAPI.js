@@ -216,6 +216,67 @@ async function batchFetchUserProgress(usernames, gameIds) {
 
     return fetchResults;
 }
+async function fetchCompleteGameProgress(username, gameId) {
+    try {
+        const params = new URLSearchParams({
+            z: process.env.RA_USERNAME,
+            y: process.env.RA_API_KEY,
+            g: gameId,
+            u: username
+        });
+
+        const url = `https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php?${params}`;
+        const response = await rateLimiter.makeRequest(url);
+
+        if (!response || !response.Achievements) {
+            return null;
+        }
+
+        // Transform achievements into a consistent format
+        const achievements = Object.values(response.Achievements).map(ach => ({
+            ...ach,
+            GameID: gameId,
+            GameTitle: response.Title || ''
+        }));
+
+        return achievements;
+    } catch (error) {
+        console.error(`[RA API] Error fetching complete progress for ${username}, game ${gameId}:`, error);
+        return null;
+    }
+}
+
+async function fetchHistoricalProgress(usernames, gameIds) {
+    try {
+        console.log('[RA API] Fetching historical progress...');
+        
+        const results = new Map();
+        const CHUNK_DELAY_MS = 1500;
+
+        for (const username of usernames) {
+            const userProgress = new Map();
+            
+            for (const gameId of gameIds) {
+                const achievements = await fetchCompleteGameProgress(username, gameId);
+                if (achievements) {
+                    userProgress.set(gameId, achievements);
+                }
+                await delay(CHUNK_DELAY_MS); // Respect rate limits between requests
+            }
+            
+            if (userProgress.size > 0) {
+                results.set(username, userProgress);
+            }
+            
+            console.log(`[RA API] Fetched progress for ${username}: ${userProgress.size} games`);
+        }
+
+        return results;
+    } catch (error) {
+        console.error('[RA API] Error fetching historical progress:', error);
+        throw error;
+    }
+}
 
 // ---------------------------------------
 // Fetch All Recent Achievements
@@ -275,5 +336,7 @@ async function fetchAllRecentAchievements() {
 module.exports = {
     fetchLeaderboardData,
     fetchAllRecentAchievements,
-    fetchUserProfile
+    fetchUserProfile,
+    fetchHistoricalProgress,
+    fetchCompleteGameProgress
 };
