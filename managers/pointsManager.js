@@ -16,9 +16,9 @@ class PointsManager {
         
         // Points configuration for monthly challenges
         this.pointTypes = {
-            participation: { value: 1, key: 'participation' },
-            beaten: { value: 3, key: 'beaten' },
-            mastery: { value: 3, key: 'mastery' }
+            participation: { value: 1, key: 'participation', requiresGame: true },
+            beaten: { value: 3, key: 'beaten', requiresGame: true },
+            mastery: { value: 3, key: 'mastery', requiresGame: true }
         };
 
         // For controlling concurrency
@@ -37,17 +37,15 @@ class PointsManager {
             
             const bonusPoints = await this.database.getUserBonusPoints(cleanUsername);
             
-            // Use Map to ensure uniqueness by type, game, and action
+            // Use Map to ensure uniqueness by type and game combination
             const uniquePoints = new Map();
             
             bonusPoints
                 .filter(point => point.year === targetYear)
                 .forEach(point => {
-                    // Create a unique key that combines type, game, and action
                     const pointType = point.pointType || point.reason.toLowerCase().split(' - ')[1];
-                    const key = `${pointType}-${point.gameId || 'nogame'}`;
+                    const key = `${pointType}-${point.gameId || 'none'}`;
                     
-                    // Only keep the newest point for each unique combination
                     if (!uniquePoints.has(key) || 
                         new Date(point.date) > new Date(uniquePoints.get(key).date)) {
                         uniquePoints.set(key, point);
@@ -62,6 +60,22 @@ class PointsManager {
         }
     }
 
+    validatePointsInput(pointType, gameId) {
+        // Check if the point type requires a game ID
+        if (this.pointTypes[pointType]?.requiresGame && !gameId) {
+            console.log(`[POINTS] Error: Game ID required for ${pointType} points`);
+            return false;
+        }
+
+        // Validate game ID exists in points config if provided
+        if (gameId && !pointsConfig.monthlyGames[gameId]) {
+            console.log(`[POINTS] Error: Invalid game ID ${gameId}`);
+            return false;
+        }
+
+        return true;
+    }
+
     async awardPoints(username, points, reason, gameId = null) {
         const operationId = `points-${username}-${Date.now()}`;
         this._activeOperations.set(operationId, true);
@@ -73,14 +87,17 @@ class PointsManager {
             // Extract point type from reason
             const pointType = reason.type || reason.toLowerCase().split(' - ')[1];
             
-            // Create standardized technical key
-            const technicalKey = gameId ? 
-                `${pointType}-${gameId}` : 
-                `${pointType}-nogame`;
+            // Validate input
+            if (!this.validatePointsInput(pointType, gameId)) {
+                return false;
+            }
+
+            // Create standardized technical key with proper game association
+            const technicalKey = `${pointType}-${gameId || 'none'}`;
 
             console.log(`[POINTS] Checking ${username} for ${technicalKey}`);
 
-            // Check for existing points
+            // Check for existing points using both technical key and game/type combination
             const existingPoints = await this.getUserPoints(cleanUsername, year);
             const hasExistingPoints = existingPoints.some(p => 
                 p.technicalKey === technicalKey || 
@@ -92,6 +109,7 @@ class PointsManager {
                 return false;
             }
 
+            // Create point record with improved metadata
             const pointRecord = {
                 points,
                 reason: reason.display || reason,
@@ -100,17 +118,22 @@ class PointsManager {
                 pointType,
                 gameId,
                 year,
-                date: new Date().toISOString()
+                date: new Date().toISOString(),
+                metadata: {
+                    gameConfig: gameId ? pointsConfig.monthlyGames[gameId] : null,
+                    pointTypeConfig: this.pointTypes[pointType]
+                }
             };
 
+            // Use transaction to ensure data consistency
             const success = await withTransaction(this.database, async (session) => {
                 return await this.database.addUserBonusPoints(cleanUsername, pointRecord);
             });
 
             if (success) {
-                console.log(`[POINTS] Awarded ${points} ${pointType} points to ${username}`);
+                console.log(`[POINTS] Awarded ${points} ${pointType} points to ${username} for game ${gameId || 'none'}`);
 
-                // Announce points if feed is not paused
+                // Announce points if feed is active
                 if (this.services?.achievementFeed && !this.services.achievementFeed.isPaused) {
                     await this.services.achievementFeed.announcePointsAward(
                         username, 
@@ -132,28 +155,33 @@ class PointsManager {
     async recheckHistoricalPoints(username, achievements, gameId) {
         try {
             const gameConfig = pointsConfig.monthlyGames[gameId];
-            if (!gameConfig) return [];
+            if (!gameConfig) {
+                console.log(`[POINTS] No game config found for ${gameId}`);
+                return [];
+            }
 
             const points = [];
             const gameAchievements = achievements.filter(a => String(a.GameID) === String(gameId));
 
-            // Check mastery (available all year)
+            // Check mastery only if game config allows it
             if (gameConfig.points?.mastery && gameConfig.masteryCheck) {
-                const hasMastery = await this.checkGameMastery(gameAchievements);
-                if (hasMastery) {
+                const totalAchievements = gameAchievements.length;
+                const completedAchievements = gameAchievements.filter(a => parseInt(a.DateEarned) > 0).length;
+                
+                if (totalAchievements > 0 && totalAchievements === completedAchievements) {
                     points.push({
                         type: 'mastery',
                         points: gameConfig.points.mastery,
                         reason: {
                             display: `${gameConfig.name} - Mastery`,
-                            internal: `${gameConfig.name} - Mastery`,
+                            internal: `${gameConfig.name} - Mastery (100% completion)`,
                             type: 'mastery'
                         }
                     });
                 }
             }
 
-            // Check participation and beaten
+            // Check participation and completion
             if (gameConfig.points) {
                 const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
                 if (hasParticipation && gameConfig.points.participation) {
@@ -162,26 +190,30 @@ class PointsManager {
                         points: gameConfig.points.participation,
                         reason: {
                             display: `${gameConfig.name} - Participation`,
-                            internal: `${gameConfig.name} - Participation`,
+                            internal: `${gameConfig.name} - Participation (earned achievement)`,
                             type: 'participation'
                         }
                     });
                 }
 
-                if (gameConfig.points.beaten && await this.checkGameBeaten(gameAchievements, gameConfig)) {
+                const isCompleted = gameConfig.requireProgression
+                    ? this.checkProgressionRequirements(gameAchievements, gameConfig)
+                    : this.checkWinConditions(gameAchievements, gameConfig);
+
+                if (isCompleted && gameConfig.points.beaten) {
                     points.push({
                         type: 'beaten',
                         points: gameConfig.points.beaten,
                         reason: {
                             display: `${gameConfig.name} - Game Beaten`,
-                            internal: `${gameConfig.name} - Game Beaten`,
+                            internal: `${gameConfig.name} - Game Beaten (completion verified)`,
                             type: 'beaten'
                         }
                     });
                 }
             }
 
-            // Award any missing points
+            // Award points with proper game association
             for (const point of points) {
                 await this.awardPoints(username, point.points, point.reason, gameId);
             }
@@ -193,21 +225,54 @@ class PointsManager {
         }
     }
 
+    checkProgressionRequirements(achievements, gameConfig) {
+        // Check progression achievements
+        const hasProgression = gameConfig.progression.every(achId =>
+            achievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
+        );
+
+        // Check win conditions if progression is met
+        if (hasProgression && gameConfig.winCondition?.length > 0) {
+            if (gameConfig.requireAllWinConditions) {
+                return gameConfig.winCondition.every(achId =>
+                    achievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
+                );
+            }
+            return gameConfig.winCondition.some(achId =>
+                achievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
+            );
+        }
+
+        return hasProgression;
+    }
+
+    checkWinConditions(achievements, gameConfig) {
+        if (!gameConfig.winCondition?.length) return false;
+
+        if (gameConfig.requireAllWinConditions) {
+            return gameConfig.winCondition.every(achId =>
+                achievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
+            );
+        }
+        return gameConfig.winCondition.some(achId =>
+            achievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
+        );
+    }
+
     async cleanupDuplicatePoints() {
         try {
             console.log('[POINTS] Starting duplicate points cleanup...');
             const collection = await this.database.getCollection('bonusPoints');
             const year = new Date().getFullYear().toString();
             
-            // Get all points for the year
             const allPoints = await collection.find({ year }).toArray();
             
-            // Group by username, game, and point type
+            // Group by unique combination of username, game, and point type
             const groupedPoints = new Map();
             
             allPoints.forEach(point => {
                 const pointType = point.pointType || point.reason.toLowerCase().split(' - ')[1];
-                const key = `${point.username}-${point.gameId || 'nogame'}-${pointType}`;
+                const key = `${point.username}-${point.gameId || 'none'}-${pointType}`;
                 
                 if (!groupedPoints.has(key)) {
                     groupedPoints.set(key, []);
@@ -215,17 +280,23 @@ class PointsManager {
                 groupedPoints.get(key).push(point);
             });
 
-            // Find and remove duplicates
+            // Process duplicates
             let removedCount = 0;
             const processedUsers = new Set();
 
             for (const [key, points] of groupedPoints.entries()) {
                 if (points.length > 1) {
-                    // Sort by date, keep newest
+                    // Sort by date and keep only the newest valid point
                     points.sort((a, b) => new Date(b.date) - new Date(a.date));
                     
-                    // Remove all but the newest
-                    const toRemove = points.slice(1);
+                    // Keep the newest point that has valid game association if required
+                    const validPoints = points.filter(p => 
+                        !this.pointTypes[p.pointType]?.requiresGame || p.gameId
+                    );
+
+                    const toKeep = validPoints[0] || points[0];
+                    const toRemove = points.filter(p => p._id !== toKeep._id);
+                    
                     await collection.deleteMany({
                         _id: { $in: toRemove.map(p => p._id) }
                     });
