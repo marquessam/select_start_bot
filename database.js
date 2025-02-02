@@ -42,6 +42,7 @@ class Database {
                     this.reconnect();
                 });
 
+                await this.ensureCollections();
                 await this.createIndexes();
             }
         } catch (error) {
@@ -82,104 +83,114 @@ class Database {
         return this.db.collection(collectionName);
     }
 
-async createIndexes() {
-    try {
-        console.log('[DATABASE] Creating indexes...');
-        
-        // Drop existing indexes first (except _id)
-        for (const collection of ['users', 'userstats', 'challenges', 'achievements', 
-                                'bonusPoints', 'arcadechallenge', 'reviews', 'nominations', 
-                                'shadowgame', 'records', 'config']) {
-            const existingIndexes = await this.db.collection(collection).listIndexes().toArray();
-            for (const index of existingIndexes) {
-                if (index.name !== '_id_') {
-                    await this.db.collection(collection).dropIndex(index.name);
+    async ensureCollections() {
+        try {
+            const requiredCollections = [
+                'userstats', 'users', 'challenges', 'achievements',
+                'bonusPoints', 'arcadechallenge', 'reviews', 'nominations',
+                'shadowgame', 'records', 'config'
+            ];
+
+            const existingCollections = await this.db.listCollections().toArray();
+            const existingNames = existingCollections.map(c => c.name);
+
+            for (const collection of requiredCollections) {
+                if (!existingNames.includes(collection)) {
+                    await this.db.createCollection(collection);
+                    console.log(`[DATABASE] Created collection: ${collection}`);
                 }
             }
+        } catch (error) {
+            console.error('[DATABASE] Error ensuring collections:', error);
+            throw error;
         }
-
-        // Now create all indexes with proper options
-        // Core collections
-        await this.db.collection('userstats').createIndex({ _id: 1 });
-        await this.db.collection('users').createIndex({ username: 1 }, { 
-            unique: true,
-            name: 'username_unique' 
-        });
-        
-        // Challenge related indexes
-        await this.db.collection('challenges').createIndex({ _id: 1 });
-        await this.db.collection('challenges').createIndex({ 'games.date': -1 }, {
-            name: 'games_date_desc'
-        });
-        
-        // Points and achievements indexes
-        await this.db.collection('bonusPoints').createIndex({ 
-            username: 1,
-            year: 1,
-            technicalKey: 1 
-        }, { 
-            unique: true,
-            name: 'bonus_points_compound'
-        });
-        
-        await this.db.collection('achievements').createIndex({ 
-            _id: 1,
-            'data.username': 1,
-            'data.timestamp': -1 
-        }, {
-            name: 'achievements_compound'
-        });
-        
-        // Arcade scores indexes
-        await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
-        await this.db.collection('arcadechallenge').createIndex({
-            'games.scores.username': 1,
-            'games.scores.score': -1
-        }, {
-            name: 'arcade_scores_compound'
-        });
-
-        // Reviews indexes
-        await this.db.collection('reviews').createIndex({ _id: 1 });
-        await this.db.collection('reviews').createIndex({
-            'games.reviews.username': 1,
-            'games.reviews.date': -1
-        }, {
-            name: 'reviews_compound'
-        });
-
-        // Nominations indexes
-        await this.db.collection('nominations').createIndex({ _id: 1 });
-        await this.db.collection('nominations').createIndex({
-            'nominations.period': 1,
-            'nominations.discordId': 1
-        }, {
-            name: 'nominations_compound'
-        });
-
-        // Shadow Game index
-        await this.db.collection('shadowgame').createIndex({ _id: 1 });
-
-        // Records and stats indexes
-        await this.db.collection('records').createIndex({ _id: 1 });
-        await this.db.collection('records').createIndex({
-            'monthlyRecords.date': -1,
-            'yearlyRecords.year': -1
-        }, {
-            name: 'records_compound'
-        });
-
-        // Configuration index
-        await this.db.collection('config').createIndex({ _id: 1 });
-
-        console.log('[DATABASE] Indexes created successfully');
-        return true;
-    } catch (error) {
-        console.error('[DATABASE] Error creating indexes:', error);
-        throw error;
     }
-}
-    
+
+    async createIndexes() {
+        try {
+            console.log('[DATABASE] Creating indexes...');
+            
+            // Core collections
+            await this.db.collection('userstats').createIndex({ _id: 1 });
+            await this.db.collection('users').createIndex({ username: 1 }, { 
+                unique: true,
+                name: 'username_unique' 
+            });
+            
+            // Challenge related indexes
+            await this.db.collection('challenges').createIndex({ _id: 1 });
+            await this.db.collection('challenges').createIndex({ 'games.date': -1 }, {
+                name: 'games_date_desc'
+            });
+            
+            // Points and achievements indexes
+            await this.db.collection('bonusPoints').createIndex({ 
+                username: 1,
+                year: 1,
+                technicalKey: 1 
+            }, { 
+                unique: true,
+                name: 'bonus_points_compound'
+            });
+            
+            await this.db.collection('achievements').createIndex({ 
+                _id: 1,
+                'data.username': 1,
+                'data.timestamp': -1 
+            }, {
+                name: 'achievements_compound'
+            });
+            
+            // Arcade scores indexes
+            await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
+            await this.db.collection('arcadechallenge').createIndex({
+                'games.scores.username': 1,
+                'games.scores.score': -1
+            }, {
+                name: 'arcade_scores_compound'
+            });
+
+            // Reviews indexes
+            await this.db.collection('reviews').createIndex({ _id: 1 });
+            await this.db.collection('reviews').createIndex({
+                'games.reviews.username': 1,
+                'games.reviews.date': -1
+            }, {
+                name: 'reviews_compound'
+            });
+
+            // Nominations indexes
+            await this.db.collection('nominations').createIndex({ _id: 1 });
+            await this.db.collection('nominations').createIndex({
+                'nominations.period': 1,
+                'nominations.discordId': 1
+            }, {
+                name: 'nominations_compound'
+            });
+
+            // Shadow Game index
+            await this.db.collection('shadowgame').createIndex({ _id: 1 });
+
+            // Records and stats indexes
+            await this.db.collection('records').createIndex({ _id: 1 });
+            await this.db.collection('records').createIndex({
+                'monthlyRecords.date': -1,
+                'yearlyRecords.year': -1
+            }, {
+                name: 'records_compound'
+            });
+
+            // Configuration index
+            await this.db.collection('config').createIndex({ _id: 1 });
+
+            console.log('[DATABASE] Indexes created successfully');
+            return true;
+        } catch (error) {
+            console.error('[DATABASE] Error creating indexes:', error);
+            throw error;
+        }
+    }
+
     // ==================
     // Challenge Methods
     // ==================
