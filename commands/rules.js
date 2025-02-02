@@ -117,7 +117,7 @@ async displayShadowChallenge(message, shadowGame) {
             embed.addTerminalField('STATUS', 'No active shadow game available.');
         } else if (shadowConfig.triforceState?.power?.collected) {
             embed.addTerminalField('CURRENT CHALLENGE',
-                `GAME: ${shadowConfig.finalReward.gameName} (${shadowConfig.finalReward.platform})\n` +
+                `GAME: ${shadowConfig.finalReward.gameName} (SNES)\n` +
                 '\nREWARDS:\n' +
                 `• Mark of Participation: ${shadowConfig.finalReward.points.participation} sacred point\n` +
                 `• Mark of Completion: ${shadowConfig.finalReward.points.beaten} sacred points\n\n` +
