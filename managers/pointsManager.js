@@ -29,7 +29,7 @@ class PointsManager {
         console.log('[POINTS MANAGER] Services updated');
     }
 
-   async getUserPoints(username, year = null) {
+  async getUserPoints(username, year = null) {
     try {
         const targetYear = year || new Date().getFullYear().toString();
         const cleanUsername = username.toLowerCase().trim();
@@ -51,6 +51,7 @@ class PointsManager {
                 }
             });
 
+        console.log(`[POINTS] Existing points for ${username} in ${targetYear}:`, Array.from(uniquePoints.values()));
         return Array.from(uniquePoints.values())
             .sort((a, b) => new Date(b.date) - new Date(a.date));
     } catch (error) {
