@@ -118,20 +118,7 @@ async createIndexes() {
     // ==================
     // Challenge Methods
     // ==================
-    async saveChallenge(data, type = 'current') {
-        try {
-            const collection = await this.getCollection('challenges');
-            await collection.updateOne(
-                { _id: type },
-                { $set: data },
-                { upsert: true }
-            );
-            return true;
-        } catch (error) {
-            ErrorHandler.logError(error, 'Save Challenge');
-            throw error;
-        }
-    }
+
 
     async getCurrentChallenge() {
         const collection = await this.getCollection('challenges');
@@ -913,36 +900,6 @@ async saveCurrentChallenge(data) {
             throw error;
         }
     }
-    async saveGameHistory(history) {
-    try {
-        const collection = await this.getCollection('challenges');
-        await collection.updateOne(
-            { _id: 'history' },
-            { $set: { games: history } },
-            { upsert: true }
-        );
-        return true;
-    } catch (error) {
-        console.error('Error saving game history:', error);
-        throw error;
-    }
-}
-
-async addGameToHistory(gameData) {
-    try {
-        const collection = await this.getCollection('challenges');
-        await collection.updateOne(
-            { _id: 'history' },
-            { $push: { games: gameData } },
-            { upsert: true }
-        );
-        return true;
-    } catch (error) {
-        console.error('Error adding game to history:', error);
-        throw error;
-    }
-}
-
     // ===================
     // Configuration Methods
     // ===================
