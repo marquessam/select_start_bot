@@ -13,9 +13,7 @@ module.exports = {
                 '!rules - View all rules and information\n' +
                 '!profile <user> - View user stats and progress\n' +
                 '!leaderboard - View current rankings\n' +
-                '!viewarchive <month> - View historical rankings\n' +
-                //TRIFORCE SHADOWGAME
-                '!triforce - \x1b[33mCheck the Sacred Realm...'  // Hidden in plain sight
+                '!viewarchive <month> - View historical rankings'
             )
             .addTerminalField('ARCADE & REVIEWS', 
                 '!arcade - View arcade games and scores\n' +
@@ -27,9 +25,6 @@ module.exports = {
                 '!nominations view - View current nominations\n' +
                 '!nominations add <platform> <game> - Submit nomination\n' +
                 '!search <game> - Search for game information'
-            )
-            .addTerminalField('SACRED KNOWLEDGE',
-                 '[C1B5NM]'
             )
             .addTerminalField('NOTES',
                 '- All commands must be used in #bot-terminal\n' +
