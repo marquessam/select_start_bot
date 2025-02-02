@@ -1,4 +1,4 @@
-// commands/challenge.js
+    // commands/challenge.js
 const TerminalEmbed = require('../utils/embedBuilder');
 const database = require('../database');
 
@@ -34,23 +34,23 @@ module.exports = {
             }
 
             // Enhanced shadow game display
-            if (shadowGameData && shadowGameData.triforceState?.power?.collected) {
-                // Shadow game is unlocked - show parallel challenge
-                embed.addTerminalField('SHADOW CHALLENGE UNLOCKED',
-                    `GAME: U.N. Squadron\n\n` +
-                    `REWARDS:\n` +
-                    `Mark of Participation: 1 sacred point\n` +
-                    `Mark of Completion: 3 sacred points\n\n` +
-                    `This challenge runs parallel to your current quest.`
-                );
-            } else if (!shadowGameData || !shadowGameData.active) {
-                // No shadow game active
-                embed.addTerminalField('THE SACRED REALM', 
-                    '```ansi\n\x1b[33m' +
-                    'An ancient power stirs in the shadows...\n' +
-                    'But its presence remains hidden.\n' +
-                    '\x1b[0m```');
-            } else if (shadowGameData.triforceState) {
+        if (shadowGameData && shadowGameData.triforceState?.power?.collected) {
+            // Shadow game is unlocked - show parallel challenge
+            embed.addTerminalField('SHADOW CHALLENGE UNLOCKED',
+                `GAME: ${shadowGameData.finalReward.gameName} (${shadowGameData.finalReward.platform})\n\n` +
+                `REWARDS:\n` +
+                `Mark of Participation: 1 sacred point\n` +
+                `Mark of Completion: 3 sacred points\n\n` +
+                `This challenge runs parallel to your current quest.`
+            );
+        } else if (!shadowGameData || !shadowGameData.active) {
+            // No shadow game active
+            embed.addTerminalField('THE SACRED REALM', 
+                '```ansi\n\x1b[33m' +
+                'An ancient power stirs in the shadows...\n' +
+                'But its presence remains hidden.\n' +
+                '\x1b[0m```');
+        } else if (shadowGameData.triforceState) {
                 // Triforce hunt active
                 const wisdom = shadowGameData.triforceState.wisdom;
                 const courage = shadowGameData.triforceState.courage;
