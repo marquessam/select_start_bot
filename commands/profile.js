@@ -145,7 +145,6 @@ function calculateRank(username, leaderboard, rankMetric) {
 }
 
 async function formatPointsBreakdown(points) {
-    // Create sections for different point types
     const sections = {
         monthlyChallenge: '',
         shadowGame: '',
@@ -153,7 +152,7 @@ async function formatPointsBreakdown(points) {
         other: ''
     };
 
-    // Sort points by date (newest first) to show most recent first
+    // Sort points by date (newest first)
     const sortedPoints = [...points].sort((a, b) => 
         new Date(b.date) - new Date(a.date)
     );
@@ -162,9 +161,10 @@ async function formatPointsBreakdown(points) {
     for (const point of sortedPoints) {
         const entry = `• ${point.reason} (${point.points > 0 ? '+' : ''}${point.points})\n`;
         
-        if (point.reason.includes('Monthly Challenge') || point.reason.includes('ALTTP') || point.reason.includes('Chrono Trigger')) {
+        // Properly categorize each point type
+        if (point.gameId === "355" || point.gameId === "319") { // ALTTP or Chrono Trigger
             sections.monthlyChallenge += entry;
-        } else if (point.reason.includes('Shadow Game') || point.reason.includes('U.N. Squadron')) {
+        } else if (point.gameId === "10024" || point.gameId === "274") { // Mario Tennis or UN Squadron
             sections.shadowGame += entry;
         } else if (point.reason.includes('Arcade') || point.reason.includes('High Score')) {
             sections.arcade += entry;
