@@ -116,66 +116,52 @@ module.exports = {
             console.error('[PROFILE] Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
         }
+       },
+
+    calculateRank(username, leaderboard, rankMetric) {
+        const user = leaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
+        if (!user || rankMetric(user) === 0) return 'No Rank';
+
+        const sortedLeaderboard = leaderboard
+            .filter(u => rankMetric(u) > 0)
+            .sort((a, b) => rankMetric(b) - rankMetric(a));
+
+        let rank = 1, previousValue = null;
+        for (let i = 0; i < sortedLeaderboard.length; i++) {
+            const currentValue = rankMetric(sortedLeaderboard[i]);
+            if (currentValue !== previousValue) {
+                rank = i + 1;
+                previousValue = currentValue;
+            }
+            if (sortedLeaderboard[i].username.toLowerCase() === username.toLowerCase()) {
+                return `#${rank}`;
+            }
+        }
+        return 'No Rank';
     },
-    
-function calculateRank(username, leaderboard, rankMetric) {
-    const user = leaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
-    if (!user || rankMetric(user) === 0) return 'No Rank';
 
-    const sortedLeaderboard = leaderboard
-        .filter(u => rankMetric(u) > 0)
-        .sort((a, b) => rankMetric(b) - rankMetric(a));
+    async formatPointsBreakdown(points) {
+        const categories = {
+            'Participations': [],
+            'Games Beaten': [],
+            'Games Mastered': []
+        };
 
-    let rank = 1, previousValue = null;
-    for (let i = 0; i < sortedLeaderboard.length; i++) {
-        const currentValue = rankMetric(sortedLeaderboard[i]);
-        if (currentValue !== previousValue) {
-            rank = i + 1;
-            previousValue = currentValue;
+        // Process each point entry
+        for (const point of points) {
+            const gameName = point.reason.split('-')[0].trim();
+
+            if (point.reason.toLowerCase().includes('participation')) {
+                categories['Participations'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
+            } else if (point.reason.toLowerCase().includes('beaten')) {
+                categories['Games Beaten'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
+            } else if (point.reason.toLowerCase().includes('mastery')) {
+                categories['Games Mastered'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
+            }
         }
-        if (sortedLeaderboard[i].username.toLowerCase() === username.toLowerCase()) {
-            return `#${rank}`;
-        }
+        return categories;
     }
-    return 'No Rank';
-}
-
-async function formatPointsBreakdown(points) {
-    const categories = {
-        'Participations': [],
-        'Games Beaten': [],
-        'Games Mastered': []
-    };
-
-    // Sort points by date (newest first)
-    const sortedPoints = [...points].sort((a, b) => 
-        new Date(b.date) - new Date(a.date)
-    );
-
-    // Process each point entry
-    for (const point of sortedPoints) {
-        const gameName = point.reason.split('-')[0].trim(); // Extract game name
-
-        if (point.reason.toLowerCase().includes('participation')) {
-            categories['Participations'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
-        } else if (point.reason.toLowerCase().includes('beaten')) {
-            categories['Games Beaten'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
-        } else if (point.reason.toLowerCase().includes('mastery')) {
-            categories['Games Mastered'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
-        }
-    }
-
-    // Generate formatted text output
-    let breakdown = '';
-    for (const [category, entries] of Object.entries(categories)) {
-        if (entries.length > 0) {
-            breakdown += `**${category}**\n${entries.join('\n')}\n\n`;
-        }
-    }
-
-    return breakdown.trim() || 'No points recorded.';
-}
-
+};
 
 function calculateYearlyStats(points, userStats) {
     const currentYear = new Date().getFullYear().toString();
