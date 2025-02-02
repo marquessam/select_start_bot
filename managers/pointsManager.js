@@ -59,142 +59,146 @@ class PointsManager {
     }
 }
 
-    async awardPoints(username, points, reason, gameId = null) {
-        const operationId = `points-${username}-${Date.now()}`;
-        this._activeOperations.set(operationId, true);
+   async awardPoints(username, points, reason, gameId = null) {
+    const operationId = `points-${username}-${Date.now()}`;
+    this._activeOperations.set(operationId, true);
 
-        try {
-            const cleanUsername = username.toLowerCase().trim();
-            const year = new Date().getFullYear().toString();
-            const technicalKey = gameId ? `${reason.key || 'bonus'}-${gameId}` : reason.key || reason;
+    try {
+        const cleanUsername = username.toLowerCase().trim();
+        const year = new Date().getFullYear().toString();
 
-            // Check if this point type already exists for this year
-            const existingPoints = await this.getUserPoints(cleanUsername, year);
-            const hasExistingPoints = existingPoints.some(p => p.technicalKey === technicalKey);
+        // Construct technicalKey consistently
+        const technicalKey = gameId ? `${reason.key || reason}-${gameId}` : reason.key || reason;
 
-            if (hasExistingPoints) {
-                console.log(`[POINTS] Points of type ${technicalKey} already awarded to ${username} for ${year}`);
-                return false;
-            }
+        console.log(`[POINTS] Awarding points to ${username} with technicalKey: ${technicalKey}`);
 
-            const pointRecord = {
-                points,
-                reason: reason.display || reason,
-                internalReason: reason.internal || reason,
-                technicalKey,
-                year,
-                date: new Date().toISOString()
-            };
+        // Check if this point type already exists for this year
+        const existingPoints = await this.getUserPoints(cleanUsername, year);
+        const hasExistingPoints = existingPoints.some(p => p.technicalKey === technicalKey);
 
-            const success = await withTransaction(this.database, async (session) => {
-                return await this.database.addUserBonusPoints(cleanUsername, pointRecord);
-            });
-
-            if (success) {
-                console.log(`[POINTS] Successfully awarded points to ${username}`);
-
-                // Announce points if achievement feed exists
-                if (this.services?.achievementFeed) {
-                    await this.services.achievementFeed.announcePointsAward(
-                        username, 
-                        points, 
-                        pointRecord.reason
-                    );
-                }
-            }
-
-            return success;
-        } catch (error) {
-            console.error(`[POINTS] Error awarding points to ${username}:`, error);
+        if (hasExistingPoints) {
+            console.log(`[POINTS] Points of type ${technicalKey} already awarded to ${username} for ${year}`);
             return false;
-        } finally {
-            this._activeOperations.delete(operationId);
         }
+
+        const pointRecord = {
+            points,
+            reason: reason.display || reason,
+            internalReason: reason.internal || reason,
+            technicalKey,
+            year,
+            date: new Date().toISOString()
+        };
+
+        const success = await withTransaction(this.database, async (session) => {
+            return await this.database.addUserBonusPoints(cleanUsername, pointRecord);
+        });
+
+        if (success) {
+            console.log(`[POINTS] Successfully awarded points to ${username}`);
+
+            // Announce points if achievement feed exists
+            if (this.services?.achievementFeed) {
+                await this.services.achievementFeed.announcePointsAward(
+                    username, 
+                    points, 
+                    pointRecord.reason
+                );
+            }
+        }
+
+        return success;
+    } catch (error) {
+        console.error(`[POINTS] Error awarding points to ${username}:`, error);
+        return false;
+    } finally {
+        this._activeOperations.delete(operationId);
     }
+}
 
-    async recheckHistoricalPoints(username, achievements, gameId) {
-        try {
-            const gameConfig = this.gameConfig[gameId];
-            if (!gameConfig) return [];
+async recheckHistoricalPoints(username, achievements, gameId) {
+    try {
+        const gameConfig = this.gameConfig[gameId];
+        if (!gameConfig) return [];
 
-            const year = new Date().getFullYear().toString();
-            const points = [];
-            const gameAchievements = achievements.filter(a => String(a.GameID) === String(gameId));
+        const year = new Date().getFullYear().toString();
+        const points = [];
+        const gameAchievements = achievements.filter(a => String(a.GameID) === String(gameId));
 
-            // Check mastery (available all year)
-            if (gameConfig.points?.mastery && gameConfig.masteryCheck) {
-                const hasMastery = await this.checkGameMastery(gameAchievements);
-                if (hasMastery) {
+        // Check mastery (available all year)
+        if (gameConfig.points?.mastery && gameConfig.masteryCheck) {
+            const hasMastery = await this.checkGameMastery(gameAchievements);
+            if (hasMastery) {
+                points.push({
+                    type: 'mastery',
+                    points: gameConfig.points.mastery,
+                    reason: {
+                        display: `${gameConfig.name} - Mastery`,
+                        internal: `${gameConfig.name} - Mastery (mastery-${gameId})`,
+                        key: `mastery-${gameId}` // Ensure key is set
+                    }
+                });
+            }
+        }
+
+        // Check monthly-only points if in correct month or historical
+        if (gameConfig.points) {
+            // Check participation
+            if (gameConfig.points.participation) {
+                const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
+                if (hasParticipation) {
                     points.push({
-                        type: 'mastery',
-                        points: gameConfig.points.mastery,
-                        reason: this.createPointReason(
-                            gameConfig.name,
-                            'Mastery',
-                            `mastery-${gameId}`
-                        )
+                        type: 'participation',
+                        points: gameConfig.points.participation,
+                        reason: {
+                            display: `${gameConfig.name} - Participation`,
+                            internal: `${gameConfig.name} - Participation (participation-${gameId})`,
+                            key: `participation-${gameId}` // Ensure key is set
+                        }
                     });
                 }
             }
 
-            // Check monthly-only points if in correct month or historical
-            if (gameConfig.points) {
-                // Check participation
-                if (gameConfig.points.participation) {
-                    const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
-                    if (hasParticipation) {
-                        points.push({
-                            type: 'participation',
-                            points: gameConfig.points.participation,
-                            reason: this.createPointReason(
-                                gameConfig.name,
-                                'Participation',
-                                `participation-${gameId}`
-                            )
-                        });
-                    }
-                }
-
-                // Check beaten
-                if (gameConfig.points.beaten) {
-                    const hasBeaten = await this.checkGameBeaten(gameAchievements, gameConfig);
-                    if (hasBeaten) {
-                        points.push({
-                            type: 'beaten',
-                            points: gameConfig.points.beaten,
-                            reason: this.createPointReason(
-                                gameConfig.name,
-                                'Game Beaten',
-                                `beaten-${gameId}`
-                            )
-                        });
-                    }
+            // Check beaten
+            if (gameConfig.points.beaten) {
+                const hasBeaten = await this.checkGameBeaten(gameAchievements, gameConfig);
+                if (hasBeaten) {
+                    points.push({
+                        type: 'beaten',
+                        points: gameConfig.points.beaten,
+                        reason: {
+                            display: `${gameConfig.name} - Game Beaten`,
+                            internal: `${gameConfig.name} - Game Beaten (beaten-${gameId})`,
+                            key: `beaten-${gameId}` // Ensure key is set
+                        }
+                    });
                 }
             }
-
-            // Award any missing points
-            for (const point of points) {
-                const existingPoints = await this.getUserPoints(username, year);
-                const hasExistingPoints = existingPoints.some(p => 
-                    p.technicalKey === point.reason.key
-                );
-
-                if (!hasExistingPoints) {
-                    await this.awardPoints(
-                        username,
-                        point.points,
-                        point.reason,
-                        gameId
-                    );
-                }
-            }
-
-            return points;
-        } catch (error) {
-            console.error('[POINTS] Error checking historical points:', error);
-            return [];
         }
+
+        // Award any missing points
+        for (const point of points) {
+            const existingPoints = await this.getUserPoints(username, year);
+            const hasExistingPoints = existingPoints.some(p => 
+                p.technicalKey === point.reason.key
+            );
+
+            if (!hasExistingPoints) {
+                await this.awardPoints(
+                    username,
+                    point.points,
+                    point.reason,
+                    gameId
+                );
+            }
+        }
+
+        return points;
+    } catch (error) {
+        console.error('[POINTS] Error checking historical points:', error);
+        return [];
     }
+}
 
     async cleanupDuplicatePoints() {
         try {
