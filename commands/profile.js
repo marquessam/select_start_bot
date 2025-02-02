@@ -1,5 +1,6 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
+const raAPI = require('./raAPI'); // Import raAPI for fetching profile image
 
 module.exports = {
     name: 'profile',
@@ -29,16 +30,16 @@ module.exports = {
                 currentChallenge,
                 yearlyLeaderboard,
                 monthlyLeaderboard,
-                raProfileImage,
-                yearlyPoints
+                yearlyPoints,
+                raProfile // Fetch RA profile image
             ] = await Promise.all([
                 DataService.getUserStats(username),
                 DataService.getUserProgress(username),
                 DataService.getCurrentChallenge(),
                 DataService.getLeaderboard('yearly'),
                 DataService.getLeaderboard('monthly'),
-                DataService.getRAProfileImage(username),
-                pointsManager.getUserPoints(username, new Date().getFullYear().toString())
+                pointsManager.getUserPoints(username, new Date().getFullYear().toString()),
+                raAPI.fetchUserProfile(username) // Fetch RA profile image
             ]);
 
             const currentYear = new Date().getFullYear().toString();
@@ -100,8 +101,8 @@ module.exports = {
             embed.addTerminalField('TOTAL POINTS', `${totalYearlyPoints} points`);
 
             // Add profile image if available
-            if (raProfileImage) {
-                embed.setThumbnail(raProfileImage);
+            if (raProfile?.profileImage) {
+                embed.setThumbnail(raProfile.profileImage);
             }
 
             embed.setTerminalFooter();
@@ -148,7 +149,12 @@ module.exports = {
 
         // Process each point entry
         for (const point of points) {
-            const gameName = point.reason.split('-')[0].trim();
+            let gameName = point.reason.split('-')[0].trim();
+
+            // Shorten "The Legend of Zelda: A Link to the Past" to "Zelda: A Link to the Past"
+            if (gameName === "The Legend of Zelda: A Link to the Past") {
+                gameName = "Zelda: A Link to the Past";
+            }
 
             if (point.reason.toLowerCase().includes('participation')) {
                 categories['Participations'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
