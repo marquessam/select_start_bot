@@ -1,4 +1,3 @@
-// profile.js
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
 
@@ -46,14 +45,14 @@ module.exports = {
             const totalYearlyPoints = yearlyPoints.reduce((sum, bp) => sum + bp.points, 0);
 
             // Calculate user rankings
-            const yearlyRank = module.exports.calculateRank(username, yearlyLeaderboard, u => u.points);
-            const monthlyRank = module.exports.calculateRank(username, monthlyLeaderboard, u => parseFloat(u.completionPercentage));
+            const yearlyRank = this.calculateRank(username, yearlyLeaderboard, u => u.points);
+            const monthlyRank = this.calculateRank(username, monthlyLeaderboard, u => parseFloat(u.completionPercentage));
 
             // Prepare points breakdown
-            const pointsBreakdown = await module.exports.formatPointsBreakdown(yearlyPoints);
+            const pointsBreakdown = await this.formatPointsBreakdown(yearlyPoints);
 
             // Generate yearly statistics
-            const yearlyStats = module.exports.calculateYearlyStats(yearlyPoints, userStatsData);
+            const yearlyStats = this.calculateYearlyStats(yearlyPoints, userStatsData);
 
             // Create embed
             const embed = new TerminalEmbed()
@@ -116,7 +115,7 @@ module.exports = {
             console.error('[PROFILE] Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
         }
-       },
+    },
 
     calculateRank(username, leaderboard, rankMetric) {
         const user = leaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
@@ -160,41 +159,39 @@ module.exports = {
             }
         }
         return categories;
+    },
+
+    calculateYearlyStats(points, userStats) {
+        const currentYear = new Date().getFullYear().toString();
+        const yearStats = {
+            participations: 0,
+            gamesBeaten: 0,
+            gamesMastered: 0,
+            achievementsUnlocked: userStats?.yearlyStats?.[currentYear]?.totalAchievementsUnlocked || 0
+        };
+
+        // Create a Set to track unique games
+        const uniqueGames = new Set();
+
+        // Process each point entry
+        for (const point of points) {
+            const reasonLower = point.reason.toLowerCase();
+            
+            // Extract game name from reason (assuming format "Game Name - Action")
+            const gameName = point.reason.split('-')[0].trim();
+            
+            if (reasonLower.includes('participation')) {
+                uniqueGames.add(gameName);
+                yearStats.participations++;
+            }
+            if (reasonLower.includes('beaten') || reasonLower.includes('completion')) {
+                yearStats.gamesBeaten++;
+            }
+            if (reasonLower.includes('mastery')) {
+                yearStats.gamesMastered++;
+            }
+        }
+
+        return yearStats;
     }
-},
-
-function calculateYearlyStats(points, userStats) {
-    const currentYear = new Date().getFullYear().toString();
-    const yearStats = {
-        participations: 0,
-        gamesBeaten: 0,
-        gamesMastered: 0,
-        achievementsUnlocked: userStats?.yearlyStats?.[currentYear]?.totalAchievementsUnlocked || 0
-    };
-
-    // Create a Set to track unique games
-    const uniqueGames = new Set();
-
-    // Process each point entry
-    for (const point of points) {
-        const reasonLower = point.reason.toLowerCase();
-        
-        // Extract game name from reason (assuming format "Game Name - Action")
-        const gameName = point.reason.split('-')[0].trim();
-        
-        if (reasonLower.includes('participation')) {
-            uniqueGames.add(gameName);
-            yearStats.participations++;
-        }
-        if (reasonLower.includes('beaten') || reasonLower.includes('completion')) {
-            yearStats.gamesBeaten++;
-        }
-        if (reasonLower.includes('mastery')) {
-            yearStats.gamesMastered++;
-        }
-    }
-
-    return yearStats;
-}
-
-module.exports = module.exports;
+};
