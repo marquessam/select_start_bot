@@ -116,7 +116,7 @@ module.exports = {
         console.error('[PROFILE] Error:', error);
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
     }
-}
+},
 
 
 function calculateRank(username, leaderboard, rankMetric) {
