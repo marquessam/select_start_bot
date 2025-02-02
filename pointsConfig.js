@@ -2,9 +2,17 @@ const database = require('./database');
 
 const pointsConfig = {
     monthlyGames: {
-        "319": {  // Chrono Trigger
+         "319": {
             name: "Chrono Trigger",
-            points: { mastery: 3 },
+            points: {
+                participation: 1,
+                beaten: 3,
+                mastery: 3
+            },
+            progression: [2080, 2081, 2085, 2090, 2191, 2100, 2108, 2129, 2133],
+            winCondition: [2266, 2281],
+            requireProgression: true,
+            requireAllWinConditions: false,
             masteryCheck: true
         },
         "355": {  // ALTTP
@@ -17,12 +25,17 @@ const pointsConfig = {
             requireAllWinConditions: true,
             masteryCheck: true
         },
-        "10024": {  // Mario Tennis
-    name: "Mario Tennis",
-    shadowGame: true,
-    points: {
-        participation: 1,
-        beaten: 3
+          "10024": {
+            name: "Mario Tennis",
+            points: {
+                participation: 1,
+                beaten: 3
+            },
+            winCondition: [48411, 48412],
+            requireProgression: false,
+            requireAllWinConditions: false,
+            masteryCheck: false
+        }
     },
     winCondition: [48411, 48412],
     requireAllWinConditions: false,
