@@ -30,49 +30,79 @@ module.exports = {
                 currentChallenge,
                 yearlyLeaderboard,
                 monthlyLeaderboard,
-                raProfileImage
+                raProfileImage,
+                yearlyPoints
             ] = await Promise.all([
                 DataService.getUserStats(username),
                 DataService.getUserProgress(username),
                 DataService.getCurrentChallenge(),
                 DataService.getLeaderboard('yearly'),
                 DataService.getLeaderboard('monthly'),
-                DataService.getRAProfileImage(username)
+                DataService.getRAProfileImage(username),
+                pointsManager.getUserPoints(username, new Date().getFullYear().toString())
             ]);
 
             const currentYear = new Date().getFullYear().toString();
-
-            // Get user points for the year
-            const yearlyPoints = await pointsManager.getUserPoints(username, currentYear);
             const totalYearlyPoints = yearlyPoints.reduce((sum, bp) => sum + bp.points, 0);
 
-            // Calculate user rankings efficiently
+            // Calculate user rankings
             const yearlyRank = calculateRank(username, yearlyLeaderboard, u => u.points);
             const monthlyRank = calculateRank(username, monthlyLeaderboard, u => parseFloat(u.completionPercentage));
+
+            // Prepare points breakdown
+            const pointsBreakdown = await formatPointsBreakdown(yearlyPoints);
 
             // Generate yearly statistics
             const yearlyStats = calculateYearlyStats(yearlyPoints, userStatsData);
 
-            // Prepare embed message
+            // Create embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username.toUpperCase()}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
                 .addTerminalField('CURRENT CHALLENGE PROGRESS',
                     `GAME: ${currentChallenge?.gameName || 'N/A'}\n` +
                     `PROGRESS: ${userProgress?.completionPercentage || 0}%\n` +
-                    `ACHIEVEMENTS: ${userProgress?.completedAchievements || 0}/${userProgress?.totalAchievements || 0}`)
-                .addTerminalField('RANKINGS',
-                    `MONTHLY RANK: ${monthlyRank}\n` +
-                    `YEARLY RANK: ${yearlyRank}`)
-                .addTerminalField('SACRED SCROLL',
-                    `\x1b[33m[W1X4BY] Ancient writing appears here...\x1b[0m`)
-                .addTerminalField(`${currentYear} STATISTICS`,
-                    `ACHIEVEMENTS EARNED: ${yearlyStats.achievementsUnlocked}\n` +
-                    `GAMES PARTICIPATED: ${yearlyStats.participations}\n` +
-                    `GAMES BEATEN: ${yearlyStats.gamesBeaten}\n` +
-                    `GAMES MASTERED: ${yearlyStats.gamesMastered}`)
-                .addTerminalField('POINT TOTAL', `${totalYearlyPoints} points`);
+                    `ACHIEVEMENTS: ${userProgress?.completedAchievements || 0}/${userProgress?.totalAchievements || 0}\n` +
+                    (userProgress?.hasBeatenGame ? '✅ Game Completed' : '⏳ In Progress')
+                );
 
+            // Add rankings with medals if applicable
+            const medals = { '1': '🥇', '2': '🥈', '3': '🥉' };
+            const monthlyRankDisplay = monthlyRank.startsWith('#') ? 
+                `${medals[monthlyRank.slice(1)] || ''} ${monthlyRank}` : monthlyRank;
+            const yearlyRankDisplay = yearlyRank.startsWith('#') ? 
+                `${medals[yearlyRank.slice(1)] || ''} ${yearlyRank}` : yearlyRank;
+
+            embed.addTerminalField('RANKINGS',
+                `MONTHLY RANK: ${monthlyRankDisplay}\n` +
+                `YEARLY RANK: ${yearlyRankDisplay}\n` +
+                `TOTAL ${currentYear} POINTS: ${totalYearlyPoints}`
+            );
+
+            // Add yearly statistics
+            embed.addTerminalField(`${currentYear} STATISTICS`,
+                `ACHIEVEMENTS EARNED: ${yearlyStats.achievementsUnlocked}\n` +
+                `GAMES PARTICIPATED: ${yearlyStats.participations}\n` +
+                `GAMES BEATEN: ${yearlyStats.gamesBeaten}\n` +
+                `GAMES MASTERED: ${yearlyStats.gamesMastered}`
+            );
+
+            // Add points breakdown with sections
+            const breakdownSections = pointsBreakdown.sections;
+            if (breakdownSections.monthlyChallenge.length > 0) {
+                embed.addTerminalField('MONTHLY CHALLENGE POINTS', breakdownSections.monthlyChallenge);
+            }
+            if (breakdownSections.shadowGame.length > 0) {
+                embed.addTerminalField('SHADOW GAME POINTS', breakdownSections.shadowGame);
+            }
+            if (breakdownSections.arcade.length > 0) {
+                embed.addTerminalField('ARCADE POINTS', breakdownSections.arcade);
+            }
+            if (breakdownSections.other.length > 0) {
+                embed.addTerminalField('OTHER POINTS', breakdownSections.other);
+            }
+
+            // Add profile image if available
             if (raProfileImage) {
                 embed.setThumbnail(raProfileImage);
             }
@@ -92,7 +122,7 @@ module.exports = {
 };
 
 function calculateRank(username, leaderboard, rankMetric) {
-    const user = leaderboard.find(u => u.username.toLowerCase() === username);
+    const user = leaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
     if (!user || rankMetric(user) === 0) return 'No Rank';
 
     const sortedLeaderboard = leaderboard
@@ -106,31 +136,83 @@ function calculateRank(username, leaderboard, rankMetric) {
             rank = i + 1;
             previousValue = currentValue;
         }
-        if (sortedLeaderboard[i].username.toLowerCase() === username) {
+        if (sortedLeaderboard[i].username.toLowerCase() === username.toLowerCase()) {
             return `#${rank}`;
         }
     }
     return 'No Rank';
 }
 
-function calculateYearlyStats(points, userStats) {
-    const uniquePoints = new Map();
-
-    points.forEach(point => {
-        const key = point.internalReason || point.reason;
-        if (!uniquePoints.has(key) || new Date(point.date) > new Date(uniquePoints.get(key).date)) {
-            uniquePoints.set(key, point);
-        }
-    });
-
-    const uniquePointsArray = Array.from(uniquePoints.values());
-
-    return {
-        participations: uniquePointsArray.filter(p => p.reason.includes('Participation')).length,
-        gamesBeaten: uniquePointsArray.filter(p => p.reason.includes('Beaten')).length,
-        gamesMastered: uniquePointsArray.filter(p => p.reason.includes('Mastery')).length,
-        achievementsUnlocked: userStats?.yearlyStats?.[new Date().getFullYear()]?.totalAchievementsUnlocked || 0
+async function formatPointsBreakdown(points) {
+    // Create sections for different point types
+    const sections = {
+        monthlyChallenge: '',
+        shadowGame: '',
+        arcade: '',
+        other: ''
     };
+
+    // Sort points by date (newest first) to show most recent first
+    const sortedPoints = [...points].sort((a, b) => 
+        new Date(b.date) - new Date(a.date)
+    );
+
+    // Process each point entry
+    for (const point of sortedPoints) {
+        const entry = `• ${point.reason} (${point.points > 0 ? '+' : ''}${point.points})\n`;
+        
+        if (point.reason.includes('Monthly Challenge') || point.reason.includes('ALTTP') || point.reason.includes('Chrono Trigger')) {
+            sections.monthlyChallenge += entry;
+        } else if (point.reason.includes('Shadow Game') || point.reason.includes('U.N. Squadron')) {
+            sections.shadowGame += entry;
+        } else if (point.reason.includes('Arcade') || point.reason.includes('High Score')) {
+            sections.arcade += entry;
+        } else {
+            sections.other += entry;
+        }
+    }
+
+    // Clean up empty sections
+    if (!sections.monthlyChallenge) sections.monthlyChallenge = 'No monthly challenge points\n';
+    if (!sections.shadowGame) sections.shadowGame = 'No shadow game points\n';
+    if (!sections.arcade) sections.arcade = 'No arcade points\n';
+    if (!sections.other) sections.other = 'No other points\n';
+
+    return { sections };
+}
+
+function calculateYearlyStats(points, userStats) {
+    const currentYear = new Date().getFullYear().toString();
+    const yearStats = {
+        participations: 0,
+        gamesBeaten: 0,
+        gamesMastered: 0,
+        achievementsUnlocked: userStats?.yearlyStats?.[currentYear]?.totalAchievementsUnlocked || 0
+    };
+
+    // Create a Set to track unique games
+    const uniqueGames = new Set();
+
+    // Process each point entry
+    for (const point of points) {
+        const reasonLower = point.reason.toLowerCase();
+        
+        // Extract game name from reason (assuming format "Game Name - Action")
+        const gameName = point.reason.split('-')[0].trim();
+        
+        if (reasonLower.includes('participation')) {
+            uniqueGames.add(gameName);
+            yearStats.participations++;
+        }
+        if (reasonLower.includes('beaten') || reasonLower.includes('completion')) {
+            yearStats.gamesBeaten++;
+        }
+        if (reasonLower.includes('mastery')) {
+            yearStats.gamesMastered++;
+        }
+    }
+
+    return yearStats;
 }
 
 module.exports = module.exports;
