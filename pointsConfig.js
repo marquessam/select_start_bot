@@ -67,11 +67,13 @@ const pointChecks = {
         if (!gameConfig) return [];
 
         const gameAchievements = achievements.filter(a => String(a.GameID || a.gameId) === String(gameId));
-
         const pointsToAward = [];
 
-        // 🟢 Participation Check
-        if (gameConfig.points.participation && await canAwardPoints(username, gameId, 'participation')) {
+        // Participation Check - Now checks all games except Chrono Trigger mastery-only mode
+        if (gameConfig.points.participation && 
+            gameId !== "319" && // Skip participation for Chrono Trigger
+            await canAwardPoints(username, gameId, 'participation')) {
+            
             const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
 
             if (hasParticipation) {
@@ -84,6 +86,7 @@ const pointChecks = {
                 }
             }
         }
+
 
         // 🟢 Beaten Check
         if (gameConfig.points.beaten && await canAwardPoints(username, gameId, 'beaten')) {
