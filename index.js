@@ -54,8 +54,9 @@ async function createCoreServices() {
     try {
         console.log('Creating core services...');
         
+        // Create services
         const pointsManager = new PointsManager(database);
-        const userStats = new UserStats(database, pointsManager);
+        const userStats = new UserStats(database, { pointsManager });  // Pass pointsManager here
         const userTracker = new UserTracker(database, userStats);
         const leaderboardCache = createLeaderboardCache(database);
         const commandHandler = new CommandHandler();
@@ -63,12 +64,13 @@ async function createCoreServices() {
         const shadowGame = new ShadowGame();
         const achievementFeed = new AchievementFeed(client, database);
 
+        // Setup global references
         leaderboardCache.setUserStats(userStats);
         global.leaderboardCache = leaderboardCache;
         global.achievementFeed = achievementFeed;
 
-        console.log('Core services created successfully');
-        return {
+        // Create services object
+        const services = {
             pointsManager,
             userStats,
             userTracker,
@@ -79,12 +81,18 @@ async function createCoreServices() {
             achievementFeed,
             mobyAPI: MobyAPI
         };
+
+        // Pass services back to pointsManager and userStats
+        pointsManager.setServices(services);
+        userStats.setServices(services);
+
+        console.log('Core services created successfully');
+        return services;
     } catch (error) {
         console.error('Error creating core services:', error);
         throw error;
     }
 }
-
 async function initializeServices(coreServices) {
     try {
         console.log('Initializing services...');
