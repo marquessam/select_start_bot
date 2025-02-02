@@ -17,6 +17,18 @@ const pointsConfig = {
             requireAllWinConditions: true,
             masteryCheck: true
         },
+        "10024": {  // Mario Tennis
+    name: "Mario Tennis",
+    shadowGame: true,
+    points: {
+        participation: 1,
+        beaten: 3
+    },
+    winCondition: [48411, 48412],
+    requireAllWinConditions: false,
+    masteryCheck: false,
+    active: true
+},
         "274": {  // U.N. Squadron (Shadow Game)
             name: "U.N. Squadron",
             shadowGame: true,
