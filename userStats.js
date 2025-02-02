@@ -16,10 +16,11 @@ class UserStats {
                 monthlyStats: {},
                 gamesBeaten: {},
                 achievementStats: {}
-                
             },
             lastUpdate: null,
-            updateInterval: 5 * 60 * 1000 // 5 minutes
+            updateInterval: 5 * 60 * 1000, // 5 minutes
+            validUsers: new Set(),
+            pendingUpdates: new Set()
         };
 
         // Tracks the current year for user stats
@@ -64,8 +65,7 @@ class UserStats {
                     yearlyStats: dbStats.yearlyStats || {},
                     monthlyStats: dbStats.monthlyStats || {},
                     gamesBeaten: dbStats.gamesBeaten || dbStats.gameCompletions || {},
-                    achievementStats: dbStats.achievementStats || {},
-                    communityRecords: dbStats.communityRecords || {}
+                    achievementStats: dbStats.achievementStats || {}
                 };
 
                 const users = await userTracker.getValidUsers();
@@ -110,7 +110,9 @@ class UserStats {
                 console.log('[USER STATS] Saving stats...');
                 await this.database.saveUserStats(this.cache.stats);
                 this.cache.lastUpdate = Date.now();
-                this.cache.pendingUpdates.clear();
+                if (this.cache.pendingUpdates) {
+                    this.cache.pendingUpdates.clear();
+                }
                 console.log('[USER STATS] Stats saved successfully');
             } catch (error) {
                 ErrorHandler.logError(error, 'Saving Stats');
@@ -127,7 +129,7 @@ class UserStats {
     }
 
     async savePendingUpdates() {
-        if (this.cache.pendingUpdates.size > 0) {
+        if (this.cache.pendingUpdates && this.cache.pendingUpdates.size > 0) {
             await this.saveStats();
         }
     }
@@ -196,7 +198,9 @@ class UserStats {
                 dailyActivity: {}
             };
 
-            this.cache.pendingUpdates.add(cleanUsername);
+            if (this.cache.pendingUpdates) {
+                this.cache.pendingUpdates.add(cleanUsername);
+            }
 
             // Optionally update leaderboard after adding user
             if (global.leaderboardCache) {
@@ -220,7 +224,9 @@ class UserStats {
             if (this.cache.stats.users[cleanUsername]) {
                 delete this.cache.stats.users[cleanUsername];
                 this.cache.validUsers.delete(cleanUsername);
-                this.cache.pendingUpdates.add(cleanUsername);
+                if (this.cache.pendingUpdates) {
+                    this.cache.pendingUpdates.add(cleanUsername);
+                }
                 await this.saveStats();
             }
         } catch (error) {
