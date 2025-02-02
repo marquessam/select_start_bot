@@ -2,7 +2,7 @@ const database = require('./database');
 
 const pointsConfig = {
     monthlyGames: {
-         "319": {
+        "319": {
             name: "Chrono Trigger",
             points: {
                 participation: 1,
@@ -25,7 +25,7 @@ const pointsConfig = {
             requireAllWinConditions: true,
             masteryCheck: true
         },
-          "10024": {
+        "10024": {
             name: "Mario Tennis",
             points: {
                 participation: 1,
@@ -35,13 +35,7 @@ const pointsConfig = {
             requireProgression: false,
             requireAllWinConditions: false,
             masteryCheck: false
-        }
-    },
-    winCondition: [48411, 48412],
-    requireAllWinConditions: false,
-    masteryCheck: false,
-    active: true
-},
+        },
         "274": {  // U.N. Squadron (Shadow Game)
             name: "U.N. Squadron",
             shadowGame: true,
@@ -76,11 +70,11 @@ const pointChecks = {
 
         const pointsToAward = [];
 
-        // 🟢 Participation Check (If Not Chrono Trigger)
-        if (gameId !== "319" && gameConfig.points.participation) {
+        // 🟢 Participation Check
+        if (gameConfig.points.participation && await canAwardPoints(username, gameId, 'participation')) {
             const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
 
-            if (hasParticipation && await canAwardPoints(username, gameId, 'participation')) {
+            if (hasParticipation) {
                 const participationKey = `participation-${gameId}`;
                 const reason = createPointReason(gameConfig.name, "Participation", participationKey);
                 const bonusPoint = createBonusPointObject(username, gameId, gameConfig.points.participation, 'participation', reason);
@@ -91,19 +85,31 @@ const pointChecks = {
             }
         }
 
-        // 🟢 Beaten Check (If Not Chrono Trigger)
-        if (gameId !== "319" && gameConfig.points.beaten) {
-            let hasBeaten = gameConfig.requireProgression 
-                ? gameConfig.progression.every(achId => gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0))
-                : true;
+        // 🟢 Beaten Check
+        if (gameConfig.points.beaten && await canAwardPoints(username, gameId, 'beaten')) {
+            let hasBeaten = true;
 
-            if (hasBeaten && gameConfig.requireAllWinConditions) {
-                hasBeaten = gameConfig.winCondition.every(achId => gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0));
-            } else if (hasBeaten) {
-                hasBeaten = gameConfig.winCondition.some(achId => gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0));
+            // Check progression achievements if required
+            if (gameConfig.requireProgression) {
+                hasBeaten = gameConfig.progression.every(achId => 
+                    gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
+                );
             }
 
-            if (hasBeaten && await canAwardPoints(username, gameId, 'beaten')) {
+            // Check win conditions if required
+            if (hasBeaten && gameConfig.winCondition.length > 0) {
+                if (gameConfig.requireAllWinConditions) {
+                    hasBeaten = gameConfig.winCondition.every(achId => 
+                        gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
+                    );
+                } else {
+                    hasBeaten = gameConfig.winCondition.some(achId => 
+                        gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
+                    );
+                }
+            }
+
+            if (hasBeaten) {
                 const beatenKey = `beaten-${gameId}`;
                 const reason = createPointReason(gameConfig.name, "Game Beaten", beatenKey);
                 const bonusPoint = createBonusPointObject(username, gameId, gameConfig.points.beaten, 'beaten', reason);
