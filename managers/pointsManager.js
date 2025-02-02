@@ -29,34 +29,35 @@ class PointsManager {
         console.log('[POINTS MANAGER] Services updated');
     }
 
-    async getUserPoints(username, year = null) {
-        try {
-            const targetYear = year || new Date().getFullYear().toString();
-            const cleanUsername = username.toLowerCase().trim();
-            
-            const bonusPoints = await this.database.getUserBonusPoints(cleanUsername);
-            
-            // Use Map to ensure uniqueness by technicalKey
-            const uniquePoints = new Map();
-            
-            bonusPoints
-                .filter(point => point.year === targetYear)
-                .forEach(point => {
-                    const key = point.technicalKey || point.internalReason;
-                    // Only keep the newest point for each unique key
-                    if (!uniquePoints.has(key) || 
-                        new Date(point.date) > new Date(uniquePoints.get(key).date)) {
-                        uniquePoints.set(key, point);
-                    }
-                });
+   async getUserPoints(username, year = null) {
+    try {
+        const targetYear = year || new Date().getFullYear().toString();
+        const cleanUsername = username.toLowerCase().trim();
+        
+        const bonusPoints = await this.database.getUserBonusPoints(cleanUsername);
+        
+        // Use Map to ensure uniqueness by technicalKey AND gameId
+        const uniquePoints = new Map();
+        
+        bonusPoints
+            .filter(point => point.year === targetYear)
+            .forEach(point => {
+                const key = point.technicalKey || point.internalReason;
+                // Only keep the newest point for each unique key and gameId combination
+                const mapKey = `${key}-${point.gameId || 'nogame'}`;
+                if (!uniquePoints.has(mapKey) || 
+                    new Date(point.date) > new Date(uniquePoints.get(mapKey).date)) {
+                    uniquePoints.set(mapKey, point);
+                }
+            });
 
-            return Array.from(uniquePoints.values())
-                .sort((a, b) => new Date(b.date) - new Date(a.date));
-        } catch (error) {
-            console.error('[POINTS] Error getting user points:', error);
-            return [];
-        }
+        return Array.from(uniquePoints.values())
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+    } catch (error) {
+        console.error('[POINTS] Error getting user points:', error);
+        return [];
     }
+}
 
     async awardPoints(username, points, reason, gameId = null) {
         const operationId = `points-${username}-${Date.now()}`;
