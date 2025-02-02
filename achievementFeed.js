@@ -135,27 +135,40 @@ async sendAchievementNotification(channel, username, achievement) {
         const userIconUrl = await DataService.getRAProfileImage(username) || 
             `https://retroachievements.org/UserPic/${username}.png`;
 
-        // Special game handling
+        // Special game handling with proper game IDs
         let authorName = '';
         let authorIconUrl = '';
         let files = [];
         let color = '#00FF00';  // Default color
 
-        if (achievement.GameID === '274') { // Shadow Game
-            authorName = 'SHADOW GAME CHALLENGE';
-            files = [{ attachment: './assets/logo_simple.png', name: 'game_logo.png' }];
+        const gameId = String(achievement.GameID); // Ensure string comparison
+
+        // Add the logo file for special games
+        const logoFile = { 
+            attachment: './assets/logo_simple.png',
+            name: 'game_logo.png'
+        };
+
+        if (gameId === '274') { // Shadow Game - UN Squadron
+            authorName = 'SHADOW GAME 🌘';
+            files = [logoFile];
             authorIconUrl = 'attachment://game_logo.png';
-            color = '#FFD700';  // Gold color for shadow game
-        } else if (achievement.GameID === '355') { // Monthly Challenge
-            authorName = 'MONTHLY CHALLENGE';
-            files = [{ attachment: './assets/logo_simple.png', name: 'game_logo.png' }];
+            color = '#FFD700';  // Gold color
+        } else if (gameId === '355') { // Monthly Challenge - ALTTP
+            authorName = 'MONTHLY CHALLENGE 🏆';
+            files = [logoFile];
             authorIconUrl = 'attachment://game_logo.png';
-            color = '#00BFFF';  // Blue color for monthly challenge
+            color = '#00BFFF';  // Blue color
+        } else if (gameId === '319') { // Chrono Trigger
+            authorName = 'MONTHLY CHALLENGE 🏆';
+            files = [logoFile];
+            authorIconUrl = 'attachment://game_logo.png';
+            color = '#00BFFF';  // Blue color
         }
 
         const embed = new EmbedBuilder()
             .setColor(color)
-            .setTitle(`${achievement.GameTitle} 🏆`)
+            .setTitle(`${achievement.GameTitle}`)
             .setThumbnail(badgeUrl)
             .setDescription(
                 `**${username}** earned **${achievement.Title}**\n\n` +
@@ -180,7 +193,6 @@ async sendAchievementNotification(channel, username, achievement) {
         console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
     }
 }
-
     // ✅ Fix: Re-added `announcePointsAward` function
     async announcePointsAward(username, points, reason) {
         try {
