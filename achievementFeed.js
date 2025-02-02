@@ -14,6 +14,7 @@ class AchievementFeed {
         this.isInitializing = false;
         this.initializationComplete = false;
         this._processingAchievements = false;
+        this.isPaused = false;
     }
 
     startPeriodicCheck() {
@@ -194,42 +195,47 @@ async sendAchievementNotification(channel, username, achievement) {
     }
 }
     // ✅ Fix: Re-added `announcePointsAward` function
-    async announcePointsAward(username, points, reason) {
-        try {
-            if (!this.feedChannel) {
-                console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
-                return;
-            }
-
-            const awardKey = `${username}-${points}-${reason}-${Date.now()}`;
-            if (this.announcementHistory.has(awardKey)) {
-                console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${awardKey}`);
-                return;
-            }
-
-            this.announcementHistory.add(awardKey);
-
-            const userProfile = await DataService.getRAProfileImage(username);
-            
-            const embed = new EmbedBuilder()
-                .setColor('#FFD700')
-                .setAuthor({
-                    name: username,
-                    iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
-                    url: `https://retroachievements.org/user/${username}`
-                })
-                .setTitle('🏆 Points Awarded!')
-                .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
-                .setTimestamp();
-
-            await this.queueAnnouncement({ embeds: [embed] });
-
-            console.log(`[ACHIEVEMENT FEED] Queued points announcement for ${username}: ${points} points (${reason})`);
-        } catch (error) {
-            console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
-            this.announcementHistory.delete(awardKey);
+  async announcePointsAward(username, points, reason) {
+    try {
+        // Skip if feed is paused
+        if (this.isPaused) {
+            return;
         }
+
+        if (!this.feedChannel) {
+            console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
+            return;
+        }
+
+        const awardKey = `${username}-${points}-${reason}-${Date.now()}`;
+        if (this.announcementHistory.has(awardKey)) {
+            console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${awardKey}`);
+            return;
+        }
+
+        this.announcementHistory.add(awardKey);
+
+        const userProfile = await DataService.getRAProfileImage(username);
+        
+        const embed = new EmbedBuilder()
+            .setColor('#FFD700')
+            .setAuthor({
+                name: username,
+                iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
+                url: `https://retroachievements.org/user/${username}`
+            })
+            .setTitle('🏆 Points Awarded!')
+            .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
+            .setTimestamp();
+
+        await this.queueAnnouncement({ embeds: [embed] });
+
+        console.log(`[ACHIEVEMENT FEED] Queued points announcement for ${username}: ${points} points (${reason})`);
+    } catch (error) {
+        console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
+        this.announcementHistory.delete(awardKey);
     }
+}
 }
 
 module.exports = AchievementFeed;
