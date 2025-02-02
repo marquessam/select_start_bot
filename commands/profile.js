@@ -161,7 +161,7 @@ module.exports = {
         }
         return categories;
     }
-};
+},
 
 function calculateYearlyStats(points, userStats) {
     const currentYear = new Date().getFullYear().toString();
