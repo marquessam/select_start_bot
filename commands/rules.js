@@ -113,12 +113,11 @@ async displayShadowChallenge(message, shadowGame) {
                 '4. All members can then participate for additional points'
             );
 
-        // Show appropriate status based on game state
         if (!shadowConfig || !shadowConfig.active) {
             embed.addTerminalField('STATUS', 'No active shadow game available.');
         } else if (shadowConfig.triforceState?.power?.collected) {
             embed.addTerminalField('CURRENT CHALLENGE',
-                `GAME: ${shadowConfig.finalReward.gameName}\n` +
+                `GAME: ${shadowConfig.finalReward.gameName} (${shadowConfig.finalReward.platform})\n` +
                 '\nREWARDS:\n' +
                 `• Mark of Participation: ${shadowConfig.finalReward.points.participation} sacred point\n` +
                 `• Mark of Completion: ${shadowConfig.finalReward.points.beaten} sacred points\n\n` +
