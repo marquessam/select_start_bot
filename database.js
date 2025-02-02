@@ -84,33 +84,65 @@ class Database {
 
 async createIndexes() {
     try {
-        // Keep existing indexes
+        // Core collections
         await this.db.collection('userstats').createIndex({ _id: 1 });
+        await this.db.collection('users').createIndex({ username: 1 }, { unique: true });
+        
+        // Challenge related indexes
         await this.db.collection('challenges').createIndex({ _id: 1 });
-        await this.db.collection('records').createIndex({ _id: 1 });
+        await this.db.collection('challenges').createIndex({ 'games.date': -1 });
+        
+        // Points and achievements indexes
+        await this.db.collection('bonusPoints').createIndex({ 
+            username: 1,
+            year: 1,
+            technicalKey: 1 
+        }, { unique: true });
+        
+        await this.db.collection('achievements').createIndex({ 
+            _id: 1,
+            'data.username': 1,
+            'data.timestamp': -1 
+        });
+        
+        // Arcade scores indexes
         await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
+        await this.db.collection('arcadechallenge').createIndex({
+            'games.scores.username': 1,
+            'games.scores.score': -1
+        });
+
+        // Reviews indexes
         await this.db.collection('reviews').createIndex({ _id: 1 });
-        await this.db.collection('users').createIndex({ username: 1 });
-        await this.db.collection('achievements').createIndex({ _id: 1 });
+        await this.db.collection('reviews').createIndex({
+            'games.reviews.username': 1,
+            'games.reviews.date': -1
+        });
 
-        // Add new indexes for bonusPoints collection
-        await this.db.collection('bonusPoints').createIndex(
-            { 
-                username: 1,
-                year: 1,
-                internalReason: 1 
-            },
-            { unique: true }
-        );
+        // Nominations indexes
+        await this.db.collection('nominations').createIndex({ _id: 1 });
+        await this.db.collection('nominations').createIndex({
+            'nominations.period': 1,
+            'nominations.discordId': 1
+        });
 
-        // Add additional indexes for common queries
-        await this.db.collection('bonusPoints').createIndex({ username: 1 });
-        await this.db.collection('bonusPoints').createIndex({ year: 1 });
-        await this.db.collection('bonusPoints').createIndex({ timestamp: 1 });
+        // Shadow Game index
+        await this.db.collection('shadowgame').createIndex({ _id: 1 });
 
-        console.log('Indexes created successfully');
+        // Records and stats indexes
+        await this.db.collection('records').createIndex({ _id: 1 });
+        await this.db.collection('records').createIndex({
+            'monthlyRecords.date': -1,
+            'yearlyRecords.year': -1
+        });
+
+        // Configuration index
+        await this.db.collection('config').createIndex({ _id: 1 });
+
+        console.log('[DATABASE] Indexes created successfully');
+        return true;
     } catch (error) {
-        console.error('Error creating indexes:', error);
+        console.error('[DATABASE] Error creating indexes:', error);
         throw error;
     }
 }
