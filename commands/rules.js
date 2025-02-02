@@ -142,7 +142,7 @@ async displayShadowChallenge(message, shadowGame) {
         console.error('Shadow Rules Error:', error);
         await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve shadow game rules\n[Ready for input]█\x1b[0m```');
     }
-}
+},
 
     async displayPointsInfo(message, shadowGame) {
         const embed = new TerminalEmbed()
