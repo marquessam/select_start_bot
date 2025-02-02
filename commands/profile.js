@@ -1,6 +1,5 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
-const raAPI = require('../raAPI'); // Import raAPI for fetching profile image
 
 module.exports = {
     name: 'profile',
@@ -31,7 +30,7 @@ module.exports = {
                 yearlyLeaderboard,
                 monthlyLeaderboard,
                 yearlyPoints,
-                raProfile // Fetch RA profile image
+                raProfileImage
             ] = await Promise.all([
                 DataService.getUserStats(username),
                 DataService.getUserProgress(username),
@@ -39,7 +38,7 @@ module.exports = {
                 DataService.getLeaderboard('yearly'),
                 DataService.getLeaderboard('monthly'),
                 pointsManager.getUserPoints(username, new Date().getFullYear().toString()),
-                raAPI.fetchUserProfile(username) // Fetch RA profile image
+                DataService.getRAProfileImage(username)
             ]);
 
             const currentYear = new Date().getFullYear().toString();
@@ -60,7 +59,7 @@ module.exports = {
                 .setTerminalTitle(`USER PROFILE: ${username.toUpperCase()}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]')
                 .addTerminalField('CURRENT CHALLENGE PROGRESS',
-                    `GAME: ${currentChallenge?.gameName || 'N/A'}\n` +
+                    `GAME: "${currentChallenge?.gameName || 'N/A'}"\n` +
                     `PROGRESS: ${userProgress?.completionPercentage || 0}%\n` +
                     `ACHIEVEMENTS: ${userProgress?.completedAchievements || 0}/${userProgress?.totalAchievements || 0}\n` +
                     (userProgress?.hasBeatenGame ? '✅ Game Completed' : '⏳ In Progress')
@@ -87,22 +86,25 @@ module.exports = {
                 `GAMES MASTERED: ${yearlyStats.gamesMastered}`
             );
 
-            // Add points breakdown
-            if (pointsBreakdown.Participations.length > 0) {
-                embed.addTerminalField('PARTICIPATIONS', pointsBreakdown.Participations.join('\n'));
-            }
-            if (pointsBreakdown['Games Beaten'].length > 0) {
-                embed.addTerminalField('GAMES BEATEN', pointsBreakdown['Games Beaten'].join('\n'));
-            }
-            if (pointsBreakdown['Games Mastered'].length > 0) {
-                embed.addTerminalField('GAMES MASTERED', pointsBreakdown['Games Mastered'].join('\n'));
+            // Add points breakdown sections
+            if (pointsBreakdown.participations.length > 0) {
+                embed.addTerminalField('PARTICIPATIONS', pointsBreakdown.participations.join('\n'));
             }
 
+            if (pointsBreakdown.gamesBeaten.length > 0) {
+                embed.addTerminalField('GAMES BEATEN', pointsBreakdown.gamesBeaten.join('\n'));
+            }
+
+            if (pointsBreakdown.gamesMastered.length > 0) {
+                embed.addTerminalField('GAMES MASTERED', pointsBreakdown.gamesMastered.join('\n'));
+            }
+
+            // Add total points at the bottom
             embed.addTerminalField('TOTAL POINTS', `${totalYearlyPoints} points`);
 
-            // Add profile image if available
-            if (raProfile?.profileImage) {
-                embed.setThumbnail(raProfile.profileImage);
+            // Set profile image
+            if (raProfileImage) {
+                embed.setThumbnail(raProfileImage);
             }
 
             embed.setTerminalFooter();
@@ -141,29 +143,47 @@ module.exports = {
     },
 
     async formatPointsBreakdown(points) {
+        // Group points by game and type
+        const groupedPoints = new Map();
+
+        for (const point of points) {
+            // Handle both object and string reason formats
+            const reason = typeof point.reason === 'object' ? point.reason.display : point.reason;
+            const [gameName, type] = reason.split(' - ');
+            const key = `${gameName}-${type}-${point.gameId}`;
+
+            // Only add if we don't have this exact combination already
+            if (!groupedPoints.has(key)) {
+                groupedPoints.set(key, point);
+            }
+        }
+
+        // Sort points into categories
         const categories = {
-            'Participations': [],
-            'Games Beaten': [],
-            'Games Mastered': []
+            participations: [],
+            gamesBeaten: [],
+            gamesMastered: []
         };
 
-        // Process each point entry
-        for (const point of points) {
+        for (const point of groupedPoints.values()) {
             let gameName = point.reason.split('-')[0].trim();
 
             // Shorten "The Legend of Zelda: A Link to the Past" to "Zelda: A Link to the Past"
-            if (gameName === "The Legend of Zelda: A Link to the Past") {
-                gameName = "Zelda: A Link to the Past";
+            if (gameName.includes("The Legend of Zelda")) {
+                gameName = gameName.replace("The Legend of", "");
             }
 
+            const pointString = `${gameName} - ${point.points} point${point.points !== 1 ? 's' : ''}`;
+
             if (point.reason.toLowerCase().includes('participation')) {
-                categories['Participations'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
+                categories.participations.push(pointString);
             } else if (point.reason.toLowerCase().includes('beaten')) {
-                categories['Games Beaten'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
+                categories.gamesBeaten.push(pointString);
             } else if (point.reason.toLowerCase().includes('mastery')) {
-                categories['Games Mastered'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
+                categories.gamesMastered.push(pointString);
             }
         }
+
         return categories;
     },
 
@@ -190,7 +210,7 @@ module.exports = {
                 uniqueGames.add(gameName);
                 yearStats.participations++;
             }
-            if (reasonLower.includes('beaten') || reasonLower.includes('completion')) {
+            if (reasonLower.includes('beaten')) {
                 yearStats.gamesBeaten++;
             }
             if (reasonLower.includes('mastery')) {
