@@ -37,7 +37,7 @@ module.exports = {
         if (shadowGameData && shadowGameData.triforceState?.power?.collected) {
             // Shadow game is unlocked - show parallel challenge
             embed.addTerminalField('SHADOW CHALLENGE UNLOCKED',
-                `GAME: ${shadowGameData.finalReward.gameName} (${shadowGameData.finalReward.platform})\n\n` +
+                `GAME: ${shadowGameData.finalReward.gameName} (SNES)\n\n` +
                 `REWARDS:\n` +
                 `Mark of Participation: 1 sacred point\n` +
                 `Mark of Completion: 3 sacred points\n\n` +
