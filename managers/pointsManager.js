@@ -341,64 +341,95 @@ async recheckHistoricalPoints(username, achievements, gameId) {
         };
     }
 
-    async checkGamePoints(username, achievements, gameId) {
-        try {
-            if (!this.gameConfig[gameId]) {
-                return [];
-            }
+   async checkGamePoints(username, achievements, gameId) {
+    const gameConfig = this.gameConfig[gameId];
+    if (!gameConfig) return [];
 
-            const points = [];
-            const gameConfig = this.gameConfig[gameId];
-            const year = new Date().getFullYear().toString();
+    const pointsToAward = [];
+    const gameAchievements = achievements.filter(a => 
+        String(a.GameID || a.gameId) === String(gameId)
+    );
 
-            // Check participation (only if not a mastery-only game)
-            if (!gameConfig.masteryOnly) {
-                if (achievements.some(a => parseInt(a.DateEarned) > 0)) {
-                    points.push({
-                        type: 'participation',
-                        points: this.pointTypes.participation.value,
-                        reason: this.createPointReason(
-                            achievements[0].GameTitle || gameConfig.name,
-                            'Participation',
-                            `participation-${gameId}`
-                        )
-                    });
-                }
-            }
+    // Check if this is a shadow game and if it's active
+    const shadowGame = gameConfig.shadowGame;
+    const shadowGameActive = await this.isShadowGameActive();
+    
+    if (shadowGame && !shadowGameActive) {
+        return [];
+    }
 
-            // Check game beaten
-            if (!gameConfig.masteryOnly && await this.checkGameBeaten(achievements, gameConfig)) {
-                points.push({
-                    type: 'beaten',
-                    points: this.pointTypes.beaten.value,
-                    reason: this.createPointReason(
-                        achievements[0].GameTitle || gameConfig.name,
-                        'Game Beaten',
-                        `beaten-${gameId}`
-                    )
-                });
-            }
+    // Generate unique technical keys for each point type
+    const generateKey = (type) => {
+        const year = new Date().getFullYear().toString();
+        const month = new Date().getMonth() + 1;
+        return `${type}-${gameId}-${year}-${month}`;
+    };
 
-            // Check mastery
-            if (gameConfig.masteryCheck && await this.checkGameMastery(achievements)) {
-                points.push({
-                    type: 'mastery',
-                    points: this.pointTypes.mastery.value,
-                    reason: this.createPointReason(
-                        achievements[0].GameTitle || gameConfig.name,
-                        'Mastery',
-                        `mastery-${gameId}`
-                    )
-                });
-            }
-
-            return points;
-        } catch (error) {
-            console.error('[POINTS] Error checking game points:', error);
-            return [];
+    // Check participation
+    if (gameConfig.points?.participation) {
+        const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
+        if (hasParticipation) {
+            const participationKey = generateKey('participation');
+            pointsToAward.push({
+                type: 'participation',
+                points: gameConfig.points.participation,
+                reason: this.createPointReason(
+                    gameConfig.name,
+                    'Participation',
+                    participationKey
+                ),
+                technicalKey: participationKey
+            });
         }
     }
 
+    // Check game beaten
+    if (gameConfig.points?.beaten) {
+        const hasBeaten = await this.checkGameBeaten(gameAchievements, gameConfig);
+        if (hasBeaten) {
+            const beatenKey = generateKey('beaten');
+            pointsToAward.push({
+                type: 'beaten',
+                points: gameConfig.points.beaten,
+                reason: this.createPointReason(
+                    gameConfig.name,
+                    'Game Beaten',
+                    beatenKey
+                ),
+                technicalKey: beatenKey
+            });
+        }
+    }
+
+    // Check mastery
+    if (gameConfig.points?.mastery && gameConfig.masteryCheck) {
+        const hasMastery = await this.checkGameMastery(gameAchievements);
+        if (hasMastery) {
+            const masteryKey = generateKey('mastery');
+            pointsToAward.push({
+                type: 'mastery',
+                points: gameConfig.points.mastery,
+                reason: this.createPointReason(
+                    gameConfig.name,
+                    'Mastery',
+                    masteryKey
+                ),
+                technicalKey: masteryKey
+            });
+        }
+    }
+
+    return pointsToAward;
+}
+async isShadowGameActive() {
+    try {
+        const shadowGame = await global.database.getShadowGame();
+        return shadowGame?.active && shadowGame?.triforceState?.power?.collected;
+    } catch (error) {
+        console.error('Error checking shadow game status:', error);
+        return false;
+    }
+}
     async checkGameBeaten(achievements, gameConfig) {
         try {
             if (!gameConfig.winCondition) return false;
