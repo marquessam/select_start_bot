@@ -16,6 +16,13 @@ module.exports = {
             
             const statusMessage = await message.channel.send({ embeds: [embed] });
 
+            // Pause the achievement feed
+            if (global.achievementFeed) {
+                global.achievementFeed.isPaused = true;
+                embed.addTerminalField('STATUS', 'Achievement feed paused');
+                await statusMessage.edit({ embeds: [embed] });
+            }
+
             // Clear points collection
             const collection = await pointsManager.database.getCollection('bonusPoints');
             await collection.deleteMany({});
@@ -27,12 +34,18 @@ module.exports = {
             // Recheck all points
             const result = await userStats.recheckAllPoints(message.guild);
 
+            // Resume the achievement feed
+            if (global.achievementFeed) {
+                global.achievementFeed.isPaused = false;
+            }
+
             // Show results
             embed
                 .setTerminalDescription('[RESET COMPLETE]')
                 .addTerminalField('RESULTS',
                     `Users Processed: ${result.processed.length}\n` +
-                    `Errors: ${result.errors.length}`
+                    `Errors: ${result.errors.length}\n` +
+                    'Achievement feed resumed'
                 );
 
             if (result.errors.length > 0) {
@@ -54,6 +67,11 @@ module.exports = {
         } catch (error) {
             console.error('Reset Points Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to reset points\n[Ready for input]█\x1b[0m```');
+            
+            // Make sure to resume the feed even if there's an error
+            if (global.achievementFeed) {
+                global.achievementFeed.isPaused = false;
+            }
         }
     }
 };
