@@ -156,7 +156,7 @@ module.exports = {
 
     async displayYearlyLeaderboard(message, shadowGame, pointsManager) {
         try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing HERO\'S RECORD...\x1b[0m\n```');
+            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
             const validUsers = await DataService.getValidUsers();
             const year = new Date().getFullYear().toString();
@@ -184,7 +184,7 @@ module.exports = {
 
             const embed = new TerminalEmbed()
                 .setTerminalTitle('YEARLY RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS][C5V5BN]');
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
 
             if (rankedUsers.length > 0) {
                 embed.addTerminalField('TOP USERS',
