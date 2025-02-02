@@ -15,13 +15,11 @@ class UserStats {
                 yearlyStats: {},
                 monthlyStats: {},
                 gamesBeaten: {},
-                achievementStats: {},
-                communityRecords: {}
+                achievementStats: {}
+                
             },
             lastUpdate: null,
-            updateInterval: 5 * 60 * 1000, // 5 minutes
-            validUsers: new Set(),
-            pendingUpdates: new Set()
+            updateInterval: 5 * 60 * 1000 // 5 minutes
         };
 
         // Tracks the current year for user stats
@@ -234,145 +232,6 @@ class UserStats {
     // =======================
     //  Points Management
     // =======================
-    async addBonusPoints(username, points, reason) {
-        const operationId = `bonus-${username}-${Date.now()}`;
-        this._activeOperations.set(operationId, true);
-
-        try {
-            // Wait for initialization if not done yet
-            if (!this.initializationComplete) {
-                console.log('[USER STATS] Waiting for initialization before adding points...');
-                await this.loadStats({ getValidUsers: () => [] }); 
-                // ^ or omit if loadStats is guaranteed called elsewhere
-            }
-
-            console.log(`[USER STATS] Adding ${points} points to "${username}" for reason: "${reason}"`);
-
-            const cleanUsername = username.trim().toLowerCase();
-            const user = this.cache.stats.users[cleanUsername];
-            if (!user) {
-                throw new Error(`User ${username} not found`);
-            }
-
-            const year = this.currentYear.toString();
-
-            // Check if there's already another operation for this user (just once)
-            const userOperations = Array.from(this._activeOperations.keys())
-                .filter(id => id.includes(cleanUsername));
-            if (userOperations.length > 1) {
-                console.log(`[USER STATS] Another operation is active for ${cleanUsername}, waiting a bit...`);
-                // Minimal delay to reduce potential race (non-blocking indefinite loop)
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
-
-            // Prepare transaction
-            await withTransaction(this.database, async (session) => {
-                const displayReason = reason.reason || reason; // if reason is object or string
-                const internalReason = reason.internalReason || reason;
-
-                if (!user.bonusPoints) user.bonusPoints = [];
-                if (!user.yearlyPoints) user.yearlyPoints = {};
-
-                user.bonusPoints.push({
-                    points,
-                    reason: internalReason,
-                    displayReason,
-                    year,
-                    date: new Date().toISOString()
-                });
-
-                user.yearlyPoints[year] = (user.yearlyPoints[year] || 0) + points;
-
-                // Update DB within the transaction
-                await this.database.db.collection('userstats').updateOne(
-                    { _id: 'stats' },
-                    { $set: { [`users.${cleanUsername}`]: user } },
-                    { session }
-                );
-            });
-
-            // Update in-memory cache & mark user for pending updates
-            this.cache.stats.users[cleanUsername] = user;
-            this.cache.pendingUpdates.add(cleanUsername);
-
-            // Save updated stats
-            await this.saveStats();
-
-            // Announce the points
-            if (global.achievementFeed) {
-                const displayReason = reason.reason || reason;
-                await global.achievementFeed.announcePointsAward(username, points, displayReason);
-            }
-
-            console.log(
-                `[USER STATS] Successfully added ${points} points to ${username}`,
-                `New total: ${user.yearlyPoints[year]}`
-            );
-
-            return true;
-        } catch (error) {
-            console.error(`[USER STATS] Error adding bonus points to ${username}:`, error);
-            ErrorHandler.logError(error, 'Adding Bonus Points');
-            throw error;
-        } finally {
-            this._activeOperations.delete(operationId);
-        }
-    }
-
-    async resetUserPoints(username) {
-        try {
-            const cleanUsername = username.trim().toLowerCase();
-            const user = this.cache.stats.users[cleanUsername];
-            if (!user) {
-                throw new Error(`User "${username}" not found.`);
-            }
-
-            const currentYear = this.currentYear.toString();
-            user.yearlyPoints[currentYear] = 0;
-
-            if (user.monthlyAchievements?.[currentYear]) {
-                user.monthlyAchievements[currentYear] = {};
-            }
-            user.bonusPoints = user.bonusPoints.filter(bonus => bonus.year !== currentYear);
-
-            this.cache.pendingUpdates.add(cleanUsername);
-            await this.saveStats();
-
-            if (global.leaderboardCache) {
-                await global.leaderboardCache.updateLeaderboards();
-            }
-        } catch (error) {
-            ErrorHandler.logError(error, 'Resetting User Points');
-            throw error;
-        }
-    }
-
-    async resetAllPoints() {
-        try {
-            const currentYear = this.currentYear.toString();
-            const users = await this.getAllUsers();
-
-            for (const username of users) {
-                const user = this.cache.stats.users[username];
-                if (user) {
-                    user.yearlyPoints[currentYear] = 0;
-                    user.bonusPoints = user.bonusPoints.filter(bonus => bonus.year !== currentYear);
-                }
-            }
-
-            this.cache.pendingUpdates = new Set(users);
-            await this.saveStats();
-
-            if (global.leaderboardCache) {
-                await global.leaderboardCache.updateLeaderboards(true);
-            }
-
-            return users.length;
-        } catch (error) {
-            console.error('Error resetting all points:', error);
-            throw error;
-        }
-    }
 
     async recheckAllPoints(guild) {
         try {
