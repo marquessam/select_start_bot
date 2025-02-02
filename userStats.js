@@ -42,6 +42,11 @@ class UserStats {
         // Active operations can be tracked here if needed
         this._activeOperations = new Map();
     }
+     setServices(services) {
+        this.services = services;
+        console.log('[USER STATS] Services updated');
+    }
+
     // =======================
     //         Core
     // =======================
@@ -295,46 +300,49 @@ class UserStats {
     }
 
    async processAchievementPoints(username, userProgress) {
-    const userStats = this.cache.stats.users[username];
-    if (!userStats) return;
+        const userStats = this.cache.stats.users[username];
+        if (!userStats) return;
 
-    // Get an instance of PointsManager
-    const { pointsManager } = this.dependencies;
-    if (!pointsManager) {
-        console.error('[USER STATS] Points manager not available');
-        return;
-    }
-
-    // Process points for all configured games
-    for (const gameId of Object.keys(pointsConfig.monthlyGames)) {
-        const gamePoints = await pointChecks.checkGamePoints(
-            username,
-            userProgress.achievements,
-            gameId,
-            userStats
-        );
-
-        for (const point of gamePoints) {
-            await pointsManager.awardPoints(username, point.points, point.reason);
+        // Get the points manager from services
+        if (!this.services?.pointsManager) {
+            console.error('[USER STATS] Points manager not available');
+            return;
         }
+
+        // Process points for all configured games
+        for (const gameId of Object.keys(pointsConfig.monthlyGames)) {
+            const gamePoints = await pointChecks.checkGamePoints(
+                username,
+                userProgress.achievements,
+                gameId,
+                userStats
+            );
+
+            for (const point of gamePoints) {
+                await this.services.pointsManager.awardPoints(
+                    username, 
+                    point.points, 
+                    point.reason
+                );
+            }
+        }
+
+        // Update achievement stats
+        const currentYear = this.currentYear.toString();
+        if (!userStats.monthlyAchievements[currentYear]) {
+            userStats.monthlyAchievements[currentYear] = {};
+        }
+
+        const monthlyKey = `${currentYear}-${new Date().getMonth()}`;
+        userStats.monthlyAchievements[currentYear][monthlyKey] =
+            userProgress.completedAchievements;
+
+        userStats.yearlyStats[currentYear].totalAchievementsUnlocked =
+            Object.values(userStats.monthlyAchievements[currentYear])
+                .reduce((total, count) => total + count, 0);
+
+        this.cache.pendingUpdates.add(username);
     }
-
-    // Update achievement stats
-    const currentYear = this.currentYear.toString();
-    if (!userStats.monthlyAchievements[currentYear]) {
-        userStats.monthlyAchievements[currentYear] = {};
-    }
-
-    const monthlyKey = `${currentYear}-${new Date().getMonth()}`;
-    userStats.monthlyAchievements[currentYear][monthlyKey] =
-        userProgress.completedAchievements;
-
-    userStats.yearlyStats[currentYear].totalAchievementsUnlocked =
-        Object.values(userStats.monthlyAchievements[currentYear])
-            .reduce((total, count) => total + count, 0);
-
-    this.cache.pendingUpdates.add(username);
-}
 
     async processRolePoints(username, member) {
         const userStats = this.cache.stats.users[username];
