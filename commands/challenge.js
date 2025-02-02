@@ -44,15 +44,15 @@ module.exports = {
             } else if (shadowGameData.finalReward && shadowGameData.triforceState?.power?.collected) {
                 // Shadow game discovered and unlocked
                 embed.addTerminalField('SHADOW CHALLENGE UNLOCKED',
-                    '```ansi\n\x1b[33m' +
-                    `A new trial emerges from the darkness...\n\n` +
-                    `GAME: ${shadowGameData.finalReward.gameName}\n\n` +
-                    `REWARDS:\n` +
-                    `Mark of Participation: ${shadowGameData.finalReward.points.participation} sacred point\n` +
-                    `Mark of Completion: ${shadowGameData.finalReward.points.beaten} sacred points\n\n` +
-                    'This challenge runs parallel to your current quest.\n' +
-                    '\x1b[0m```'
-                );
+        '```ansi\n\x1b[33m' +
+        'A new trial emerges from the darkness...\n\n' +
+        `GAME: ${shadowGameData.finalReward.gameName}\n\n` +
+        'REWARDS:\n' +
+        `Mark of Participation: ${shadowGameData.finalReward.points.participation} sacred point\n` +
+        `Mark of Completion: ${shadowGameData.finalReward.points.beaten} sacred points\n\n` +
+        'This challenge runs parallel to your current quest.\n' +
+        '\x1b[0m```'
+    );
             } else if (shadowGameData.triforceState) {
                 // Triforce hunt active
                 const wisdom = shadowGameData.triforceState.wisdom;
