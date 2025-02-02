@@ -121,7 +121,7 @@ class AchievementFeed {
         }
     }
 
-   async sendAchievementNotification(channel, username, achievement) {
+async sendAchievementNotification(channel, username, achievement) {
     try {
         if (!channel || !username || !achievement) return;
 
@@ -132,43 +132,50 @@ class AchievementFeed {
             ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
             : 'https://media.retroachievements.org/Badge/00000.png';
 
-        const userIconUrl = await DataService.getRAProfileImage(username) || `https://retroachievements.org/UserPic/${username}.png`;
+        const userIconUrl = await DataService.getRAProfileImage(username) || 
+            `https://retroachievements.org/UserPic/${username}.png`;
 
-        // Check if achievement is from Monthly Challenge or Shadow Game
+        // Special game handling
         let authorName = '';
         let authorIconUrl = '';
         let files = [];
+        let color = '#00FF00';  // Default color
 
         if (achievement.GameID === '274') { // Shadow Game
-            authorName = 'SHADOW GAME';
-            files = [{ attachment: './logo_simple.png', name: 'game_logo.png' }];
+            authorName = 'SHADOW GAME CHALLENGE';
+            files = [{ attachment: './assets/logo_simple.png', name: 'game_logo.png' }];
             authorIconUrl = 'attachment://game_logo.png';
+            color = '#FFD700';  // Gold color for shadow game
         } else if (achievement.GameID === '355') { // Monthly Challenge
             authorName = 'MONTHLY CHALLENGE';
-            files = [{ attachment: './logo_simple.png', name: 'game_logo.png' }];
+            files = [{ attachment: './assets/logo_simple.png', name: 'game_logo.png' }];
             authorIconUrl = 'attachment://game_logo.png';
+            color = '#00BFFF';  // Blue color for monthly challenge
         }
 
         const embed = new EmbedBuilder()
-            .setColor('#00FF00')
+            .setColor(color)
             .setTitle(`${achievement.GameTitle} 🏆`)
             .setThumbnail(badgeUrl)
-            .setDescription(`**${username}** earned **${achievement.Title}**\n\n*${achievement.Description || 'No description available'}*`)
-            .setFooter({ text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`, iconURL: userIconUrl })
+            .setDescription(
+                `**${username}** earned **${achievement.Title}**\n\n` +
+                `*${achievement.Description || 'No description available'}*`
+            )
+            .setFooter({ 
+                text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`, 
+                iconURL: userIconUrl 
+            })
             .setTimestamp();
 
-        // Add author info if it's a special game
         if (authorName) {
             embed.setAuthor({ name: authorName, iconURL: authorIconUrl });
         }
 
-        // Queue the announcement with files if present
         await this.queueAnnouncement({ embeds: [embed], files });
         this.announcementHistory.add(achievementKey);
 
         if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
 
-        console.log(`[ACHIEVEMENT FEED] Sent achievement notification for ${username}: ${achievement.Title}`);
     } catch (error) {
         console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
     }
