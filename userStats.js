@@ -7,8 +7,10 @@ const { pointsConfig, pointChecks } = require('./pointsConfig');
 const { fetchLeaderboardData } = require('./raAPI.js');
 
 class UserStats {
-    constructor(database) {
+    constructor(database, dependencies = {}) {
         this.database = database;
+        this.dependencies = dependencies;
+        
         this.cache = {
             stats: {
                 users: {},
@@ -37,10 +39,9 @@ class UserStats {
         this._savePromise = null;
         this._pendingSaves = new Set();
 
-        // Active operations can be tracked here if needed (e.g., bonus point awards)
+        // Active operations can be tracked here if needed
         this._activeOperations = new Map();
     }
-
     // =======================
     //         Core
     // =======================
@@ -293,39 +294,47 @@ class UserStats {
         }
     }
 
-    async processAchievementPoints(username, userProgress) {
-        const userStats = this.cache.stats.users[username];
-        if (!userStats) return;
+   async processAchievementPoints(username, userProgress) {
+    const userStats = this.cache.stats.users[username];
+    if (!userStats) return;
 
-        for (const gameId of Object.keys(pointsConfig.monthlyGames)) {
-            const gamePoints = await pointChecks.checkGamePoints(
-                username,
-                userProgress.achievements,
-                gameId,
-                userStats
-            );
-
-            for (const point of gamePoints) {
-                await this.addBonusPoints(username, point.points, point.reason);
-            }
-        }
-
-        // Update achievement stats
-        const currentYear = this.currentYear.toString();
-        if (!userStats.monthlyAchievements[currentYear]) {
-            userStats.monthlyAchievements[currentYear] = {};
-        }
-
-        const monthlyKey = `${currentYear}-${new Date().getMonth()}`;
-        userStats.monthlyAchievements[currentYear][monthlyKey] =
-            userProgress.completedAchievements;
-
-        userStats.yearlyStats[currentYear].totalAchievementsUnlocked =
-            Object.values(userStats.monthlyAchievements[currentYear])
-                .reduce((total, count) => total + count, 0);
-
-        this.cache.pendingUpdates.add(username);
+    // Get an instance of PointsManager
+    const { pointsManager } = this.dependencies;
+    if (!pointsManager) {
+        console.error('[USER STATS] Points manager not available');
+        return;
     }
+
+    // Process points for all configured games
+    for (const gameId of Object.keys(pointsConfig.monthlyGames)) {
+        const gamePoints = await pointChecks.checkGamePoints(
+            username,
+            userProgress.achievements,
+            gameId,
+            userStats
+        );
+
+        for (const point of gamePoints) {
+            await pointsManager.awardPoints(username, point.points, point.reason);
+        }
+    }
+
+    // Update achievement stats
+    const currentYear = this.currentYear.toString();
+    if (!userStats.monthlyAchievements[currentYear]) {
+        userStats.monthlyAchievements[currentYear] = {};
+    }
+
+    const monthlyKey = `${currentYear}-${new Date().getMonth()}`;
+    userStats.monthlyAchievements[currentYear][monthlyKey] =
+        userProgress.completedAchievements;
+
+    userStats.yearlyStats[currentYear].totalAchievementsUnlocked =
+        Object.values(userStats.monthlyAchievements[currentYear])
+            .reduce((total, count) => total + count, 0);
+
+    this.cache.pendingUpdates.add(username);
+}
 
     async processRolePoints(username, member) {
         const userStats = this.cache.stats.users[username];
