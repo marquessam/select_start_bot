@@ -145,11 +145,10 @@ function calculateRank(username, leaderboard, rankMetric) {
 }
 
 async function formatPointsBreakdown(points) {
-    const sections = {
-        monthlyChallenge: '',
-        shadowGame: '',
-        arcade: '',
-        other: ''
+    const categories = {
+        'Participations': [],
+        'Games Beaten': [],
+        'Games Mastered': []
     };
 
     // Sort points by date (newest first)
@@ -159,28 +158,28 @@ async function formatPointsBreakdown(points) {
 
     // Process each point entry
     for (const point of sortedPoints) {
-        const entry = `• ${point.reason} (${point.points > 0 ? '+' : ''}${point.points})\n`;
-        
-        // Properly categorize each point type
-        if (point.gameId === "355" || point.gameId === "319") { // ALTTP or Chrono Trigger
-            sections.monthlyChallenge += entry;
-        } else if (point.gameId === "10024" || point.gameId === "274") { // Mario Tennis or UN Squadron
-            sections.shadowGame += entry;
-        } else if (point.reason.includes('Arcade') || point.reason.includes('High Score')) {
-            sections.arcade += entry;
-        } else {
-            sections.other += entry;
+        const gameName = point.reason.split('-')[0].trim(); // Extract game name
+
+        if (point.reason.toLowerCase().includes('participation')) {
+            categories['Participations'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
+        } else if (point.reason.toLowerCase().includes('beaten')) {
+            categories['Games Beaten'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
+        } else if (point.reason.toLowerCase().includes('mastery')) {
+            categories['Games Mastered'].push(`${gameName} - ${point.points} point${point.points > 1 ? 's' : ''}`);
         }
     }
 
-    // Clean up empty sections
-    if (!sections.monthlyChallenge) sections.monthlyChallenge = 'No monthly challenge points\n';
-    if (!sections.shadowGame) sections.shadowGame = 'No shadow game points\n';
-    if (!sections.arcade) sections.arcade = 'No arcade points\n';
-    if (!sections.other) sections.other = 'No other points\n';
+    // Generate formatted text output
+    let breakdown = '';
+    for (const [category, entries] of Object.entries(categories)) {
+        if (entries.length > 0) {
+            breakdown += `**${category}**\n${entries.join('\n')}\n\n`;
+        }
+    }
 
-    return { sections };
+    return breakdown.trim() || 'No points recorded.';
 }
+
 
 function calculateYearlyStats(points, userStats) {
     const currentYear = new Date().getFullYear().toString();
