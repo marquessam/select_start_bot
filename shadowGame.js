@@ -39,38 +39,39 @@ class ShadowGame {
         return this._initPromise;
     }
 
-    async resetProgress() {
-        this.config = {
-            active: true,
-            currentProgress: 0,
-            triforceState: {
-                wisdom: { 
-                    required: 6, 
-                    found: 0, 
-                    pieces: ["W1X4BY", "W2K5MN", "W3R8ST", "W4Y6PV", "W5J9CH", "W6F7GD"], 
-                    collected: [] 
-                },
-                courage: { 
-                    required: 6, 
-                    found: 0, 
-                    pieces: ["C1B5NM", "C2K4LP", "C3R8TW", "C4Y2XQ", "C5V5BN", "C6H7JD"], 
-                    collected: [] 
-                },
-                power: { collected: false }
+   async resetProgress() {
+    this.config = {
+        active: true,
+        currentProgress: 0,
+        triforceState: {
+            wisdom: { 
+                required: 6, 
+                found: 0, 
+                pieces: ["W1X4BY", "W2K5MN", "W3R8ST", "W4Y6PV", "W5J9CH", "W6F7GD"], 
+                collected: [] 
             },
-            finalReward: {
-                gameId: "274",
-                gameName: "U.N. Squadron",
-                points: {
-                    participation: 1,
-                    beaten: 3
-                }
+            courage: { 
+                required: 6, 
+                found: 0, 
+                pieces: ["C1B5NM", "C2K4LP", "C3R8TW", "C4Y2XQ", "C5V5BN", "C6H7JD"], 
+                collected: [] 
+            },
+            power: { collected: false }
+        },
+        finalReward: {
+            gameId: "274",
+            gameName: "U.N. Squadron",
+            platform: "SNES",
+            points: {
+                participation: 1,
+                beaten: 3
             }
-        };
+        }
+    };
 
-        await database.saveShadowGame(this.config);
-        console.log('[SHADOW GAME] Progress reset complete');
-    }
+    await database.saveShadowGame(this.config);
+    console.log('[SHADOW GAME] Progress reset.');
+}
 
     async checkMessage(message) {
         if (!this.config) await this.initialize();
@@ -237,26 +238,26 @@ class ShadowGame {
     }
 
     async revealShadowChallenge(message) {
-        const { gameName, gameId } = this.config.finalReward;
+    const { gameName, gameId, platform } = this.config.finalReward;
 
-        const embed = new EmbedBuilder()
-            .setColor('#FFD700')
-            .setTitle('THE TRIFORCE UNITED')
-            .setDescription(
-                '```ansi\n' +
-                '\x1b[33mAs the three golden triangles resonate as one, ' +
-                'a new trial emerges from the shadows...\n\n' +
-                `${gameName}\n\n` +
-                'This challenge may be undertaken alongside your current quest.\n' +
-                'Rewards for the worthy:\n' +
-                'Mark of Participation: 1 sacred point\n' +
-                'Mark of Completion: 3 sacred points' +
-                '\x1b[0m```'
-            )
-            .setURL(`https://retroachievements.org/game/${gameId}`);
+    const embed = new EmbedBuilder()
+        .setColor('#FFD700')
+        .setTitle('THE TRIFORCE UNITED')
+        .setDescription(
+            '```ansi\n' +
+            '\x1b[33mAs the three golden triangles resonate as one, ' +
+            'a new trial emerges from the shadows...\n\n' +
+            `${gameName} (${platform})\n\n` +
+            'This challenge may be undertaken alongside your current quest.\n' +
+            'Rewards for the worthy:\n' +
+            'Mark of Participation: 1 sacred point\n' +
+            'Mark of Completion: 3 sacred points' +
+            '\x1b[0m```'
+        )
+        .setURL(`https://retroachievements.org/game/${gameId}`);
 
-        await message.channel.send({ embeds: [embed] });
-    }
+    await message.channel.send({ embeds: [embed] });
+}
 
     isActive() {
         return this.config?.active && this.config?.triforceState?.power?.collected;
