@@ -124,7 +124,8 @@ async function fetchLeaderboardData(force = false) {
         const validUsers = await database.getValidUsers();
         console.log(`[RA API] Tracking games for ${validUsers.length} users.`);
 
-        const userProgressData = await batchFetchUserProgress(validUsers, ['355', '274', '319']);
+        // Include all tracked games
+        const userProgressData = await batchFetchUserProgress(validUsers, ['355', '274', '319', '10024']);
 
         const usersProgress = validUsers.map(username => {
             const userEntries = userProgressData.filter(p => p.username === username);
@@ -134,30 +135,24 @@ async function fetchLeaderboardData(force = false) {
                 if (entry.data?.Achievements) {
                     const gameAchievements = Object.values(entry.data.Achievements).map(ach => ({
                         ...ach,
-                        GameID: entry.gameId
+                        GameID: entry.gameId,
+                        GameTitle: entry.data.Title || ''
                     }));
                     allGameAchievements.push(...gameAchievements);
                 }
             }
 
-            const mainGameAchievements = allGameAchievements.filter(a => a.GameID === '355');
-            const numAchievements = mainGameAchievements.length;
-            const completed = mainGameAchievements.filter(ach => parseInt(ach.DateEarned, 10) > 0).length;
-
-            const hasBeatenGame = mainGameAchievements.some(ach => {
-                const isWinCondition = (ach.Flags & 2) === 2;
-                const isEarned = parseInt(ach.DateEarned, 10) > 0;
-                return isWinCondition && isEarned;
-            });
+            // Get the completion status for the main challenge game (ALTTP)
+            const completionStats = getGameCompletionStats(allGameAchievements, '355');
 
             return {
                 username,
                 profileImage: `https://retroachievements.org/UserPic/${username}.png`,
                 profileUrl: `https://retroachievements.org/user/${username}`,
-                completedAchievements: completed,
-                totalAchievements: numAchievements,
-                completionPercentage: numAchievements > 0 ? ((completed / numAchievements) * 100).toFixed(2) : '0.00',
-                hasBeatenGame: !!hasBeatenGame,
+                completedAchievements: completionStats.completed,
+                totalAchievements: completionStats.total,
+                completionPercentage: completionStats.percentage,
+                hasBeatenGame: completionStats.hasBeatenGame,
                 achievements: allGameAchievements
             };
         });
@@ -176,8 +171,28 @@ async function fetchLeaderboardData(force = false) {
     }
 }
 
+// Helper function to calculate game completion stats
+function getGameCompletionStats(achievements, gameId) {
+    const gameAchievements = achievements.filter(a => String(a.GameID) === gameId);
+    const total = gameAchievements.length;
+    const completed = gameAchievements.filter(ach => parseInt(ach.DateEarned, 10) > 0).length;
+
+    const hasBeatenGame = gameAchievements.some(ach => {
+        const isWinCondition = (ach.Flags & 2) === 2;
+        const isEarned = parseInt(ach.DateEarned, 10) > 0;
+        return isWinCondition && isEarned;
+    });
+
+    return {
+        completed,
+        total,
+        percentage: total > 0 ? ((completed / total) * 100).toFixed(2) : '0.00',
+        hasBeatenGame
+    };
+}
+
 // ---------------------------------------
-// Fetch User Progress for Multiple Games (Restored Function)
+// Fetch User Progress for Multiple Games
 // ---------------------------------------
 async function batchFetchUserProgress(usernames, gameIds) {
     const fetchResults = [];
@@ -216,6 +231,7 @@ async function batchFetchUserProgress(usernames, gameIds) {
 
     return fetchResults;
 }
+
 async function fetchCompleteGameProgress(username, gameId) {
     try {
         const params = new URLSearchParams({
@@ -331,7 +347,6 @@ async function fetchAllRecentAchievements() {
         return [];
     }
 }
-
 
 module.exports = {
     fetchLeaderboardData,
