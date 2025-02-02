@@ -1,6 +1,6 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
-const raAPI = require('./raAPI'); // Import raAPI for fetching profile image
+const raAPI = require('../raAPI'); // Import raAPI for fetching profile image
 
 module.exports = {
     name: 'profile',
