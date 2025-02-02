@@ -89,18 +89,19 @@ module.exports = {
 
             // Add points breakdown with sections
             const breakdownSections = pointsBreakdown.sections;
-            if (breakdownSections.monthlyChallenge.length > 0) {
-                embed.addTerminalField('MONTHLY CHALLENGE POINTS', breakdownSections.monthlyChallenge);
+            if (pointsBreakdown.sections.monthlyChallenge.trim() !== 'No monthly challenge points') {
+                embed.addTerminalField('MONTHLY CHALLENGE POINTS', pointsBreakdown.sections.monthlyChallenge);
             }
-            if (breakdownSections.shadowGame.length > 0) {
-                embed.addTerminalField('SHADOW GAME POINTS', breakdownSections.shadowGame);
+            if (pointsBreakdown.sections.shadowGame.trim() !== 'No shadow game points') {
+                embed.addTerminalField('SHADOW GAME POINTS', pointsBreakdown.sections.shadowGame);
             }
-            if (breakdownSections.arcade.length > 0) {
-                embed.addTerminalField('ARCADE POINTS', breakdownSections.arcade);
+            if (pointsBreakdown.sections.arcade.trim() !== 'No arcade points') {
+                embed.addTerminalField('ARCADE POINTS', pointsBreakdown.sections.arcade);
             }
-            if (breakdownSections.other.length > 0) {
-                embed.addTerminalField('OTHER POINTS', breakdownSections.other);
+            if (pointsBreakdown.sections.other.trim() !== 'No other points') {
+                embed.addTerminalField('OTHER POINTS', pointsBreakdown.sections.other);
             }
+            embed.addTerminalField('TOTAL POINTS', `${totalYearlyPoints} points`);
 
             // Add profile image if available
             if (raProfileImage) {
