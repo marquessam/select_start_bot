@@ -6,6 +6,7 @@ const ErrorHandler = require('../utils/errorHandler');
 class PointsManager {
     constructor(database) {
         this.database = database;
+          this.services = null;
         
         // Cache configuration
         this.cache = {
@@ -82,6 +83,10 @@ class PointsManager {
         requireAllWinConditions: true,
         masteryCheck: false,
         active: false
+    }
+           setServices(services) {
+        this.services = services;
+        console.log('[POINTS MANAGER] Services updated');
     }
 };
 
@@ -234,7 +239,7 @@ async recheckHistoricalPoints(username, achievements, gameId) {
     }
 }
     
-    async awardPoints(username, points, reason, gameId = null) {
+      async awardPoints(username, points, reason, gameId = null) {
         const operationId = `points-${username}-${Date.now()}`;
         this._activeOperations.set(operationId, true);
 
@@ -266,12 +271,11 @@ async recheckHistoricalPoints(username, achievements, gameId) {
             });
 
             if (success) {
-                this.cache.pendingUpdates.add(cleanUsername);
                 console.log(`[POINTS] Successfully awarded points to ${username}`);
 
                 // Announce points if achievement feed exists
-                if (global.achievementFeed) {
-                    await global.achievementFeed.announcePointsAward(
+                if (this.services?.achievementFeed) {
+                    await this.services.achievementFeed.announcePointsAward(
                         username, 
                         points, 
                         pointRecord.reason
@@ -287,7 +291,7 @@ async recheckHistoricalPoints(username, achievements, gameId) {
             this._activeOperations.delete(operationId);
         }
     }
-
+}
     async cleanupDuplicatePoints() {
         try {
             console.log('[POINTS] Starting duplicate points cleanup...');
