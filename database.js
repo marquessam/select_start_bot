@@ -10,17 +10,13 @@ class Database {
         this.db = null;
     }
 
-    // =====================
+// =====================
     // Connection Management
     // =====================
     async connect() {
         try {
             if (!process.env.MONGODB_URI) {
-                throw new BotError(
-                    'MONGODB_URI environment variable is not defined',
-                    ErrorHandler.ERROR_TYPES.DATABASE,
-                    'Database Connection'
-                );
+                throw new Error('MONGODB_URI environment variable is not defined');
             }
 
             if (!this.client) {
@@ -35,29 +31,30 @@ class Database {
 
                 await this.client.connect();
                 this.db = this.client.db(process.env.DB_NAME || 'selectstart');
-                console.log('Connected to MongoDB');
+                console.log('[DATABASE] Connected to MongoDB');
 
                 this.client.on('error', (error) => {
-                    ErrorHandler.handleDatabaseError(error, 'MongoDB Client');
+                    console.error('[DATABASE] MongoDB Client Error:', error);
                     this.reconnect();
                 });
 
                 await this.ensureCollections();
+                await this.cleanupInvalidRecords();
                 await this.createIndexes();
             }
         } catch (error) {
-            const errorMessage = ErrorHandler.handleDatabaseError(error, 'Database Connect');
-            throw new BotError(errorMessage, ErrorHandler.ERROR_TYPES.DATABASE, 'Database Connection', error);
+            console.error('[DATABASE] Connection error:', error);
+            throw error;
         }
     }
 
     async reconnect() {
-        console.log('Attempting to reconnect to MongoDB...');
+        console.log('[DATABASE] Attempting to reconnect...');
         try {
             await this.disconnect();
             await this.connect();
         } catch (error) {
-            ErrorHandler.logError(error, 'Database Reconnect');
+            console.error('[DATABASE] Reconnection error:', error);
             setTimeout(() => this.reconnect(), 5000);
         }
     }
@@ -68,17 +65,17 @@ class Database {
                 await this.client.close();
                 this.client = null;
                 this.db = null;
-                console.log('Disconnected from MongoDB');
+                console.log('[DATABASE] Disconnected from MongoDB');
             }
         } catch (error) {
-            ErrorHandler.logError(error, 'Database Disconnect');
+            console.error('[DATABASE] Disconnect error:', error);
             throw error;
         }
     }
 
     async getCollection(collectionName) {
         if (!this.db) {
-            throw new Error('Database not initialized. Call `connect()` first.');
+            throw new Error('[DATABASE] Not initialized. Call `connect()` first.');
         }
         return this.db.collection(collectionName);
     }
@@ -106,6 +103,49 @@ class Database {
         }
     }
 
+    async cleanupInvalidRecords() {
+        try {
+            const bonusPoints = this.db.collection('bonusPoints');
+            
+            // Remove records with null technicalKey
+            await bonusPoints.deleteMany({
+                technicalKey: null
+            });
+
+            // Remove duplicate records
+            const duplicates = await bonusPoints.aggregate([
+                {
+                    $group: {
+                        _id: {
+                            username: "$username",
+                            year: "$year",
+                            technicalKey: "$technicalKey"
+                        },
+                        count: { $sum: 1 },
+                        ids: { $push: "$_id" }
+                    }
+                },
+                {
+                    $match: {
+                        count: { $gt: 1 }
+                    }
+                }
+            ]).toArray();
+
+            for (const dup of duplicates) {
+                // Keep the first record, delete the rest
+                const idsToDelete = dup.ids.slice(1);
+                await bonusPoints.deleteMany({
+                    _id: { $in: idsToDelete }
+                });
+            }
+
+            console.log('[DATABASE] Invalid records cleaned up');
+        } catch (error) {
+            console.error('[DATABASE] Error cleaning up invalid records:', error);
+        }
+    }
+
     async createIndexes() {
         try {
             console.log('[DATABASE] Creating indexes...');
@@ -123,14 +163,17 @@ class Database {
                 name: 'games_date_desc'
             });
             
-            // Points and achievements indexes
+            // Points and achievements indexes - Ensure technicalKey is never null
             await this.db.collection('bonusPoints').createIndex({ 
                 username: 1,
                 year: 1,
                 technicalKey: 1 
             }, { 
                 unique: true,
-                name: 'bonus_points_compound'
+                name: 'bonus_points_compound',
+                partialFilterExpression: {
+                    technicalKey: { $type: "string" }
+                }
             });
             
             await this.db.collection('achievements').createIndex({ 
@@ -141,7 +184,7 @@ class Database {
                 name: 'achievements_compound'
             });
             
-            // Arcade scores indexes
+            // Rest of the indexes remain the same...
             await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
             await this.db.collection('arcadechallenge').createIndex({
                 'games.scores.username': 1,
@@ -150,7 +193,6 @@ class Database {
                 name: 'arcade_scores_compound'
             });
 
-            // Reviews indexes
             await this.db.collection('reviews').createIndex({ _id: 1 });
             await this.db.collection('reviews').createIndex({
                 'games.reviews.username': 1,
@@ -159,7 +201,6 @@ class Database {
                 name: 'reviews_compound'
             });
 
-            // Nominations indexes
             await this.db.collection('nominations').createIndex({ _id: 1 });
             await this.db.collection('nominations').createIndex({
                 'nominations.period': 1,
@@ -168,19 +209,8 @@ class Database {
                 name: 'nominations_compound'
             });
 
-            // Shadow Game index
             await this.db.collection('shadowgame').createIndex({ _id: 1 });
-
-            // Records and stats indexes
             await this.db.collection('records').createIndex({ _id: 1 });
-            await this.db.collection('records').createIndex({
-                'monthlyRecords.date': -1,
-                'yearlyRecords.year': -1
-            }, {
-                name: 'records_compound'
-            });
-
-            // Configuration index
             await this.db.collection('config').createIndex({ _id: 1 });
 
             console.log('[DATABASE] Indexes created successfully');
@@ -190,6 +220,7 @@ class Database {
             throw error;
         }
     }
+
 
     // ==================
     // Challenge Methods
