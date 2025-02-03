@@ -191,7 +191,7 @@ class Database {
             throw error;
         }
     }
-}
+    
     // ==================
     // Challenge Methods
     // ==================
