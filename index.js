@@ -52,7 +52,7 @@ async function createCoreServices() {
     try {
         console.log('Creating core services...');
         
-        // Create core services
+        // Create services
         const achievementSystem = new AchievementSystem(database);
         const userTracker = new UserTracker(database);
         const leaderboardCache = createLeaderboardCache(database);
@@ -65,7 +65,7 @@ async function createCoreServices() {
         global.leaderboardCache = leaderboardCache;
         global.achievementFeed = achievementFeed;
 
-        // Create services object
+        // Create services object with all required services
         const services = {
             achievementSystem,
             userTracker,
@@ -74,8 +74,9 @@ async function createCoreServices() {
             announcer,
             shadowGame,
             achievementFeed,
+            raAPI,   // Add raAPI service
             mobyAPI: MobyAPI,
-            database
+            database // Add database service
         };
 
         // Initialize service dependencies
