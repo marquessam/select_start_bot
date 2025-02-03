@@ -72,7 +72,7 @@ class AchievementFeed {
         }
     }
 
-    async initialize() {
+  async initialize() {
         if (this.isInitializing) {
             console.log('[ACHIEVEMENT FEED] Already initializing...');
             while (this.isInitializing) {
@@ -82,36 +82,54 @@ class AchievementFeed {
         }
 
         this.isInitializing = true;
+
         try {
-            console.log('[ACHIEVEMENT FEED] Initializing...');
+            console.log('[ACHIEVEMENT FEED] Starting initialization...');
 
-            // Get achievement data from RetroAchievements API
-            const users = await this.database.getValidUsers();
-            const gameIds = Object.keys(this.services.achievementSystem.constructor.Games);
+            // Verify services are available
+            this.checkServiceAvailability();
 
-            // Initialize last checked times for each user
-            for (const username of users) {
-                for (const gameId of gameIds) {
-                    const gameProgress = await raAPI.fetchCompleteGameProgress(username, gameId);
-                    if (gameProgress?.achievements?.length > 0) {
-                        await database.updateLastAchievementTimestamp(
+            console.log('[ACHIEVEMENT FEED] Services validated, proceeding with initialization...');
+
+            // Get the initial data
+            try {
+                const users = await this.services.database.getValidUsers();
+                console.log(`[ACHIEVEMENT FEED] Found ${users.length} valid users`);
+
+                const gameIds = Object.keys(this.services.achievementSystem.constructor.Games);
+                console.log(`[ACHIEVEMENT FEED] Found ${gameIds.length} tracked games`);
+
+                // Initialize timestamps for tracked games
+                const timestamps = await this.services.database.getLastAchievementTimestamps();
+                
+                for (const username of users) {
+                    if (!timestamps[username.toLowerCase()]) {
+                        console.log(`[ACHIEVEMENT FEED] Initializing timestamps for ${username}`);
+                        await this.services.database.updateLastAchievementTimestamp(
                             username.toLowerCase(),
                             new Date().getTime()
                         );
                     }
                 }
+
+            } catch (dataError) {
+                console.error('[ACHIEVEMENT FEED] Error during data initialization:', dataError);
+                throw new Error('Failed to initialize achievement data');
             }
 
-            this.initializationComplete = true;
+            // Start periodic checks
             this.startPeriodicCheck();
-            console.log('[ACHIEVEMENT FEED] Initialized successfully.');
+            this.initializationComplete = true;
+            console.log('[ACHIEVEMENT FEED] Initialization completed successfully');
+
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Initialization error:', error);
+            this.initializationComplete = false;
+            throw error;
         } finally {
             this.isInitializing = false;
         }
     }
-
     async queueAnnouncement(messageOptions) {
         this.announcementQueue.push(messageOptions);
         if (!this.isProcessingQueue) {
