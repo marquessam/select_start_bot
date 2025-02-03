@@ -7,7 +7,6 @@ const UserTracker = require('./userTracker');
 const Announcer = require('./utils/announcer');
 const createLeaderboardCache = require('./leaderboardCache');
 const ShadowGame = require('./shadowGame');
-const errorHandler = require('./utils/errorHandler');
 const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
 const AchievementSystem = require('./achievementSystem');
@@ -53,14 +52,14 @@ async function createCoreServices() {
     try {
         console.log('Creating core services...');
         
-        // Create services
+        // Create core services
         const achievementSystem = new AchievementSystem(database);
         const userTracker = new UserTracker(database);
         const leaderboardCache = createLeaderboardCache(database);
         const commandHandler = new CommandHandler();
         const announcer = new Announcer(client, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
-        const achievementFeed = new AchievementFeed(client, database);
+        const achievementFeed = new AchievementFeed(client);
 
         // Setup global references
         global.leaderboardCache = leaderboardCache;
@@ -75,14 +74,16 @@ async function createCoreServices() {
             announcer,
             shadowGame,
             achievementFeed,
-            mobyAPI: MobyAPI
+            mobyAPI: MobyAPI,
+            database
         };
 
-        // Pass services reference to components that need it
+        // Initialize service dependencies
         achievementSystem.setServices(services);
         userTracker.setServices(services);
         leaderboardCache.setServices(services);
         achievementFeed.setServices(services);
+        shadowGame.setServices(services);
 
         console.log('Core services created successfully');
         return services;
@@ -144,49 +145,27 @@ async function coordinateUpdate(services, force = false) {
         return;
     }
 
-    console.log('[UPDATE] Starting coordinated update...');
-    
-    if (!services?.leaderboardCache) {
-        console.log('[UPDATE] Required services not available');
-        return;
-    }
-
     try {
-        const leaderboardData = await services.leaderboardCache.updateLeaderboards(force);
-        console.log('[UPDATE] Leaderboard data updated');
+        console.log('[UPDATE] Starting coordinated update...');
+        
+        if (!services?.leaderboardCache) {
+            throw new Error('LeaderboardCache service not available');
+        }
 
+        await services.leaderboardCache.updateLeaderboards(force);
         services.leaderboardCache.hasInitialData = true;
+        
         console.log('[UPDATE] Coordinated update complete');
     } catch (error) {
         console.error('[UPDATE] Error during coordinated update:', error);
     }
 }
 
-async function handleMessage(message, services) {
-    if (message.author.bot || !services) return;
-    
-    const { userTracker, shadowGame, commandHandler } = services;
-    const tasks = [];
-
-    if (message.channel.id === process.env.RA_CHANNEL_ID) {
-        tasks.push(userTracker.processMessage(message));
-    }
-
-    tasks.push(
-        shadowGame.checkMessage(message),
-        commandHandler.handleCommand(message, services)
-    );
-
-    await Promise.allSettled(tasks.map(task => 
-        task.catch(error => console.error('Message handling error:', error))
-    ));
-}
-
-// Bot Events
+// Bot Event Handlers
 client.once('ready', async () => {
     try {
         console.log(`Logged in as ${client.user.tag}`);
-        const initializedServices = await setupBot();
+        await setupBot();
     } catch (error) {
         console.error('Fatal initialization error:', error);
         process.exit(1);
@@ -195,9 +174,21 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !services) return;
-    await handleMessage(message, services).catch(error => 
-        console.error('Message Handler Error:', error)
-    );
+
+    try {
+        // Process messages in the RA channel for user tracking
+        if (message.channel.id === process.env.RA_CHANNEL_ID) {
+            await services.userTracker.processMessage(message);
+        }
+
+        // Process shadow game messages
+        await services.shadowGame.checkMessage(message);
+
+        // Handle commands
+        await services.commandHandler.handleCommand(message, services);
+    } catch (error) {
+        console.error('Message Handler Error:', error);
+    }
 });
 
 // Periodic Updates
