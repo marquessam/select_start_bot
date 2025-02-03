@@ -1,18 +1,8 @@
 // achievementSystem.js
-const { pointsConfig, monthlySchedule } = require('./pointsConfig');
-
 class AchievementSystem {
     constructor(database) {
         this.database = database;
         this.services = null;
-
-        // Define the monthly games
-        this.monthlyGames = monthlySchedule;
-    }
-
-    setServices(services) {
-        this.services = services;
-        console.log('[ACHIEVEMENT SYSTEM] Services updated');
     }
 
     static Types = {
@@ -21,20 +11,88 @@ class AchievementSystem {
         MASTERY: 'mastery'
     };
 
-    static GameNames = {
-        "319": "Chrono Trigger",
-        "355": "The Legend of Zelda: A Link to the Past",
-        "10024": "Mario Tennis",
-        "274": "U.N. Squadron"
+    static Games = {
+        "319": {  // Chrono Trigger
+            name: "Chrono Trigger",
+            points: {
+                participation: 1,
+                beaten: 3,
+                mastery: 3
+            },
+            progression: [2080, 2081, 2085, 2090, 2191, 2100, 2108, 2129, 2133],
+            winCondition: [2266, 2281],
+            requireProgression: true,
+            requireAllWinConditions: false,
+            masteryCheck: true,
+            restrictions: {
+                month: 1,
+                year: 2025,
+                masteryOnly: true
+            }
+        },
+        "355": {  // ALTTP
+            name: "The Legend of Zelda: A Link to the Past",
+            points: {
+                participation: 1,
+                beaten: 3,
+                mastery: 3
+            },
+            progression: [944, 2192, 2282, 980, 2288, 2291, 2292, 2296, 2315],
+            winCondition: [2389],
+            requireProgression: true,
+            requireAllWinConditions: true,
+            masteryCheck: true,
+            restrictions: {
+                month: 2,
+                year: 2025
+            }
+        },
+        "10024": {  // Mario Tennis
+            name: "Mario Tennis",
+            points: {
+                participation: 1,
+                beaten: 3
+            },
+            winCondition: [48411, 48412],
+            requireProgression: false,
+            requireAllWinConditions: false,
+            masteryCheck: false,
+            restrictions: {
+                month: 1,
+                year: 2025
+            }
+        },
+        "274": {  // U.N. Squadron
+            name: "U.N. Squadron",
+            points: {
+                participation: 1,
+                beaten: 3
+            },
+            progression: [6413, 6414, 6415, 6416, 6417, 6418, 6419, 6420, 6421],
+            winCondition: [6422],
+            requireProgression: true,
+            requireAllWinConditions: true,
+            masteryCheck: false,
+            shadowGame: true,
+            restrictions: {
+                month: 2,
+                year: 2025
+            }
+        }
     };
 
-    getGameName(gameId) {
-        return AchievementSystem.GameNames[gameId] || 'Unknown Game';
+    setServices(services) {
+        this.services = services;
+        console.log('[ACHIEVEMENT SYSTEM] Services linked:', Object.keys(services));
     }
-    
+
+    getGameConfig(gameId) {
+        return AchievementSystem.Games[gameId];
+    }
+
     async checkAchievements(username, achievements, gameId, month, year) {
         try {
-            const gameConfig = pointsConfig.monthlyGames[gameId];
+            const gameConfig = this.getGameConfig(gameId);
             if (!gameConfig) {
                 console.log(`[ACHIEVEMENTS] No game config found for ${gameId}`);
                 return;
@@ -45,12 +103,13 @@ class AchievementSystem {
             );
 
             // Check participation (earned in month)
-            const hasParticipationInMonth = gameAchievements.some(a => {
-                const earnedDate = new Date(a.DateEarned);
-                return parseInt(a.DateEarned) > 0 && 
-                       earnedDate.getMonth() + 1 === month && 
-                       earnedDate.getFullYear() === year;
-            });
+            const hasParticipationInMonth = !gameConfig.restrictions?.masteryOnly && 
+                gameAchievements.some(a => {
+                    const earnedDate = new Date(a.DateEarned);
+                    return parseInt(a.DateEarned) > 0 && 
+                           earnedDate.getMonth() + 1 === month && 
+                           earnedDate.getFullYear() === year;
+                });
 
             if (hasParticipationInMonth) {
                 await this.addRecord(
@@ -78,7 +137,7 @@ class AchievementSystem {
                 });
             }
 
-            // Check win conditions if still valid
+            // Check win conditions
             if (isBeaten && gameConfig.winCondition) {
                 if (gameConfig.requireAllWinConditions) {
                     isBeaten = gameConfig.winCondition.every(achId => {
@@ -130,6 +189,7 @@ class AchievementSystem {
                     );
                 }
             }
+
         } catch (error) {
             console.error('[ACHIEVEMENTS] Error checking achievements:', error);
         }
@@ -146,7 +206,7 @@ class AchievementSystem {
                 month,
                 year: year.toString(),
                 date: new Date().toISOString(),
-                gameName: pointsConfig.monthlyGames[gameId].name
+                gameName: AchievementSystem.Games[gameId]?.name || 'Unknown Game'
             };
 
             // Check for existing record
@@ -188,51 +248,36 @@ class AchievementSystem {
             if (month) query.month = parseInt(month);
             if (year) query.year = year.toString();
 
-           const collection = await this.database.getCollection('achievement_records');
-if (!collection) {
-    console.error('[ERROR] Failed to fetch achievement_records collection.');
-    return [];
-}
-
-const records = await collection.find(query).toArray();
+            const collection = await this.database.getCollection('achievement_records');
+            const records = await collection.find(query).toArray();
             const points = {
                 total: 0,
-                games: {}
+                achievements: records
             };
 
+            // Calculate total and organize by game
+            const gamePoints = {};
             for (const record of records) {
-                if (!points.games[record.gameId]) {
-                    points.games[record.gameId] = {
-                        name: pointsConfig.monthlyGames[record.gameId].name,
+                if (!gamePoints[record.gameId]) {
+                    gamePoints[record.gameId] = {
+                        name: record.gameName,
                         points: 0,
                         achievements: []
                     };
                 }
-
                 points.total += record.points;
-                points.games[record.gameId].points += record.points;
-                points.games[record.gameId].achievements.push({
-                    type: record.type,
-                    points: record.points,
-                    date: record.date
-                });
+                gamePoints[record.gameId].points += record.points;
+                gamePoints[record.gameId].achievements.push(record);
             }
 
-            return points;
+            return {
+                total: points.total,
+                games: gamePoints
+            };
         } catch (error) {
             console.error('[ACHIEVEMENTS] Error calculating points:', error);
             return { total: 0, games: {} };
         }
-    }
-
-    getMonthlyGames(month, year) {
-        const monthKey = month.toString();
-        if (!this.monthlyGames[monthKey]) return [];
-        
-        return [
-            this.monthlyGames[monthKey].main,
-            this.monthlyGames[monthKey].shadow
-        ];
     }
 }
 
