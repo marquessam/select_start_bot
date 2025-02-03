@@ -77,7 +77,12 @@ class Database {
         throw new Error('[DATABASE] ERROR: Database connection not established.');
     }
     console.log(`[DEBUG] Fetching collection: ${collectionName}`);
-    return this.db.collection(collectionName);
+    const collection = this.db.collection(collectionName);
+    if (!collection || typeof collection.find !== 'function') {
+        console.error(`[ERROR] Collection '${collectionName}' is not valid!`);
+        return null;
+    }
+    return collection;
 }
 
     async ensureCollections() {
