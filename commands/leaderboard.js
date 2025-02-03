@@ -1,43 +1,11 @@
 // commands/leaderboard.js
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
-const { monthlySchedule } = require('../pointsConfig');
-
-function formatDate(date) {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                   'July', 'August', 'September', 'October', 'November', 'December'];
-    
-    const day = date.getDate();
-    const month = months[date.getMonth()];
-    const year = date.getFullYear();
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
-    
-    const suffix = ['th', 'st', 'nd', 'rd'][(day > 3 && day < 21) || day % 10 > 3 ? 0 : day % 10];
-    return `${month} ${day}${suffix}, ${year} at ${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
-}
-
-function getTimeRemaining(endDate) {
-    const now = new Date();
-    const timeLeft = endDate - now;
-    
-    const days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (days > 0) {
-        return `${days} day${days !== 1 ? 's' : ''} and ${hours} hour${hours !== 1 ? 's' : ''}`;
-    } else if (hours > 0) {
-        return `${hours} hour${hours !== 1 ? 's' : ''} and ${minutes} minute${minutes !== 1 ? 's' : ''}`;
-    } else {
-        return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
-    }
-}
 
 module.exports = {
     name: 'leaderboard',
     description: 'Displays monthly or yearly leaderboards',
-
+    
     async execute(message, args, { shadowGame, achievementSystem }) {
         try {
             if (!args.length) {
@@ -48,7 +16,6 @@ module.exports = {
                     .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT AN OPTION]\n')
                     .addTerminalField('USAGE',
                         '1. !leaderboard month - View monthly challenge leaderboard\n' +
-                        ' Secret Chime - [W2K5MN]\n' +
                         '2. !leaderboard year - View yearly challenge leaderboard')
                     .setTerminalFooter();
 
@@ -82,28 +49,26 @@ module.exports = {
             const currentMonth = currentDate.getMonth() + 1;
             const currentYear = currentDate.getFullYear();
 
-            // Get this month's games
-            const monthlyGames = monthlySchedule[currentYear]?.[currentMonth];
-            if (!monthlyGames) {
-                await message.channel.send('```ansi\n\x1b[32m[ERROR] No active challenges for this month\n[Ready for input]█\x1b[0m```');
-                return;
-            }
-
-            // Get all users' points
-            const users = await DataService.getValidUsers();
-            const userPoints = await Promise.all(
-                users.map(async username => {
+            // Get all users' progress
+            const validUsers = await DataService.getValidUsers();
+            const userAchievements = await Promise.all(
+                validUsers.map(async username => {
                     const points = await achievementSystem.calculatePoints(username, currentMonth, currentYear);
+                    const progress = await DataService.getUserProgress(username);
+                    
                     return {
                         username,
                         points: points.total,
-                        games: points.games
+                        games: points.games,
+                        completionPercentage: progress.completionPercentage,
+                        completedAchievements: progress.completedAchievements,
+                        totalAchievements: progress.totalAchievements
                     };
                 })
             );
 
             // Sort users by points
-            const rankedUsers = userPoints
+            const rankedUsers = userAchievements
                 .filter(user => user.points > 0)
                 .sort((a, b) => b.points - a.points)
                 .map((user, index) => ({
@@ -111,33 +76,52 @@ module.exports = {
                     rank: index + 1
                 }));
 
+            // Get current challenge info
+            const currentChallenge = await DataService.getCurrentChallenge();
+
             // Create embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle('MONTHLY RANKINGS')
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
 
-            // Add main challenge info
-            const mainGameName = achievementSystem.getGameName(monthlyGames.main);
-            const shadowGameName = achievementSystem.getGameName(monthlyGames.shadow);
-            
-            embed.addTerminalField('ACTIVE CHALLENGES',
-                `MAIN: ${mainGameName}\n` +
-                `SHADOW: ${shadowGameName}\n` +
-                `TIME REMAINING: ${getTimeRemaining(new Date(currentYear, currentMonth, 0))}`
-            );
+            if (currentChallenge) {
+                embed.addTerminalField('CURRENT CHALLENGE',
+                    `GAME: ${currentChallenge.gameName}\n` +
+                    `DATES: ${currentChallenge.startDate} to ${currentChallenge.endDate}`
+                );
+
+                if (currentChallenge.gameIcon) {
+                    embed.setThumbnail(`https://retroachievements.org${currentChallenge.gameIcon}`);
+                }
+            }
 
             // Add rankings
             if (rankedUsers.length > 0) {
                 const medals = ['🥇', '🥈', '🥉'];
                 rankedUsers.forEach(user => {
                     const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
-                    const gameBreakdown = Object.values(user.games)
-                        .map(game => `${game.name}: ${game.points}`)
-                        .join('\n');
+                    
+                    // Build achievement breakdown for each game
+                    const gameBreakdown = Object.entries(user.games)
+                        .map(([gameId, game]) => {
+                            const achievements = [];
+                            game.achievements.forEach(ach => {
+                                switch(ach.type) {
+                                    case 'participation': achievements.push('✓ Participation'); break;
+                                    case 'beaten': achievements.push('✓ Completion'); break;
+                                    case 'mastery': achievements.push('✓ Mastery'); break;
+                                }
+                            });
+                            return `${game.name}:\n${achievements.join('\n')}`;
+                        })
+                        .join('\n\n');
 
                     embed.addTerminalField(
                         `${medal} #${user.rank} ${user.username}`,
-                        `${gameBreakdown}\nTOTAL: ${user.points} points`
+                        `PROGRESS: ${user.completionPercentage}%\n` +
+                        `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\n` +
+                        `MONTHLY POINTS: ${user.points}\n\n` +
+                        `${gameBreakdown}`
                     );
                 });
             } else {
@@ -158,22 +142,31 @@ module.exports = {
             await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
             const currentYear = new Date().getFullYear();
-            const users = await DataService.getValidUsers();
+            const validUsers = await DataService.getValidUsers();
 
-            // Get all users' yearly points
-            const userPoints = await Promise.all(
-                users.map(async username => {
+            // Get all users' yearly achievements
+            const userAchievements = await Promise.all(
+                validUsers.map(async username => {
                     const points = await achievementSystem.calculatePoints(username, null, currentYear);
+                    
+                    // Count achievement types
+                    const gameStats = Object.values(points.games).reduce((acc, game) => {
+                        if (game.achievements.some(a => a.type === 'beaten')) acc.gamesBeaten++;
+                        if (game.achievements.some(a => a.type === 'mastery')) acc.gamesMastered++;
+                        acc.gamesParticipated++;
+                        return acc;
+                    }, { gamesParticipated: 0, gamesBeaten: 0, gamesMastered: 0 });
+
                     return {
                         username,
                         total: points.total,
-                        gameCount: Object.keys(points.games).length
+                        ...gameStats
                     };
                 })
             );
 
             // Sort users by points
-            const rankedUsers = userPoints
+            const rankedUsers = userAchievements
                 .filter(user => user.total > 0)
                 .sort((a, b) => b.total - a.total)
                 .map((user, index) => ({
@@ -192,7 +185,9 @@ module.exports = {
                     embed.addTerminalField(
                         `${medal} #${user.rank} ${user.username}`,
                         `TOTAL POINTS: ${user.total}\n` +
-                        `GAMES: ${user.gameCount}`
+                        `GAMES PARTICIPATED: ${user.gamesParticipated}\n` +
+                        `GAMES BEATEN: ${user.gamesBeaten}\n` +
+                        `GAMES MASTERED: ${user.gamesMastered}`
                     );
                 });
             } else {
@@ -202,7 +197,7 @@ module.exports = {
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
 
-      } catch (error) {
+        } catch (error) {
             console.error('Yearly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
         }
