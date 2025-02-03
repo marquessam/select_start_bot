@@ -10,7 +10,7 @@ class Database {
         this.db = null;
     }
 
-// =====================
+    // =====================
     // Connection Management
     // =====================
     async connect() {
@@ -39,7 +39,6 @@ class Database {
                 });
 
                 await this.ensureCollections();
-                await this.cleanupInvalidRecords();
                 await this.createIndexes();
             }
         } catch (error) {
@@ -83,9 +82,17 @@ class Database {
     async ensureCollections() {
         try {
             const requiredCollections = [
-                'userstats', 'users', 'challenges', 'achievements',
-                'bonusPoints', 'arcadechallenge', 'reviews', 'nominations',
-                'shadowgame', 'records', 'config'
+                'userstats',
+                'users',
+                'challenges',
+                'achievements',
+                'achievement_records',  // New collection
+                'arcadechallenge',
+                'reviews',
+                'nominations',
+                'shadowgame',
+                'records',
+                'config'
             ];
 
             const existingCollections = await this.db.listCollections().toArray();
@@ -103,49 +110,6 @@ class Database {
         }
     }
 
-    async cleanupInvalidRecords() {
-        try {
-            const bonusPoints = this.db.collection('bonusPoints');
-            
-            // Remove records with null technicalKey
-            await bonusPoints.deleteMany({
-                technicalKey: null
-            });
-
-            // Remove duplicate records
-            const duplicates = await bonusPoints.aggregate([
-                {
-                    $group: {
-                        _id: {
-                            username: "$username",
-                            year: "$year",
-                            technicalKey: "$technicalKey"
-                        },
-                        count: { $sum: 1 },
-                        ids: { $push: "$_id" }
-                    }
-                },
-                {
-                    $match: {
-                        count: { $gt: 1 }
-                    }
-                }
-            ]).toArray();
-
-            for (const dup of duplicates) {
-                // Keep the first record, delete the rest
-                const idsToDelete = dup.ids.slice(1);
-                await bonusPoints.deleteMany({
-                    _id: { $in: idsToDelete }
-                });
-            }
-
-            console.log('[DATABASE] Invalid records cleaned up');
-        } catch (error) {
-            console.error('[DATABASE] Error cleaning up invalid records:', error);
-        }
-    }
-
     async createIndexes() {
         try {
             console.log('[DATABASE] Creating indexes...');
@@ -156,6 +120,25 @@ class Database {
                 unique: true,
                 name: 'username_unique' 
             });
+
+            // Achievement records indexes
+            await this.db.collection('achievement_records').createIndex(
+                {
+                    username: 1,
+                    gameId: 1,
+                    type: 1,
+                    year: 1
+                },
+                { 
+                    unique: true,
+                    name: 'achievement_records_unique'
+                }
+            );
+
+            await this.db.collection('achievement_records').createIndex(
+                { date: -1 },
+                { name: 'achievement_records_date' }
+            );
             
             // Challenge related indexes
             await this.db.collection('challenges').createIndex({ _id: 1 });
@@ -163,19 +146,7 @@ class Database {
                 name: 'games_date_desc'
             });
             
-            // Points and achievements indexes - Ensure technicalKey is never null
-            await this.db.collection('bonusPoints').createIndex({ 
-                username: 1,
-                year: 1,
-                technicalKey: 1 
-            }, { 
-                unique: true,
-                name: 'bonus_points_compound',
-                partialFilterExpression: {
-                    technicalKey: { $type: "string" }
-                }
-            });
-            
+            // Achievement and records indexes
             await this.db.collection('achievements').createIndex({ 
                 _id: 1,
                 'data.username': 1,
@@ -184,7 +155,7 @@ class Database {
                 name: 'achievements_compound'
             });
             
-            // Rest of the indexes remain the same...
+            // Other collection indexes
             await this.db.collection('arcadechallenge').createIndex({ _id: 1 });
             await this.db.collection('arcadechallenge').createIndex({
                 'games.scores.username': 1,
@@ -220,8 +191,7 @@ class Database {
             throw error;
         }
     }
-
-
+}
     // ==================
     // Challenge Methods
     // ==================
