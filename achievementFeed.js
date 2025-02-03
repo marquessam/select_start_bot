@@ -1,7 +1,5 @@
 const { EmbedBuilder } = require('discord.js');
-const raAPI = require('./raAPI');
-const DataService = require('./services/dataService');
-const database = require('./database');
+const ErrorHandler = require('./utils/errorHandler');
 
 class AchievementFeed {
     constructor(client) {
@@ -17,13 +15,14 @@ class AchievementFeed {
         this.isPaused = false;
         this.services = null;
 
-        // Game type configurations - Preserve special styling
+        // Game type configurations
         this.gameTypes = {
             // Monthly Challenge Games
             "319": { // Chrono Trigger
                 type: 'MONTHLY',
                 color: '#00BFFF',
-                label: 'MONTHLY CHALLENGE 🏆'
+                label: 'MONTHLY CHALLENGE 🏆',
+                masteryOnly: true
             },
             "355": { // ALTTP
                 type: 'MONTHLY',
@@ -37,6 +36,12 @@ class AchievementFeed {
                 label: 'SHADOW GAME 🌘'
             }
         };
+
+        // Validate feedChannel on initialization
+        if (!this.feedChannel) {
+            console.error('[ACHIEVEMENT FEED] ERROR: ACHIEVEMENT_FEED_CHANNEL environment variable is not set.');
+            throw new Error('ACHIEVEMENT_FEED_CHANNEL environment variable is required.');
+        }
     }
 
     setServices(services) {
@@ -46,6 +51,25 @@ class AchievementFeed {
 
     startPeriodicCheck() {
         setInterval(() => this.checkNewAchievements(), this.checkInterval);
+        console.log('[ACHIEVEMENT FEED] Periodic check started');
+    }
+
+    checkServiceAvailability() {
+        if (!this.services) {
+            throw new Error('[ACHIEVEMENT FEED] Services not initialized');
+        }
+
+        if (!this.services.database) {
+            throw new Error('[ACHIEVEMENT FEED] Database service not available');
+        }
+
+        if (!this.services.raAPI) {
+            throw new Error('[ACHIEVEMENT FEED] RetroAchievements API service not available');
+        }
+
+        if (!this.services.achievementSystem) {
+            throw new Error('[ACHIEVEMENT FEED] Achievement system not available');
+        }
     }
 
     async initialize() {
