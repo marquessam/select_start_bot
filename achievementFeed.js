@@ -15,12 +15,28 @@ class AchievementFeed {
         this.initializationComplete = false;
         this._processingAchievements = false;
         this.isPaused = false;
+        this.services = null;
 
-        // Validate feedChannel on initialization
-        if (!this.feedChannel) {
-            console.error('[ACHIEVEMENT FEED] ERROR: ACHIEVEMENT_FEED_CHANNEL environment variable is not set.');
-            throw new Error('ACHIEVEMENT_FEED_CHANNEL environment variable is required.');
-        }
+        // Game type configurations
+        this.gameTypes = {
+            // Monthly Challenge Games
+            "319": { // Chrono Trigger
+                type: 'MONTHLY',
+                color: '#00BFFF',
+                label: 'MONTHLY CHALLENGE 🏆'
+            },
+            "355": { // ALTTP
+                type: 'MONTHLY',
+                color: '#00BFFF',
+                label: 'MONTHLY CHALLENGE 🏆'
+            },
+            // Shadow Games
+            "274": { // UN Squadron
+                type: 'SHADOW',
+                color: '#FF0000', // Changed to red as requested
+                label: 'SHADOW GAME 🌘'
+            }
+        };
     }
 
     setServices(services) {
@@ -44,12 +60,7 @@ class AchievementFeed {
         this.isInitializing = true;
         try {
             console.log('[ACHIEVEMENT FEED] Initializing...');
-
-            // Validate feedChannel again before proceeding
-            if (!this.feedChannel) {
-                throw new Error('ACHIEVEMENT_FEED_CHANNEL environment variable is not set.');
-            }
-
+            
             const [allAchievements, storedTimestamps] = await Promise.all([
                 raAPI.fetchAllRecentAchievements(),
                 database.getLastAchievementTimestamps()
@@ -84,17 +95,7 @@ class AchievementFeed {
 
         this.isProcessingQueue = true;
         try {
-            // Validate feedChannel before fetching
-            if (!this.feedChannel) {
-                throw new Error('ACHIEVEMENT_FEED_CHANNEL environment variable is not set.');
-            }
-
-            const channel = await this.client.channels.fetch(this.feedChannel).catch(() => null);
-            if (!channel) {
-                console.error('[ACHIEVEMENT FEED] Error: Channel not found or invalid channel ID.');
-                return;
-            }
-
+            const channel = await this.client.channels.fetch(this.feedChannel);
             while (this.announcementQueue.length > 0) {
                 const messageOptions = this.announcementQueue.shift();
                 await channel.send(messageOptions);
@@ -108,28 +109,20 @@ class AchievementFeed {
     }
 
     async checkNewAchievements() {
-        if (this._processingAchievements) {
-            console.log('[ACHIEVEMENT FEED] Already processing, skipping...');
+        if (this._processingAchievements || this.isPaused) {
+            console.log('[ACHIEVEMENT FEED] Already processing or paused, skipping...');
             return;
         }
 
         this._processingAchievements = true;
         try {
-            // Validate feedChannel before fetching
-            if (!this.feedChannel) {
-                throw new Error('ACHIEVEMENT_FEED_CHANNEL environment variable is not set.');
-            }
-
             const [allAchievements, storedTimestamps] = await Promise.all([
                 raAPI.fetchAllRecentAchievements(),
                 database.getLastAchievementTimestamps()
             ]);
-
-            const channel = await this.client.channels.fetch(this.feedChannel).catch(() => null);
-            if (!channel) {
-                console.error('[ACHIEVEMENT FEED] Error: Channel not found or invalid channel ID.');
-                return;
-            }
+            
+            const channel = await this.client.channels.fetch(this.feedChannel);
+            if (!channel) throw new Error('Achievement feed channel not found');
 
             for (const { username, achievements } of allAchievements) {
                 if (!achievements || achievements.length === 0) continue;
@@ -144,6 +137,19 @@ class AchievementFeed {
                     await database.updateLastAchievementTimestamp(username.toLowerCase(), latestTime);
 
                     for (const achievement of newAchievements) {
+                        // Check if this achievement triggers any achievement records
+                        if (this.services?.achievementSystem) {
+                            const currentMonth = new Date().getMonth() + 1;
+                            const currentYear = new Date().getFullYear();
+                            await this.services.achievementSystem.checkAchievements(
+                                username,
+                                [achievement],
+                                achievement.GameID,
+                                currentMonth,
+                                currentYear
+                            );
+                        }
+
                         await this.sendAchievementNotification(channel, username, achievement);
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
@@ -167,26 +173,48 @@ class AchievementFeed {
                 ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
                 : 'https://media.retroachievements.org/Badge/00000.png';
 
-            const userIconUrl = await DataService.getRAProfileImage(username) ||
+            const userIconUrl = await DataService.getRAProfileImage(username) || 
                 `https://retroachievements.org/UserPic/${username}.png`;
 
+            // Get game configuration
+            const gameId = String(achievement.GameID);
+            const gameConfig = this.gameTypes[gameId];
+            
+            // Set up embed with default or game-specific styling
             const embed = new EmbedBuilder()
-                .setColor('#00FF00')
+                .setColor(gameConfig?.color || '#00FF00')
                 .setTitle(`${achievement.GameTitle}`)
                 .setThumbnail(badgeUrl)
                 .setDescription(
                     `**${username}** earned **${achievement.Title}**\n\n` +
                     `*${achievement.Description || 'No description available'}*`
                 )
-                .setFooter({
-                    text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`,
-                    iconURL: userIconUrl
+                .setFooter({ 
+                    text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`, 
+                    iconURL: userIconUrl 
                 })
                 .setTimestamp();
 
-            await this.queueAnnouncement({ embeds: [embed] });
-            this.announcementHistory.add(achievementKey);
+            // Add game-specific styling
+            if (gameConfig) {
+                let files = [];
+                if (gameConfig.type === 'MONTHLY' || gameConfig.type === 'SHADOW') {
+                    files = [{ 
+                        attachment: './assets/logo_simple.png',
+                        name: 'game_logo.png'
+                    }];
+                    embed.setAuthor({
+                        name: gameConfig.label,
+                        iconURL: 'attachment://game_logo.png'
+                    });
+                }
 
+                await this.queueAnnouncement({ embeds: [embed], files });
+            } else {
+                await this.queueAnnouncement({ embeds: [embed] });
+            }
+
+            this.announcementHistory.add(achievementKey);
             if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
 
         } catch (error) {
@@ -194,40 +222,46 @@ class AchievementFeed {
         }
     }
 
-    async announcePointsAward(username, points, reason) {
+    async announceAchievementMilestone(username, type, gameId, points) {
         try {
             if (this.isPaused) return;
 
-            if (!this.feedChannel) {
-                console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
-                return;
-            }
+            const game = this.services?.achievementSystem?.getGameConfig(gameId);
+            if (!game) return;
 
-            const awardKey = `${username}-${points}-${reason}-${Date.now()}`;
-            if (this.announcementHistory.has(awardKey)) {
-                console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${awardKey}`);
-                return;
-            }
+            const awardKey = `${username}-${type}-${gameId}-${Date.now()}`;
+            if (this.announcementHistory.has(awardKey)) return;
 
             this.announcementHistory.add(awardKey);
 
             const userProfile = await DataService.getRAProfileImage(username);
-
+            const gameConfig = this.gameTypes[gameId] || {};
+            
             const embed = new EmbedBuilder()
-                .setColor('#FFD700')
+                .setColor(gameConfig.color || '#FFD700')
                 .setAuthor({
                     name: username,
                     iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
                     url: `https://retroachievements.org/user/${username}`
                 })
-                .setTitle('🏆 Points Awarded!')
-                .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
+                .setTitle('🏆 Achievement Unlocked!')
+                .setDescription(
+                    `**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n` +
+                    `*${game.name} - ${type}*`
+                )
                 .setTimestamp();
+
+            if (gameConfig.type) {
+                embed.addFields({
+                    name: gameConfig.label,
+                    value: `Achievement Type: ${type}`
+                });
+            }
 
             await this.queueAnnouncement({ embeds: [embed] });
 
         } catch (error) {
-            console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
+            console.error('[ACHIEVEMENT FEED] Error announcing achievement milestone:', error);
             this.announcementHistory.delete(awardKey);
         }
     }
