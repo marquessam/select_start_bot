@@ -62,12 +62,10 @@ async function createCoreServices() {
         const shadowGame = new ShadowGame();
         const achievementFeed = new AchievementFeed(client);
 
-        // Setup global references
-        global.leaderboardCache = leaderboardCache;
-        global.achievementFeed = achievementFeed;
-
-        // Create services object with all required services
+        // Create services object
         const services = {
+            database,
+            raAPI,
             achievementSystem,
             userTracker,
             leaderboardCache,
@@ -75,10 +73,12 @@ async function createCoreServices() {
             announcer,
             shadowGame,
             achievementFeed,
-            raAPI,   // Add raAPI service
-            mobyAPI: MobyAPI,
-            database // Add database service
+            mobyAPI: MobyAPI
         };
+
+        // Setup global references
+        global.leaderboardCache = leaderboardCache;
+        global.achievementFeed = achievementFeed;
 
         // Initialize service dependencies
         achievementSystem.setServices(services);
