@@ -5,10 +5,10 @@ class AchievementSystem {
         this.services = null;
     }
 
-    static Types = {
-        PARTICIPATION: 'participation',
+    static GameAward = {
+        MASTERY: 'mastered',
         BEATEN: 'beaten',
-        MASTERY: 'mastery'
+        PARTICIPATION: 'participation'
     };
 
     static Games = {
@@ -19,15 +19,11 @@ class AchievementSystem {
                 beaten: 3,
                 mastery: 3
             },
-            progression: [2080, 2081, 2085, 2090, 2191, 2100, 2108, 2129, 2133],
-            winCondition: [2266, 2281],
-            requireProgression: true,
-            requireAllWinConditions: false,
-            masteryCheck: true,
+            monthly: true,
             restrictions: {
                 month: 1,
                 year: 2025,
-                masteryOnly: true
+                masteryOnly: true  // Only mastery points are available
             }
         },
         "355": {  // ALTTP
@@ -37,11 +33,7 @@ class AchievementSystem {
                 beaten: 3,
                 mastery: 3
             },
-            progression: [944, 2192, 2282, 980, 2288, 2291, 2292, 2296, 2315],
-            winCondition: [2389],
-            requireProgression: true,
-            requireAllWinConditions: true,
-            masteryCheck: true,
+            monthly: true,
             restrictions: {
                 month: 2,
                 year: 2025
@@ -53,10 +45,7 @@ class AchievementSystem {
                 participation: 1,
                 beaten: 3
             },
-            winCondition: [48411, 48412],
-            requireProgression: false,
-            requireAllWinConditions: false,
-            masteryCheck: false,
+            monthly: true,
             restrictions: {
                 month: 1,
                 year: 2025
@@ -68,11 +57,6 @@ class AchievementSystem {
                 participation: 1,
                 beaten: 3
             },
-            progression: [6413, 6414, 6415, 6416, 6417, 6418, 6419, 6420, 6421],
-            winCondition: [6422],
-            requireProgression: true,
-            requireAllWinConditions: true,
-            masteryCheck: false,
             shadowGame: true,
             restrictions: {
                 month: 2,
@@ -90,7 +74,7 @@ class AchievementSystem {
         return AchievementSystem.Games[gameId];
     }
 
-    async checkAchievements(username, achievements, gameId, month, year) {
+    async checkUserAchievements(username, gameId, month, year) {
         try {
             const gameConfig = this.getGameConfig(gameId);
             if (!gameConfig) {
@@ -98,98 +82,48 @@ class AchievementSystem {
                 return;
             }
 
-            const gameAchievements = achievements.filter(a => 
-                String(a.GameID) === String(gameId)
-            );
-
-            // Check participation (earned in month)
-            const hasParticipationInMonth = !gameConfig.restrictions?.masteryOnly && 
-                gameAchievements.some(a => {
-                    const earnedDate = new Date(a.DateEarned);
-                    return parseInt(a.DateEarned) > 0 && 
-                           earnedDate.getMonth() + 1 === month && 
-                           earnedDate.getFullYear() === year;
-                });
-
-            if (hasParticipationInMonth) {
-                await this.addRecord(
-                    username,
-                    gameId,
-                    AchievementSystem.Types.PARTICIPATION,
-                    month,
-                    year,
-                    gameConfig.points.participation
-                );
+            // Check month/year restrictions
+            if (gameConfig.restrictions) {
+                const isValidMonth = !month || month === gameConfig.restrictions.month;
+                const isValidYear = !year || year === gameConfig.restrictions.year;
+                if (!isValidMonth || !isValidYear) return;
             }
 
-            // Check beaten (all required achievements earned in month)
-            let isBeaten = true;
+            const { raAPI } = this.services;
+            const gameProgress = await raAPI.fetchCompleteGameProgress(username, gameId);
+            if (!gameProgress) return;
 
-            // Check progression requirements if needed
-            if (gameConfig.requireProgression) {
-                isBeaten = gameConfig.progression.every(achId => {
-                    const ach = gameAchievements.find(a => parseInt(a.ID) === achId);
-                    if (!ach || !parseInt(ach.DateEarned)) return false;
-                    
-                    const earnedDate = new Date(ach.DateEarned);
-                    return earnedDate.getMonth() + 1 === month && 
-                           earnedDate.getFullYear() === year;
-                });
+            const { highestAwardKind } = gameProgress;
+
+            // Award points based on highest award achieved
+            switch (highestAwardKind) {
+                case AchievementSystem.GameAward.MASTERY:
+                    // For mastery-only games like Chrono Trigger
+                    if (gameConfig.restrictions?.masteryOnly) {
+                        await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
+                    } else {
+                        // Regular game mastery includes all lower tiers
+                        await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
+                        await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
+                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
+                    }
+                    break;
+
+                case AchievementSystem.GameAward.BEATEN:
+                    if (!gameConfig.restrictions?.masteryOnly) {
+                        await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
+                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
+                    }
+                    break;
+
+                default:
+                    // Check for participation
+                    if (!gameConfig.restrictions?.masteryOnly && 
+                        gameProgress.numAwardedToUser > 0) {
+                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
+                    }
+                    break;
             }
-
-            // Check win conditions
-            if (isBeaten && gameConfig.winCondition) {
-                if (gameConfig.requireAllWinConditions) {
-                    isBeaten = gameConfig.winCondition.every(achId => {
-                        const ach = gameAchievements.find(a => parseInt(a.ID) === achId);
-                        if (!ach || !parseInt(ach.DateEarned)) return false;
-                        
-                        const earnedDate = new Date(ach.DateEarned);
-                        return earnedDate.getMonth() + 1 === month && 
-                               earnedDate.getFullYear() === year;
-                    });
-                } else {
-                    isBeaten = gameConfig.winCondition.some(achId => {
-                        const ach = gameAchievements.find(a => parseInt(a.ID) === achId);
-                        if (!ach || !parseInt(ach.DateEarned)) return false;
-                        
-                        const earnedDate = new Date(ach.DateEarned);
-                        return earnedDate.getMonth() + 1 === month && 
-                               earnedDate.getFullYear() === year;
-                    });
-                }
-            }
-
-            if (isBeaten) {
-                await this.addRecord(
-                    username,
-                    gameId,
-                    AchievementSystem.Types.BEATEN,
-                    month,
-                    year,
-                    gameConfig.points.beaten
-                );
-            }
-
-            // Check mastery (can be earned any time)
-            if (gameConfig.masteryCheck) {
-                const totalAchievements = gameAchievements.length;
-                const completedAchievements = gameAchievements.filter(a => 
-                    parseInt(a.DateEarned) > 0
-                ).length;
-
-                if (totalAchievements > 0 && totalAchievements === completedAchievements) {
-                    await this.addRecord(
-                        username,
-                        gameId,
-                        AchievementSystem.Types.MASTERY,
-                        month,
-                        year,
-                        gameConfig.points.mastery
-                    );
-                }
-            }
-
         } catch (error) {
             console.error('[ACHIEVEMENTS] Error checking achievements:', error);
         }
@@ -203,8 +137,8 @@ class AchievementSystem {
                 gameId,
                 type,
                 points,
-                month,
-                year: year.toString(),
+                month: month || new Date().getMonth() + 1,
+                year: (year || new Date().getFullYear()).toString(),
                 date: new Date().toISOString(),
                 gameName: AchievementSystem.Games[gameId]?.name || 'Unknown Game'
             };
@@ -214,7 +148,7 @@ class AchievementSystem {
                 username: cleanUsername,
                 gameId,
                 type,
-                month,
+                month: record.month,
                 year: record.year
             });
 
@@ -226,12 +160,13 @@ class AchievementSystem {
             await this.database.getCollection('achievement_records').insertOne(record);
             console.log(`[ACHIEVEMENTS] Added record for ${username} - ${gameId} - ${type}`);
 
-            // Announce points if needed
+            // Announce achievement if feed exists and isn't paused
             if (this.services?.achievementFeed && !this.services.achievementFeed.isPaused) {
-                await this.services.achievementFeed.announcePointsAward(
+                await this.services.achievementFeed.announceAchievementMilestone(
                     username,
-                    points,
-                    `${record.gameName} - ${type}`
+                    type,
+                    gameId,
+                    points
                 );
             }
 
@@ -250,13 +185,11 @@ class AchievementSystem {
 
             const collection = await this.database.getCollection('achievement_records');
             const records = await collection.find(query).toArray();
-            const points = {
-                total: 0,
-                achievements: records
-            };
-
-            // Calculate total and organize by game
+            
+            // Group by game
             const gamePoints = {};
+            let total = 0;
+
             for (const record of records) {
                 if (!gamePoints[record.gameId]) {
                     gamePoints[record.gameId] = {
@@ -265,19 +198,44 @@ class AchievementSystem {
                         achievements: []
                     };
                 }
-                points.total += record.points;
+
                 gamePoints[record.gameId].points += record.points;
-                gamePoints[record.gameId].achievements.push(record);
+                gamePoints[record.gameId].achievements.push({
+                    type: record.type,
+                    points: record.points,
+                    date: record.date
+                });
+                total += record.points;
             }
 
             return {
-                total: points.total,
+                total,
                 games: gamePoints
             };
         } catch (error) {
             console.error('[ACHIEVEMENTS] Error calculating points:', error);
             return { total: 0, games: {} };
         }
+    }
+
+    async getMonthlyGames(month, year) {
+        const games = Object.entries(AchievementSystem.Games)
+            .filter(([_, config]) => {
+                if (!config.restrictions) return false;
+                return config.restrictions.month === month && 
+                       config.restrictions.year === year;
+            })
+            .map(([gameId, config]) => ({
+                gameId,
+                name: config.name,
+                isMonthly: config.monthly || false,
+                isShadow: config.shadowGame || false
+            }));
+
+        return {
+            monthly: games.filter(g => g.isMonthly),
+            shadow: games.filter(g => g.isShadow)
+        };
     }
 }
 
