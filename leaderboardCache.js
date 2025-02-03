@@ -97,18 +97,20 @@ class LeaderboardCache {
         this._updatePromise = (async () => {
             try {
                 console.log('[LEADERBOARD CACHE] Updating leaderboards...');
-                
-                if (this.cache.validUsers.size === 0) {
-                    await this.updateValidUsers();
-                }
 
                 const currentDate = new Date();
                 const currentMonth = currentDate.getMonth() + 1;
                 const currentYear = currentDate.getFullYear();
                 const validUsers = Array.from(this.cache.validUsers);
 
-                // Get RetroAchievements data for achievement progress
-                const raData = await fetchLeaderboardData(force);
+                // Get current month's games
+                const monthlyGames = await this.services.achievementSystem.getMonthlyGames(
+                    currentMonth, 
+                    currentYear
+                );
+
+                // Get RetroAchievements progress data
+                const raData = await fetchLeaderboardData();
 
                 // Update monthly leaderboard
                 const monthlyPromises = validUsers.map(async username => {
@@ -128,25 +130,30 @@ class LeaderboardCache {
                         totalAchievements: 0
                     };
 
-                    // Group achievements by type
-                    const achievementTypes = {};
+                    // Process each game's achievements
+                    const processedGames = {};
                     for (const [gameId, gameData] of Object.entries(achievementPoints.games)) {
-                        for (const achievement of gameData.achievements) {
-                            if (!achievementTypes[achievement.type]) {
-                                achievementTypes[achievement.type] = 0;
+                        processedGames[gameId] = {
+                            ...gameData,
+                            isMonthly: monthlyGames.monthly.some(g => g.gameId === gameId),
+                            isShadow: monthlyGames.shadow.some(g => g.gameId === gameId),
+                            progress: {
+                                mastery: gameData.achievements.some(a => a.type === 'mastered'),
+                                beaten: gameData.achievements.some(a => a.type === 'beaten'),
+                                participation: gameData.achievements.some(a => a.type === 'participation')
                             }
-                            achievementTypes[achievement.type]++;
-                        }
+                        };
                     }
 
                     return {
                         username,
                         points: achievementPoints.total,
-                        games: achievementPoints.games,
-                        achievements: achievementTypes,
-                        completionPercentage: raProgress.completionPercentage,
-                        completedAchievements: raProgress.completedAchievements,
-                        totalAchievements: raProgress.totalAchievements
+                        games: processedGames,
+                        monthlyProgress: {
+                            completionPercentage: raProgress.completionPercentage,
+                            completedAchievements: raProgress.completedAchievements,
+                            totalAchievements: raProgress.totalAchievements
+                        }
                     };
                 });
 
@@ -160,16 +167,30 @@ class LeaderboardCache {
                         currentYear
                     );
 
+                    // Count achievement types for the year
+                    const yearStats = {
+                        mastered: 0,
+                        beaten: 0,
+                        participation: 0
+                    };
+
+                    for (const gameData of Object.values(yearlyPoints.games)) {
+                        for (const achievement of gameData.achievements) {
+                            yearStats[achievement.type]++;
+                        }
+                    }
+
                     return {
                         username,
                         points: yearlyPoints.total,
-                        games: yearlyPoints.games
+                        games: yearlyPoints.games,
+                        stats: yearStats
                     };
                 });
 
                 this.cache.yearlyLeaderboard = await Promise.all(yearlyPromises);
 
-                // Sort leaderboards
+                // Sort leaderboards by points
                 this.cache.monthlyLeaderboard.sort((a, b) => b.points - a.points);
                 this.cache.yearlyLeaderboard.sort((a, b) => b.points - a.points);
 
@@ -178,8 +199,10 @@ class LeaderboardCache {
 
                 return {
                     leaderboard: this.cache.monthlyLeaderboard,
+                    games: monthlyGames,
                     lastUpdated: new Date().toISOString()
                 };
+
             } catch (error) {
                 console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
                 return this._getLatestData();
@@ -204,26 +227,47 @@ class LeaderboardCache {
     }
 
     getMonthlyLeaderboard() {
-        if (!this.cache.monthlyLeaderboard.length) {
-            console.warn('[LEADERBOARD CACHE] Monthly leaderboard not initialized');
-            return [];
-        }
-
-        return [...this.cache.monthlyLeaderboard];
+        return this.cache.monthlyLeaderboard;
     }
 
     getYearlyLeaderboard() {
-        if (!this.cache.yearlyLeaderboard.length) {
-            console.warn('[LEADERBOARD CACHE] Yearly leaderboard not initialized');
-            return [];
-        }
-
-        return [...this.cache.yearlyLeaderboard];
+        return this.cache.yearlyLeaderboard;
     }
 
     async refreshLeaderboards() {
         console.log('[LEADERBOARD CACHE] Forcing leaderboard refresh...');
         return await this.updateLeaderboards(true);
+    }
+
+    getUserProgress(username) {
+        const monthlyEntry = this.cache.monthlyLeaderboard.find(
+            user => user.username.toLowerCase() === username.toLowerCase()
+        );
+
+        const yearlyEntry = this.cache.yearlyLeaderboard.find(
+            user => user.username.toLowerCase() === username.toLowerCase()
+        );
+
+        return {
+            monthly: monthlyEntry || {
+                points: 0,
+                games: {},
+                monthlyProgress: {
+                    completionPercentage: 0,
+                    completedAchievements: 0,
+                    totalAchievements: 0
+                }
+            },
+            yearly: yearlyEntry || {
+                points: 0,
+                games: {},
+                stats: {
+                    mastered: 0,
+                    beaten: 0,
+                    participation: 0
+                }
+            }
+        };
     }
 }
 
