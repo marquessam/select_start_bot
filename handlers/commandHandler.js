@@ -1,3 +1,4 @@
+// handlers/commandHandler.js
 const fs = require('fs');
 const path = require('path');
 const { Collection, PermissionFlagsBits } = require('discord.js');
@@ -14,6 +15,16 @@ class CommandHandler {
             commandsPath: path.join(__dirname, '..', 'commands'),
             adminCommandsPath: path.join(__dirname, '..', 'commands', 'admin')
         };
+
+        // Remove deprecated commands
+        this.deprecatedCommands = [
+            'points',
+            'addpoints',
+            'removepoints',
+            'resetpoints',
+            'repopulatepoints',
+            'cleanuppoints'
+        ];
     }
 
     async loadCommands(dependencies) {
@@ -37,9 +48,16 @@ class CommandHandler {
 
             this._injectDependencies(dependencies);
 
+            // Remove deprecated commands
+            for (const cmdName of this.deprecatedCommands) {
+                this.commands.delete(cmdName);
+                this.adminCommands.delete(cmdName);
+            }
+
+            const totalCommands = this.commands.size + this.adminCommands.size;
             console.log(
                 `CommandHandler: Loaded ${this.commands.size} normal commands and ` +
-                `${this.adminCommands.size} admin commands.`
+                `${this.adminCommands.size} admin commands (${totalCommands} total)`
             );
             return true;
         } catch (error) {
@@ -51,7 +69,8 @@ class CommandHandler {
     async _loadCommandsFromDirectory(dirPath, collection, isAdmin = false) {
         const commandFiles = fs
             .readdirSync(dirPath)
-            .filter((file) => file.endsWith('.js'));
+            .filter(file => file.endsWith('.js'))
+            .filter(file => !this.deprecatedCommands.includes(file.replace('.js', '')));
 
         for (const file of commandFiles) {
             const filePath = path.join(dirPath, file);
@@ -126,6 +145,12 @@ class CommandHandler {
         const args = message.content.slice(1).trim().split(/\s+/);
         const commandName = args.shift().toLowerCase();
 
+        // Check if command is deprecated
+        if (this.deprecatedCommands.includes(commandName)) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] This command has been replaced by the achievement system\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
         let command = this.commands.get(commandName);
         let isAdminCommand = false;
 
@@ -168,6 +193,11 @@ class CommandHandler {
         try {
             const nameLower = commandName.toLowerCase();
 
+            // Don't reload deprecated commands
+            if (this.deprecatedCommands.includes(nameLower)) {
+                return false;
+            }
+
             this.commands.delete(nameLower);
             this.adminCommands.delete(nameLower);
 
@@ -193,7 +223,28 @@ class CommandHandler {
         } catch (error) {
             ErrorHandler.logError(error, `Reloading command: ${commandName}`);
             return false;
+               } catch (error) {
+            ErrorHandler.logError(error, `Reloading command: ${commandName}`);
+            return false;
         }
+    }
+
+    getCommandList() {
+        return {
+            regular: Array.from(this.commands.keys()),
+            admin: Array.from(this.adminCommands.keys())
+        };
+    }
+
+    getCommandHelp(commandName) {
+        const command = this.commands.get(commandName) || this.adminCommands.get(commandName);
+        if (!command) return null;
+        
+        return {
+            name: command.name,
+            description: command.description,
+            isAdmin: command.isAdmin
+        };
     }
 }
 
