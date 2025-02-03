@@ -1,22 +1,18 @@
 // achievementSystem.js
-const pointsConfig = require('./pointsConfig');
+const { pointsConfig, monthlySchedule } = require('./pointsConfig');
 
 class AchievementSystem {
     constructor(database) {
         this.database = database;
         this.services = null;
-        
-        // Define the monthly games schedule
-        this.monthlyGames = {
-            "1": { // January 2025
-                main: "319",    // Chrono Trigger
-                shadow: "10024" // Mario Tennis
-            },
-            "2": { // February 2025
-                main: "355",    // Zelda: ALTTP
-                shadow: "274"   // UN Squadron
-            }
-        };
+
+        // Define the monthly games
+        this.monthlyGames = monthlySchedule;
+    }
+
+    setServices(services) {
+        this.services = services;
+        console.log('[ACHIEVEMENT SYSTEM] Services updated');
     }
 
     static Types = {
@@ -25,6 +21,17 @@ class AchievementSystem {
         MASTERY: 'mastery'
     };
 
+    static GameNames = {
+        "319": "Chrono Trigger",
+        "355": "The Legend of Zelda: A Link to the Past",
+        "10024": "Mario Tennis",
+        "274": "U.N. Squadron"
+    };
+
+    getGameName(gameId) {
+        return AchievementSystem.GameNames[gameId] || 'Unknown Game';
+    }
+    
     async checkAchievements(username, achievements, gameId, month, year) {
         try {
             const gameConfig = pointsConfig.monthlyGames[gameId];
