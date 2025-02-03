@@ -1,6 +1,5 @@
 // leaderboardCache.js
-const { fetchLeaderboardData } = require('./raAPI.js');
-const { ErrorHandler } = require('./utils/errorHandler');
+const ErrorHandler = require('./utils/errorHandler');
 
 class LeaderboardCache {
     constructor(database) {
@@ -109,51 +108,36 @@ class LeaderboardCache {
                     currentYear
                 );
 
-                // Get RetroAchievements progress data
-                const raData = await fetchLeaderboardData();
-
-                // Update monthly leaderboard
+                // Get all game progress for each user
                 const monthlyPromises = validUsers.map(async username => {
-                    // Get achievement-based points
+                    const userProgress = {};
+                    let totalPoints = 0;
+
+                    // Check each game's progress
+                    for (const gameId of Object.keys(this.services.achievementSystem.constructor.Games)) {
+                        const gameProgress = await this.services.raAPI.fetchCompleteGameProgress(username, gameId);
+                        if (gameProgress) {
+                            userProgress[gameId] = {
+                                completion: gameProgress.userCompletion || "0%",
+                                completedAchievements: gameProgress.numAwardedToUser || 0,
+                                totalAchievements: gameProgress.numAchievements || 0,
+                                highestAward: gameProgress.highestAwardKind || null
+                            };
+                        }
+                    }
+
+                    // Calculate points using the achievement system
                     const achievementPoints = await this.services.achievementSystem.calculatePoints(
                         username,
                         currentMonth,
                         currentYear
                     );
 
-                    // Get RA progress data
-                    const raProgress = raData.leaderboard.find(u => 
-                        u.username.toLowerCase() === username.toLowerCase()
-                    ) || {
-                        completionPercentage: 0,
-                        completedAchievements: 0,
-                        totalAchievements: 0
-                    };
-
-                    // Process each game's achievements
-                    const processedGames = {};
-                    for (const [gameId, gameData] of Object.entries(achievementPoints.games)) {
-                        processedGames[gameId] = {
-                            ...gameData,
-                            isMonthly: monthlyGames.monthly.some(g => g.gameId === gameId),
-                            isShadow: monthlyGames.shadow.some(g => g.gameId === gameId),
-                            progress: {
-                                mastery: gameData.achievements.some(a => a.type === 'mastered'),
-                                beaten: gameData.achievements.some(a => a.type === 'beaten'),
-                                participation: gameData.achievements.some(a => a.type === 'participation')
-                            }
-                        };
-                    }
-
                     return {
                         username,
                         points: achievementPoints.total,
-                        games: processedGames,
-                        monthlyProgress: {
-                            completionPercentage: raProgress.completionPercentage,
-                            completedAchievements: raProgress.completedAchievements,
-                            totalAchievements: raProgress.totalAchievements
-                        }
+                        games: achievementPoints.games,
+                        progress: userProgress
                     };
                 });
 
@@ -167,30 +151,16 @@ class LeaderboardCache {
                         currentYear
                     );
 
-                    // Count achievement types for the year
-                    const yearStats = {
-                        mastered: 0,
-                        beaten: 0,
-                        participation: 0
-                    };
-
-                    for (const gameData of Object.values(yearlyPoints.games)) {
-                        for (const achievement of gameData.achievements) {
-                            yearStats[achievement.type]++;
-                        }
-                    }
-
                     return {
                         username,
                         points: yearlyPoints.total,
-                        games: yearlyPoints.games,
-                        stats: yearStats
+                        games: yearlyPoints.games
                     };
                 });
 
                 this.cache.yearlyLeaderboard = await Promise.all(yearlyPromises);
 
-                // Sort leaderboards by points
+                // Sort leaderboards
                 this.cache.monthlyLeaderboard.sort((a, b) => b.points - a.points);
                 this.cache.yearlyLeaderboard.sort((a, b) => b.points - a.points);
 
@@ -234,11 +204,6 @@ class LeaderboardCache {
         return this.cache.yearlyLeaderboard;
     }
 
-    async refreshLeaderboards() {
-        console.log('[LEADERBOARD CACHE] Forcing leaderboard refresh...');
-        return await this.updateLeaderboards(true);
-    }
-
     getUserProgress(username) {
         const monthlyEntry = this.cache.monthlyLeaderboard.find(
             user => user.username.toLowerCase() === username.toLowerCase()
@@ -252,22 +217,18 @@ class LeaderboardCache {
             monthly: monthlyEntry || {
                 points: 0,
                 games: {},
-                monthlyProgress: {
-                    completionPercentage: 0,
-                    completedAchievements: 0,
-                    totalAchievements: 0
-                }
+                progress: {}
             },
             yearly: yearlyEntry || {
                 points: 0,
-                games: {},
-                stats: {
-                    mastered: 0,
-                    beaten: 0,
-                    participation: 0
-                }
+                games: {}
             }
         };
+    }
+
+    async refreshLeaderboards() {
+        console.log('[LEADERBOARD CACHE] Forcing leaderboard refresh...');
+        return await this.updateLeaderboards(true);
     }
 }
 
