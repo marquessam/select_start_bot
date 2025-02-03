@@ -93,6 +93,7 @@ class Database {
                 'challenges',
                 'achievements',
                 'achievement_records',
+                'achievement_timestamps',
                 'arcadechallenge',
                 'reviews',
                 'nominations',
@@ -239,6 +240,44 @@ class Database {
             return [];
         }
     }
+        async getLastAchievementTimestamps() {
+        try {
+            const collection = await this.getCollection('achievement_timestamps');
+            const timestamps = await collection.findOne({ _id: 'timestamps' });
+            return timestamps?.data || {};
+        } catch (error) {
+            console.error('[DATABASE] Error getting achievement timestamps:', error);
+            return {};
+        }
+    }
+
+    async getLastAchievementTimestamp(username) {
+        try {
+            const timestamps = await this.getLastAchievementTimestamps();
+            return timestamps[username.toLowerCase()] || null;
+        } catch (error) {
+            console.error('[DATABASE] Error getting achievement timestamp:', error);
+            return null;
+        }
+    }
+
+    async updateLastAchievementTimestamp(username, timestamp) {
+        try {
+            const collection = await this.getCollection('achievement_timestamps');
+            await collection.updateOne(
+                { _id: 'timestamps' },
+                { 
+                    $set: { [`data.${username.toLowerCase()}`]: timestamp }
+                },
+                { upsert: true }
+            );
+            return true;
+        } catch (error) {
+            console.error('[DATABASE] Error updating achievement timestamp:', error);
+            return false;
+        }
+    }
+
 
     // ===================
     // User Management
