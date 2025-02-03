@@ -17,7 +17,7 @@ class AchievementFeed {
         this.isPaused = false;
         this.services = null;
 
-        // Game type configurations
+        // Game type configurations - Preserve special styling
         this.gameTypes = {
             // Monthly Challenge Games
             "319": { // Chrono Trigger
@@ -33,7 +33,7 @@ class AchievementFeed {
             // Shadow Games
             "274": { // UN Squadron
                 type: 'SHADOW',
-                color: '#FF0000', // Changed to red as requested
+                color: '#FF0000',
                 label: 'SHADOW GAME 🌘'
             }
         };
@@ -60,16 +60,21 @@ class AchievementFeed {
         this.isInitializing = true;
         try {
             console.log('[ACHIEVEMENT FEED] Initializing...');
-            
-            const [allAchievements, storedTimestamps] = await Promise.all([
-                raAPI.fetchAllRecentAchievements(),
-                database.getLastAchievementTimestamps()
-            ]);
 
-            for (const { username, achievements } of allAchievements) {
-                if (achievements.length > 0 && !storedTimestamps[username.toLowerCase()]) {
-                    const mostRecentTime = new Date(achievements[0].Date).getTime();
-                    await database.updateLastAchievementTimestamp(username.toLowerCase(), mostRecentTime);
+            // Get achievement data from RetroAchievements API
+            const users = await this.database.getValidUsers();
+            const gameIds = Object.keys(this.services.achievementSystem.constructor.Games);
+
+            // Initialize last checked times for each user
+            for (const username of users) {
+                for (const gameId of gameIds) {
+                    const gameProgress = await raAPI.fetchCompleteGameProgress(username, gameId);
+                    if (gameProgress?.achievements?.length > 0) {
+                        await database.updateLastAchievementTimestamp(
+                            username.toLowerCase(),
+                            new Date().getTime()
+                        );
+                    }
                 }
             }
 
@@ -116,42 +121,29 @@ class AchievementFeed {
 
         this._processingAchievements = true;
         try {
-            const [allAchievements, storedTimestamps] = await Promise.all([
-                raAPI.fetchAllRecentAchievements(),
-                database.getLastAchievementTimestamps()
-            ]);
+            const validUsers = await this.database.getValidUsers();
+            const gameIds = Object.keys(this.services.achievementSystem.constructor.Games);
             
-            const channel = await this.client.channels.fetch(this.feedChannel);
-            if (!channel) throw new Error('Achievement feed channel not found');
+            for (const username of validUsers) {
+                const lastCheckedTime = await database.getLastAchievementTimestamp(username) || 0;
 
-            for (const { username, achievements } of allAchievements) {
-                if (!achievements || achievements.length === 0) continue;
+                for (const gameId of gameIds) {
+                    const gameProgress = await raAPI.fetchCompleteGameProgress(username, gameId);
+                    if (!gameProgress?.achievements) continue;
 
-                const lastCheckedTime = storedTimestamps[username.toLowerCase()] || 0;
-                const newAchievements = achievements
-                    .filter(a => new Date(a.Date).getTime() > lastCheckedTime)
-                    .sort((a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime());
-
-                if (newAchievements.length > 0) {
-                    const latestTime = new Date(newAchievements[newAchievements.length - 1].Date).getTime();
-                    await database.updateLastAchievementTimestamp(username.toLowerCase(), latestTime);
-
-                    for (const achievement of newAchievements) {
-                        // Check if this achievement triggers any achievement records
-                        if (this.services?.achievementSystem) {
-                            const currentMonth = new Date().getMonth() + 1;
-                            const currentYear = new Date().getFullYear();
-                            await this.services.achievementSystem.checkAchievements(
-                                username,
-                                [achievement],
-                                achievement.GameID,
-                                currentMonth,
-                                currentYear
-                            );
+                    // Check for new achievements
+                    for (const achievement of Object.values(gameProgress.achievements)) {
+                        if (new Date(achievement.dateEarned).getTime() > lastCheckedTime) {
+                            // Process achievement
+                            await this.processNewAchievement(username, gameId, achievement, gameProgress);
                         }
+                    }
 
-                        await this.sendAchievementNotification(channel, username, achievement);
-                        await new Promise(resolve => setTimeout(resolve, 500));
+                    // Update last checked time if we found any new achievements
+                    if (Object.values(gameProgress.achievements).some(a => 
+                        new Date(a.dateEarned).getTime() > lastCheckedTime
+                    )) {
+                        await database.updateLastAchievementTimestamp(username, new Date().getTime());
                     }
                 }
             }
@@ -160,6 +152,44 @@ class AchievementFeed {
         } finally {
             this._processingAchievements = false;
         }
+    }
+
+    async processNewAchievement(username, gameId, achievement, gameProgress) {
+        try {
+            // Check if this achievement should trigger a milestone
+            const previousHighestAward = await this.getPreviousAward(username, gameId);
+            const currentAward = gameProgress.highestAwardKind;
+
+            // If award level has increased, announce milestone
+            if (currentAward !== previousHighestAward) {
+                await this.announceAchievementMilestone(username, currentAward, gameId);
+            }
+
+            // Always announce the individual achievement
+            await this.sendAchievementNotification(
+                await this.client.channels.fetch(this.feedChannel),
+                username,
+                {
+                    ...achievement,
+                    GameID: gameId,
+                    GameTitle: gameProgress.title
+                }
+            );
+        } catch (error) {
+            console.error('[ACHIEVEMENT FEED] Error processing new achievement:', error);
+        }
+    }
+
+    async getPreviousAward(username, gameId) {
+        const records = await this.database.getCollection('achievement_records').find({
+            username: username.toLowerCase(),
+            gameId
+        }).toArray();
+
+        if (records.some(r => r.type === 'mastered')) return 'mastered';
+        if (records.some(r => r.type === 'beaten')) return 'beaten';
+        if (records.some(r => r.type === 'participation')) return 'participation';
+        return null;
     }
 
     async sendAchievementNotification(channel, username, achievement) {
