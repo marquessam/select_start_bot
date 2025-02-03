@@ -1,8 +1,21 @@
-const database = require('./database');
+// pointsConfig.js
+
+const monthlySchedule = {
+    "2025": {
+        "1": { // January
+            main: "319",    // Chrono Trigger
+            shadow: "10024" // Mario Tennis
+        },
+        "2": { // February
+            main: "355",    // Zelda: ALTTP
+            shadow: "274"   // UN Squadron
+        }
+    }
+};
 
 const pointsConfig = {
     monthlyGames: {
-        "319": {
+        "319": {  // Chrono Trigger
             name: "Chrono Trigger",
             points: {
                 participation: 1,
@@ -13,19 +26,33 @@ const pointsConfig = {
             winCondition: [2266, 2281],
             requireProgression: true,
             requireAllWinConditions: false,
-            masteryCheck: true
+            masteryCheck: true,
+            // Special handling for Chrono Trigger
+            restrictions: {
+                month: 1,
+                year: 2025,
+                masteryOnly: true  // Only mastery points are available
+            }
         },
         "355": {  // ALTTP
             name: "The Legend of Zelda: A Link to the Past",
-            points: { mastery: 3, participation: 1, beaten: 3 },
+            points: {
+                participation: 1,
+                beaten: 3,
+                mastery: 3
+            },
             progression: [944, 2192, 2282, 980, 2288, 2291, 2292, 2296, 2315, 2336, 2351, 
                          2357, 2359, 2361, 2365, 2334, 2354, 2368, 2350, 2372, 2387],
             winCondition: [2389],
             requireProgression: true,
             requireAllWinConditions: true,
-            masteryCheck: true
+            masteryCheck: true,
+            restrictions: {
+                month: 2,
+                year: 2025
+            }
         },
-        "10024": {
+        "10024": {  // Mario Tennis
             name: "Mario Tennis",
             points: {
                 participation: 1,
@@ -34,140 +61,126 @@ const pointsConfig = {
             winCondition: [48411, 48412],
             requireProgression: false,
             requireAllWinConditions: false,
-            masteryCheck: false
+            masteryCheck: false,
+            restrictions: {
+                month: 1,
+                year: 2025
+            }
         },
         "274": {  // U.N. Squadron (Shadow Game)
             name: "U.N. Squadron",
-            shadowGame: true,
-            points: { participation: 1, beaten: 3 },
+            points: {
+                participation: 1,
+                beaten: 3
+            },
             progression: [6413, 6414, 6415, 6416, 6417, 6418, 6419, 6420, 6421],
             winCondition: [6422],
             requireProgression: true,
             requireAllWinConditions: true,
             masteryCheck: false,
-            active: false
+            shadowGame: true,
+            restrictions: {
+                month: 2,
+                year: 2025
+            }
         }
+    },
+
+    // Validation functions
+    isValidForMonth(gameId, month, year) {
+        const game = this.monthlyGames[gameId];
+        if (!game) return false;
+
+        // Check if the game is scheduled for this month/year
+        return game.restrictions.month === month && 
+               game.restrictions.year === year;
+    },
+
+    canEarnPoints(gameId, type, month, year) {
+        const game = this.monthlyGames[gameId];
+        if (!game || !game.points[type]) return false;
+
+        // Handle shadow game state
+        if (game.shadowGame && !monthlySchedule[year]?.[month]?.shadow === gameId) {
+            return false;
+        }
+
+        // Handle Chrono Trigger special case
+        if (gameId === "319" && type !== 'mastery') {
+            return false;
+        }
+
+        // For mastery, don't check month restrictions
+        if (type === 'mastery' && game.masteryCheck) {
+            return true;
+        }
+
+        // For participation and beaten, must be in correct month
+        return this.isValidForMonth(gameId, month, year);
+    },
+
+    validateAchievements(achievements, gameId, type) {
+        const game = this.monthlyGames[gameId];
+        if (!game) return false;
+
+        const gameAchievements = achievements.filter(a => 
+            String(a.GameID) === String(gameId)
+        );
+
+        switch (type) {
+            case 'participation':
+                return gameAchievements.some(a => parseInt(a.DateEarned) > 0);
+
+            case 'beaten':
+                // Check progression if required
+                if (game.requireProgression) {
+                    const hasProgression = game.progression.every(achId =>
+                        gameAchievements.some(a => 
+                            parseInt(a.ID) === achId && 
+                            parseInt(a.DateEarned) > 0
+                        )
+                    );
+                    if (!hasProgression) return false;
+                }
+
+                // Check win conditions
+                if (game.winCondition?.length > 0) {
+                    if (game.requireAllWinConditions) {
+                        return game.winCondition.every(achId =>
+                            gameAchievements.some(a => 
+                                parseInt(a.ID) === achId && 
+                                parseInt(a.DateEarned) > 0
+                            )
+                        );
+                    }
+                    return game.winCondition.some(achId =>
+                        gameAchievements.some(a => 
+                            parseInt(a.ID) === achId && 
+                            parseInt(a.DateEarned) > 0
+                        )
+                    );
+                }
+                return true;
+
+            case 'mastery':
+                if (!game.masteryCheck) return false;
+                const totalAchievements = gameAchievements.length;
+                const completedAchievements = gameAchievements.filter(a => 
+                    parseInt(a.DateEarned) > 0
+                ).length;
+                return totalAchievements > 0 && totalAchievements === completedAchievements;
+
+            default:
+                return false;
+        }
+    },
+
+    getGameConfig(gameId) {
+        return this.monthlyGames[gameId];
     }
 };
-
-async function canAwardPoints(username, gameId, pointType) {
-    const gameConfig = pointsConfig.monthlyGames[gameId];
-    if (!gameConfig) return false;
-
-    if (gameConfig.shadowGame && !gameConfig.active) return false;
-    if (gameId === "319" && pointType !== 'mastery') return false;
-    if (!gameConfig.points[pointType]) return false;
-
-    return true;
-}
-
-const pointChecks = {
-    async checkGamePoints(username, achievements, gameId, userStats) {
-        const gameConfig = pointsConfig.monthlyGames[gameId];
-        if (!gameConfig) return [];
-
-        const gameAchievements = achievements.filter(a => String(a.GameID || a.gameId) === String(gameId));
-        const pointsToAward = [];
-
-        // Participation Check - Now checks all games except Chrono Trigger mastery-only mode
-        if (gameConfig.points.participation && 
-            gameId !== "319" && // Skip participation for Chrono Trigger
-            await canAwardPoints(username, gameId, 'participation')) {
-            
-            const hasParticipation = gameAchievements.some(a => parseInt(a.DateEarned) > 0);
-
-            if (hasParticipation) {
-                const participationKey = `participation-${gameId}`;
-                const reason = createPointReason(gameConfig.name, "Participation", participationKey);
-                const bonusPoint = createBonusPointObject(username, gameId, gameConfig.points.participation, 'participation', reason);
-
-                if (await database.addUserBonusPoints(username, bonusPoint)) {
-                    pointsToAward.push(bonusPoint);
-                }
-            }
-        }
-
-
-        // 🟢 Beaten Check
-        if (gameConfig.points.beaten && await canAwardPoints(username, gameId, 'beaten')) {
-            let hasBeaten = true;
-
-            // Check progression achievements if required
-            if (gameConfig.requireProgression) {
-                hasBeaten = gameConfig.progression.every(achId => 
-                    gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
-                );
-            }
-
-            // Check win conditions if required
-            if (hasBeaten && gameConfig.winCondition.length > 0) {
-                if (gameConfig.requireAllWinConditions) {
-                    hasBeaten = gameConfig.winCondition.every(achId => 
-                        gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
-                    );
-                } else {
-                    hasBeaten = gameConfig.winCondition.some(achId => 
-                        gameAchievements.some(a => parseInt(a.ID) === achId && parseInt(a.DateEarned) > 0)
-                    );
-                }
-            }
-
-            if (hasBeaten) {
-                const beatenKey = `beaten-${gameId}`;
-                const reason = createPointReason(gameConfig.name, "Game Beaten", beatenKey);
-                const bonusPoint = createBonusPointObject(username, gameId, gameConfig.points.beaten, 'beaten', reason);
-
-                if (await database.addUserBonusPoints(username, bonusPoint)) {
-                    pointsToAward.push(bonusPoint);
-                }
-            }
-        }
-
-        // 🟢 Mastery Check
-        if (gameConfig.masteryCheck && !gameConfig.shadowGame && await canAwardPoints(username, gameId, 'mastery')) {
-            const totalAchievements = gameAchievements.length;
-            const earnedAchievements = gameAchievements.filter(a => parseInt(a.DateEarned) > 0).length;
-
-            if (totalAchievements > 0 && totalAchievements === earnedAchievements) {
-                const masteryKey = `mastery-${gameId}`;
-                const reason = createPointReason(gameConfig.name, "Mastery", masteryKey);
-                const bonusPoint = createBonusPointObject(username, gameId, gameConfig.points.mastery, 'mastery', reason);
-
-                if (await database.addUserBonusPoints(username, bonusPoint)) {
-                    pointsToAward.push(bonusPoint);
-                }
-            }
-        }
-
-        return pointsToAward;
-    }
-};
-
-// 🟢 Helper Function: Create Bonus Point Object
-function createBonusPointObject(username, gameId, points, pointType, reason) {
-    return {
-        points,
-        reason: reason.display,
-        internalReason: reason.internal,
-        technicalKey: `${pointType}-${gameId}`,
-        pointType,
-        gameId,
-        year: new Date().getFullYear().toString(),
-        date: new Date().toISOString()
-    };
-}
-
-// 🟢 Helper Function: Create Reason String
-function createPointReason(gameName, achievementType, technicalKey) {
-    return {
-        display: `${gameName} - ${achievementType}`,
-        internal: `${gameName} - ${achievementType} (${technicalKey})`
-    };
-}
 
 module.exports = {
     pointsConfig,
-    pointChecks,
-    canAwardPoints,
-    createPointReason
+    monthlySchedule
 };
