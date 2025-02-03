@@ -1,182 +1,111 @@
-// Create new file: achievementSystem.js
-
+// achievementSystem.js
 const pointsConfig = require('./pointsConfig');
 
 class AchievementSystem {
     constructor(database) {
         this.database = database;
         this.services = null;
+        
+        // Define the monthly games schedule
+        this.monthlyGames = {
+            "1": { // January 2025
+                main: "319",    // Chrono Trigger
+                shadow: "10024" // Mario Tennis
+            },
+            "2": { // February 2025
+                main: "355",    // Zelda: ALTTP
+                shadow: "274"   // UN Squadron
+            }
+        };
     }
 
-    setServices(services) {
-        this.services = services;
-        console.log('[ACHIEVEMENT SYSTEM] Services updated');
-    }
-
-    // Achievement type enumeration
     static Types = {
         PARTICIPATION: 'participation',
         BEATEN: 'beaten',
         MASTERY: 'mastery'
     };
 
-    // Game ID enumeration
-    static Games = {
-        CHRONO_TRIGGER: '319',
-        ZELDA_ALTTP: '355',
-        MARIO_TENNIS: '10024',
-        UN_SQUADRON: '274'
-    };
-
-    static GameNames = {
-        [AchievementSystem.Games.CHRONO_TRIGGER]: 'Chrono Trigger',
-        [AchievementSystem.Games.ZELDA_ALTTP]: 'The Legend of Zelda: A Link to the Past',
-        [AchievementSystem.Games.MARIO_TENNIS]: 'Mario Tennis',
-        [AchievementSystem.Games.UN_SQUADRON]: 'U.N. Squadron'
-    };
-
-    static PointValues = {
-        [AchievementSystem.Types.PARTICIPATION]: 1,
-        [AchievementSystem.Types.BEATEN]: 3,
-        [AchievementSystem.Types.MASTERY]: 3
-    };
-
-    async addRecord(username, gameId, type) {
-        try {
-            const cleanUsername = username.toLowerCase().trim();
-            const record = {
-                username: cleanUsername,
-                gameId,
-                type,
-                date: new Date().toISOString(),
-                year: new Date().getFullYear().toString()
-            };
-
-            // Check for existing record
-            const exists = await this.database.getCollection('achievement_records').findOne({
-                username: cleanUsername,
-                gameId,
-                type,
-                year: record.year
-            });
-
-            if (exists) {
-                console.log(`[ACHIEVEMENTS] Record already exists for ${username} - ${gameId} - ${type}`);
-                return false;
-            }
-
-            // Add new record
-            await this.database.getCollection('achievement_records').insertOne(record);
-            console.log(`[ACHIEVEMENTS] Added record for ${username} - ${gameId} - ${type}`);
-
-            // Announce achievement if feed is active
-            if (this.services?.achievementFeed && !this.services.achievementFeed.isPaused) {
-                const gameName = AchievementSystem.GameNames[gameId];
-                const points = AchievementSystem.PointValues[type];
-                await this.services.achievementFeed.announcePointsAward(
-                    username,
-                    points,
-                    `${gameName} - ${type}`
-                );
-            }
-
-            return true;
-        } catch (error) {
-            console.error('[ACHIEVEMENTS] Error adding record:', error);
-            return false;
-        }
-    }
-
-    async calculatePoints(username, year = null) {
-        try {
-            const targetYear = year || new Date().getFullYear().toString();
-            const records = await this.database.getCollection('achievement_records')
-                .find({
-                    username: username.toLowerCase(),
-                    year: targetYear
-                })
-                .toArray();
-
-            let total = 0;
-            const details = {
-                participations: [],
-                gamesBeaten: [],
-                gamesMastered: []
-            };
-
-            for (const record of records) {
-                const points = AchievementSystem.PointValues[record.type];
-                const gameName = AchievementSystem.GameNames[record.gameId];
-                
-                total += points;
-
-                const detail = {
-                    gameName,
-                    points,
-                    date: record.date
-                };
-
-                switch (record.type) {
-                    case AchievementSystem.Types.PARTICIPATION:
-                        details.participations.push(detail);
-                        break;
-                    case AchievementSystem.Types.BEATEN:
-                        details.gamesBeaten.push(detail);
-                        break;
-                    case AchievementSystem.Types.MASTERY:
-                        details.gamesMastered.push(detail);
-                        break;
-                }
-            }
-
-            // Sort details by date
-            const sortByDate = (a, b) => new Date(b.date) - new Date(a.date);
-            details.participations.sort(sortByDate);
-            details.gamesBeaten.sort(sortByDate);
-            details.gamesMastered.sort(sortByDate);
-
-            return {
-                total,
-                details
-            };
-        } catch (error) {
-            console.error('[ACHIEVEMENTS] Error calculating points:', error);
-            return { total: 0, details: {} };
-        }
-    }
-
-    async checkAchievements(username, achievements, gameId) {
+    async checkAchievements(username, achievements, gameId, month, year) {
         try {
             const gameConfig = pointsConfig.monthlyGames[gameId];
-            if (!gameConfig) return;
+            if (!gameConfig) {
+                console.log(`[ACHIEVEMENTS] No game config found for ${gameId}`);
+                return;
+            }
 
             const gameAchievements = achievements.filter(a => 
                 String(a.GameID) === String(gameId)
             );
 
-            // Check participation
-            const hasParticipation = gameAchievements.some(a => 
-                parseInt(a.DateEarned) > 0
-            );
-            if (hasParticipation) {
+            // Check participation (earned in month)
+            const hasParticipationInMonth = gameAchievements.some(a => {
+                const earnedDate = new Date(a.DateEarned);
+                return parseInt(a.DateEarned) > 0 && 
+                       earnedDate.getMonth() + 1 === month && 
+                       earnedDate.getFullYear() === year;
+            });
+
+            if (hasParticipationInMonth) {
                 await this.addRecord(
                     username,
                     gameId,
-                    AchievementSystem.Types.PARTICIPATION
+                    AchievementSystem.Types.PARTICIPATION,
+                    month,
+                    year,
+                    gameConfig.points.participation
                 );
             }
 
-            // Check game completion
-            const isCompleted = this._checkGameCompletion(gameAchievements, gameConfig);
-            if (isCompleted) {
+            // Check beaten (all required achievements earned in month)
+            let isBeaten = true;
+
+            // Check progression requirements if needed
+            if (gameConfig.requireProgression) {
+                isBeaten = gameConfig.progression.every(achId => {
+                    const ach = gameAchievements.find(a => parseInt(a.ID) === achId);
+                    if (!ach || !parseInt(ach.DateEarned)) return false;
+                    
+                    const earnedDate = new Date(ach.DateEarned);
+                    return earnedDate.getMonth() + 1 === month && 
+                           earnedDate.getFullYear() === year;
+                });
+            }
+
+            // Check win conditions if still valid
+            if (isBeaten && gameConfig.winCondition) {
+                if (gameConfig.requireAllWinConditions) {
+                    isBeaten = gameConfig.winCondition.every(achId => {
+                        const ach = gameAchievements.find(a => parseInt(a.ID) === achId);
+                        if (!ach || !parseInt(ach.DateEarned)) return false;
+                        
+                        const earnedDate = new Date(ach.DateEarned);
+                        return earnedDate.getMonth() + 1 === month && 
+                               earnedDate.getFullYear() === year;
+                    });
+                } else {
+                    isBeaten = gameConfig.winCondition.some(achId => {
+                        const ach = gameAchievements.find(a => parseInt(a.ID) === achId);
+                        if (!ach || !parseInt(ach.DateEarned)) return false;
+                        
+                        const earnedDate = new Date(ach.DateEarned);
+                        return earnedDate.getMonth() + 1 === month && 
+                               earnedDate.getFullYear() === year;
+                    });
+                }
+            }
+
+            if (isBeaten) {
                 await this.addRecord(
                     username,
                     gameId,
-                    AchievementSystem.Types.BEATEN
+                    AchievementSystem.Types.BEATEN,
+                    month,
+                    year,
+                    gameConfig.points.beaten
                 );
             }
 
-            // Check mastery
+            // Check mastery (can be earned any time)
             if (gameConfig.masteryCheck) {
                 const totalAchievements = gameAchievements.length;
                 const completedAchievements = gameAchievements.filter(a => 
@@ -187,7 +116,10 @@ class AchievementSystem {
                     await this.addRecord(
                         username,
                         gameId,
-                        AchievementSystem.Types.MASTERY
+                        AchievementSystem.Types.MASTERY,
+                        month,
+                        year,
+                        gameConfig.points.mastery
                     );
                 }
             }
@@ -196,73 +128,101 @@ class AchievementSystem {
         }
     }
 
-    _checkGameCompletion(achievements, gameConfig) {
-        // Check progression requirements if needed
-        if (gameConfig.requireProgression) {
-            const hasProgression = gameConfig.progression.every(achId =>
-                achievements.some(a => 
-                    parseInt(a.ID) === achId && 
-                    parseInt(a.DateEarned) > 0
-                )
-            );
-            if (!hasProgression) return false;
-        }
+    async addRecord(username, gameId, type, month, year, points) {
+        try {
+            const cleanUsername = username.toLowerCase().trim();
+            const record = {
+                username: cleanUsername,
+                gameId,
+                type,
+                points,
+                month,
+                year: year.toString(),
+                date: new Date().toISOString(),
+                gameName: pointsConfig.monthlyGames[gameId].name
+            };
 
-        // Check win conditions
-        if (gameConfig.winCondition?.length > 0) {
-            if (gameConfig.requireAllWinConditions) {
-                return gameConfig.winCondition.every(achId =>
-                    achievements.some(a => 
-                        parseInt(a.ID) === achId && 
-                        parseInt(a.DateEarned) > 0
-                    )
+            // Check for existing record
+            const exists = await this.database.getCollection('achievement_records').findOne({
+                username: cleanUsername,
+                gameId,
+                type,
+                month,
+                year: record.year
+            });
+
+            if (exists) {
+                console.log(`[ACHIEVEMENTS] Record already exists for ${username} - ${gameId} - ${type}`);
+                return false;
+            }
+
+            await this.database.getCollection('achievement_records').insertOne(record);
+            console.log(`[ACHIEVEMENTS] Added record for ${username} - ${gameId} - ${type}`);
+
+            // Announce points if needed
+            if (this.services?.achievementFeed && !this.services.achievementFeed.isPaused) {
+                await this.services.achievementFeed.announcePointsAward(
+                    username,
+                    points,
+                    `${record.gameName} - ${type}`
                 );
             }
-            return gameConfig.winCondition.some(achId =>
-                achievements.some(a => 
-                    parseInt(a.ID) === achId && 
-                    parseInt(a.DateEarned) > 0
-                )
-            );
-        }
 
-        return true;
+            return true;
+        } catch (error) {
+            console.error('[ACHIEVEMENTS] Error adding record:', error);
+            return false;
+        }
     }
 
-    async generateLeaderboard(users, year = null) {
+    async calculatePoints(username, month = null, year = null) {
         try {
-            const targetYear = year || new Date().getFullYear().toString();
-            const leaderboard = [];
+            const query = { username: username.toLowerCase() };
+            if (month) query.month = parseInt(month);
+            if (year) query.year = year.toString();
 
-            for (const username of users) {
-                const points = await this.calculatePoints(username, targetYear);
-                leaderboard.push({
-                    username,
-                    points: points.total,
-                    details: points.details
+            const records = await this.database.getCollection('achievement_records')
+                .find(query)
+                .toArray();
+
+            const points = {
+                total: 0,
+                games: {}
+            };
+
+            for (const record of records) {
+                if (!points.games[record.gameId]) {
+                    points.games[record.gameId] = {
+                        name: pointsConfig.monthlyGames[record.gameId].name,
+                        points: 0,
+                        achievements: []
+                    };
+                }
+
+                points.total += record.points;
+                points.games[record.gameId].points += record.points;
+                points.games[record.gameId].achievements.push({
+                    type: record.type,
+                    points: record.points,
+                    date: record.date
                 });
             }
 
-            return leaderboard.sort((a, b) => b.points - a.points);
+            return points;
         } catch (error) {
-            console.error('[ACHIEVEMENTS] Error generating leaderboard:', error);
-            return [];
+            console.error('[ACHIEVEMENTS] Error calculating points:', error);
+            return { total: 0, games: {} };
         }
     }
 
-    async getUserAchievements(username, year = null) {
-        try {
-            const targetYear = year || new Date().getFullYear().toString();
-            return await this.database.getCollection('achievement_records')
-                .find({
-                    username: username.toLowerCase(),
-                    year: targetYear
-                })
-                .toArray();
-        } catch (error) {
-            console.error('[ACHIEVEMENTS] Error getting user achievements:', error);
-            return [];
-        }
+    getMonthlyGames(month, year) {
+        const monthKey = month.toString();
+        if (!this.monthlyGames[monthKey]) return [];
+        
+        return [
+            this.monthlyGames[monthKey].main,
+            this.monthlyGames[monthKey].shadow
+        ];
     }
 }
 
