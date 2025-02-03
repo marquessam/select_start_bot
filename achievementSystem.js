@@ -188,10 +188,13 @@ class AchievementSystem {
             if (month) query.month = parseInt(month);
             if (year) query.year = year.toString();
 
-            const records = await this.database.getCollection('achievement_records')
-                .find(query)
-                .toArray();
+           const collection = await this.database.getCollection('achievement_records');
+if (!collection) {
+    console.error('[ERROR] Failed to fetch achievement_records collection.');
+    return [];
+}
 
+const records = await collection.find(query).toArray();
             const points = {
                 total: 0,
                 games: {}
