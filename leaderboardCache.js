@@ -49,7 +49,7 @@ class LeaderboardCache {
 
                 this.initializationComplete = true;
                 console.log('[LEADERBOARD CACHE] Initialization complete');
-                return true; 
+                return true;
             } catch (error) {
                 console.error('[LEADERBOARD CACHE] Initialization error:', error);
                 return false;
@@ -97,7 +97,7 @@ class LeaderboardCache {
         this._updatePromise = (async () => {
             try {
                 console.log('[LEADERBOARD CACHE] Updating leaderboards...');
-
+                
                 if (this.cache.validUsers.size === 0) {
                     await this.updateValidUsers();
                 }
@@ -107,61 +107,79 @@ class LeaderboardCache {
                 const currentYear = currentDate.getFullYear();
                 const validUsers = Array.from(this.cache.validUsers);
 
-                // Update yearly leaderboard
-                const yearlyPromises = validUsers.map(async username => {
-                    const points = await this.services.achievementSystem.calculatePoints(
-                        username, 
-                        null,
-                        currentYear
-                    );
-                    return {
-                        username,
-                        points: points.total,
-                        games: points.games
-                    };
-                });
+                // Get RetroAchievements data for achievement progress
+                const raData = await fetchLeaderboardData(force);
 
-                this.cache.yearlyLeaderboard = await Promise.all(yearlyPromises);
-
-                // Update monthly leaderboard using RetroAchievements data
-                const monthlyData = await fetchLeaderboardData(force);
+                // Update monthly leaderboard
                 const monthlyPromises = validUsers.map(async username => {
-                    const points = await this.services.achievementSystem.calculatePoints(
+                    // Get achievement-based points
+                    const achievementPoints = await this.services.achievementSystem.calculatePoints(
                         username,
                         currentMonth,
                         currentYear
                     );
-                    const raData = monthlyData.leaderboard.find(u => 
+
+                    // Get RA progress data
+                    const raProgress = raData.leaderboard.find(u => 
                         u.username.toLowerCase() === username.toLowerCase()
                     ) || {
                         completionPercentage: 0,
                         completedAchievements: 0,
                         totalAchievements: 0
                     };
-                    
+
+                    // Group achievements by type
+                    const achievementTypes = {};
+                    for (const [gameId, gameData] of Object.entries(achievementPoints.games)) {
+                        for (const achievement of gameData.achievements) {
+                            if (!achievementTypes[achievement.type]) {
+                                achievementTypes[achievement.type] = 0;
+                            }
+                            achievementTypes[achievement.type]++;
+                        }
+                    }
+
                     return {
                         username,
-                        points: points.total,
-                        games: points.games,
-                        completionPercentage: raData.completionPercentage,
-                        completedAchievements: raData.completedAchievements,
-                        totalAchievements: raData.totalAchievements
+                        points: achievementPoints.total,
+                        games: achievementPoints.games,
+                        achievements: achievementTypes,
+                        completionPercentage: raProgress.completionPercentage,
+                        completedAchievements: raProgress.completedAchievements,
+                        totalAchievements: raProgress.totalAchievements
                     };
                 });
 
                 this.cache.monthlyLeaderboard = await Promise.all(monthlyPromises);
 
-                const returnData = {
-                    leaderboard: this.cache.monthlyLeaderboard,
-                    gameInfo: monthlyData.gameInfo,
-                    lastUpdated: new Date().toISOString()
-                };
+                // Update yearly leaderboard
+                const yearlyPromises = validUsers.map(async username => {
+                    const yearlyPoints = await this.services.achievementSystem.calculatePoints(
+                        username,
+                        null,
+                        currentYear
+                    );
+
+                    return {
+                        username,
+                        points: yearlyPoints.total,
+                        games: yearlyPoints.games
+                    };
+                });
+
+                this.cache.yearlyLeaderboard = await Promise.all(yearlyPromises);
+
+                // Sort leaderboards
+                this.cache.monthlyLeaderboard.sort((a, b) => b.points - a.points);
+                this.cache.yearlyLeaderboard.sort((a, b) => b.points - a.points);
 
                 this.cache.lastUpdated = Date.now();
                 this.hasInitialData = true;
-                console.log('[LEADERBOARD CACHE] Leaderboards updated successfully');
 
-                return returnData;
+                return {
+                    leaderboard: this.cache.monthlyLeaderboard,
+                    lastUpdated: new Date().toISOString()
+                };
             } catch (error) {
                 console.error('[LEADERBOARD CACHE] Error updating leaderboards:', error);
                 return this._getLatestData();
@@ -185,31 +203,25 @@ class LeaderboardCache {
         };
     }
 
-    getYearlyLeaderboard() {
-        if (!this.cache.yearlyLeaderboard.length) {
-            console.warn('[LEADERBOARD CACHE] Yearly leaderboard not initialized');
-            return [];
-        }
-
-        return [...this.cache.yearlyLeaderboard]
-            .sort((a, b) => b.points - a.points);
-    }
-
     getMonthlyLeaderboard() {
         if (!this.cache.monthlyLeaderboard.length) {
             console.warn('[LEADERBOARD CACHE] Monthly leaderboard not initialized');
             return [];
         }
 
-        return [...this.cache.monthlyLeaderboard]
-            .sort((a, b) => b.points - a.points);
+        return [...this.cache.monthlyLeaderboard];
     }
 
-    getLastUpdated() {
-        return this.cache.lastUpdated;
+    getYearlyLeaderboard() {
+        if (!this.cache.yearlyLeaderboard.length) {
+            console.warn('[LEADERBOARD CACHE] Yearly leaderboard not initialized');
+            return [];
+        }
+
+        return [...this.cache.yearlyLeaderboard];
     }
 
-    async refreshLeaderboard() {
+    async refreshLeaderboards() {
         console.log('[LEADERBOARD CACHE] Forcing leaderboard refresh...');
         return await this.updateLeaderboards(true);
     }
