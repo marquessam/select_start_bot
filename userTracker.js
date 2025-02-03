@@ -2,12 +2,18 @@ class UserTracker {
     constructor(database, userStats) {
         this.database = database;
         this.userStats = userStats;
+        this.services = null; // Store services
         this.validUsers = new Map(); // Store lowercase -> original case mapping
         this.cache = {
             lastUpdate: null,
             updateInterval: 5 * 60 * 1000, // 5 minutes
             profileUrlPattern: /(?:retroachievements\.org|ra\.org)\/user\/([^\/\s]+)/i
         };
+    }
+
+    setServices(services) {
+        this.services = services;
+        console.log('[USER TRACKER] Services linked:', Object.keys(services));
     }
 
     async initialize() {
