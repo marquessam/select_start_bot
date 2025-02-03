@@ -4,8 +4,7 @@ const DataService = require('../services/dataService');
 
 module.exports = {
     name: 'profile',
-    description: 'Displays user profile and stats',
-
+    description: 'Displays user profile and achievement progress',
     async execute(message, args, { shadowGame, achievementSystem }) {
         try {
             if (!args.length) {
@@ -32,14 +31,12 @@ module.exports = {
             const [
                 currentChallenge,
                 userProgress,
-                currentPoints,
-                yearlyPoints,
+                achievementData,
                 raProfileImage
             ] = await Promise.all([
                 DataService.getCurrentChallenge(),
                 DataService.getUserProgress(username),
                 achievementSystem.calculatePoints(username, currentMonth, currentYear),
-                achievementSystem.calculatePoints(username, null, currentYear),
                 DataService.getRAProfileImage(username)
             ]);
 
@@ -50,46 +47,66 @@ module.exports = {
 
             // Add current challenge progress
             if (currentChallenge) {
+                const gameAchievements = achievementData.games[currentChallenge.gameId] || { achievements: [] };
+                const hasParticipation = gameAchievements.achievements.some(a => a.type === 'participation');
+                const hasBeaten = gameAchievements.achievements.some(a => a.type === 'beaten');
+                const hasMastery = gameAchievements.achievements.some(a => a.type === 'mastery');
+
                 embed.addTerminalField('CURRENT CHALLENGE PROGRESS',
                     `GAME: "${currentChallenge.gameName}"\n` +
-                    `PROGRESS: ${userProgress?.completionPercentage || 0}%\n` +
-                    `ACHIEVEMENTS: ${userProgress?.completedAchievements || 0}/${userProgress?.totalAchievements || 0}\n` +
-                    (userProgress?.hasBeatenGame ? '✅ Game Completed' : '⏳ In Progress')
+                    `PROGRESS: ${userProgress.completionPercentage}%\n` +
+                    `ACHIEVEMENTS: ${userProgress.completedAchievements}/${userProgress.totalAchievements}\n` +
+                    `STATUS:\n` +
+                    `${hasParticipation ? '✓' : '⬚'} Participation\n` +
+                    `${hasBeaten ? '✓' : '⬚'} Completion\n` +
+                    `${hasMastery ? '✓' : '⬚'} Mastery`
                 );
             }
 
-            // Show monthly/yearly points
-            embed.addTerminalField('POINTS SUMMARY',
-                `CURRENT MONTH: ${currentPoints.total} points\n` +
-                `YEARLY TOTAL: ${yearlyPoints.total} points`
-            );
+            // Group achievements by game
+            const gameProgress = {};
+            for (const [gameId, gameData] of Object.entries(achievementData.games)) {
+                if (!gameProgress[gameId]) {
+                    gameProgress[gameId] = {
+                        name: gameData.name,
+                        achievements: {
+                            participation: false,
+                            beaten: false,
+                            mastery: false
+                        },
+                        points: gameData.points
+                    };
+                }
 
-            // Add monthly game breakdown
-            for (const [gameId, gameData] of Object.entries(currentPoints.games)) {
-                const achievements = gameData.achievements.sort((a, b) => 
-                    new Date(b.date) - new Date(a.date)
-                );
+                // Mark which achievements have been earned
+                for (const achievement of gameData.achievements) {
+                    gameProgress[gameId].achievements[achievement.type] = true;
+                }
+            }
 
-                const achievementList = achievements.map(ach => 
-                    `${ach.type}: ${ach.points} point${ach.points !== 1 ? 's' : ''}`
-                ).join('\n');
+            // Show monthly progress for each game
+            for (const [gameId, game] of Object.entries(gameProgress)) {
+                const achievements = [];
+                if (game.achievements.participation) achievements.push('Participation');
+                if (game.achievements.beaten) achievements.push('Game Beaten');
+                if (game.achievements.mastery) achievements.push('Mastery');
 
-                embed.addTerminalField(gameData.name,
-                    `${achievementList}\n` +
-                    `TOTAL: ${gameData.points} points`
+                embed.addTerminalField(game.name,
+                    `ACHIEVEMENTS EARNED:\n` +
+                    achievements.map(a => `✓ ${a}`).join('\n') +
+                    `\nTOTAL POINTS: ${game.points}`
                 );
             }
 
-            // Show yearly stats
+            // Show yearly totals
+            const yearlyData = await achievementSystem.calculatePoints(username, null, currentYear);
             const yearStats = {
-                gamesParticipated: new Set(Object.keys(yearlyPoints.games)).size,
-                totalPoints: yearlyPoints.total,
-                gamesBeaten: Object.values(yearlyPoints.games).filter(g => 
-                    g.achievements.some(a => a.type === 'beaten')
-                ).length,
-                gamesMastered: Object.values(yearlyPoints.games).filter(g => 
-                    g.achievements.some(a => a.type === 'mastery')
-                ).length
+                gamesParticipated: Object.keys(yearlyData.games).length,
+                totalPoints: yearlyData.total,
+                gamesBeaten: Object.values(yearlyData.games)
+                    .filter(g => g.achievements.some(a => a.type === 'beaten')).length,
+                gamesMastered: Object.values(yearlyData.games)
+                    .filter(g => g.achievements.some(a => a.type === 'mastery')).length
             };
 
             embed.addTerminalField(`${currentYear} STATISTICS`,
@@ -107,9 +124,10 @@ module.exports = {
             embed.setTerminalFooter();
             
             await message.channel.send({ embeds: [embed] });
-            await message.channel.send('```ansi\n\x1b[32m> Database connection secure\n[Ready for input]█\x1b[0m```');
 
-            if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
+            if (shadowGame?.tryShowError) {
+                await shadowGame.tryShowError(message);
+            }
 
         } catch (error) {
             console.error('[PROFILE] Error:', error);
