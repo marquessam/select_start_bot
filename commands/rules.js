@@ -118,9 +118,9 @@ async displayShadowChallenge(message, shadowGame) {
         } else if (shadowConfig.triforceState?.power?.collected) {
             embed.addTerminalField('CURRENT CHALLENGE',
                 `GAME: ${shadowConfig.finalReward.gameName} (SNES)\n` +
-                '\nREWARDS:\n' +
-                `• Mark of Participation: ${shadowConfig.finalReward.points.participation} sacred point\n` +
-                `• Mark of Completion: ${shadowConfig.finalReward.points.beaten} sacred points\n\n` +
+                '\nAVAILABLE POINTS:\n' +
+                `• Participation: ${shadowConfig.finalReward.points.participation} point\n` +
+                `• Beaten: ${shadowConfig.finalReward.points.beaten} points\n\n` +
                 'This challenge can be completed alongside the monthly challenge.'
             );
             
