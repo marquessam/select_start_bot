@@ -38,9 +38,9 @@ module.exports = {
             // Shadow game is unlocked - show parallel challenge
             embed.addTerminalField('SHADOW CHALLENGE UNLOCKED',
                 `GAME: ${shadowGameData.finalReward.gameName} (SNES)\n\n` +
-                `REWARDS:\n` +
-                `Mark of Participation: 1 sacred point\n` +
-                `Mark of Completion: 3 sacred points\n\n` +
+                `POINTS AVAILABLE:\n` +
+                `Participation: 1 point\n` +
+                `Completion: 3 points\n\n` +
                 `This challenge runs parallel to your current quest.`
             );
         } else if (!shadowGameData || !shadowGameData.active) {
