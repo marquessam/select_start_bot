@@ -10,6 +10,7 @@ const ShadowGame = require('./shadowGame');
 const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
 const AchievementSystem = require('./achievementSystem');
+const raAPI = require('./raAPI');
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
