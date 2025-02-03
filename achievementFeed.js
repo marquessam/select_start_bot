@@ -17,6 +17,11 @@ class AchievementFeed {
         this.isPaused = false;
     }
 
+    setServices(services) {
+        this.services = services;
+        console.log('[ACHIEVEMENT FEED] Services linked:', Object.keys(services));
+    }
+
     startPeriodicCheck() {
         setInterval(() => this.checkNewAchievements(), this.checkInterval);
     }
@@ -122,120 +127,81 @@ class AchievementFeed {
         }
     }
 
-async sendAchievementNotification(channel, username, achievement) {
-    try {
-        if (!channel || !username || !achievement) return;
+    async sendAchievementNotification(channel, username, achievement) {
+        try {
+            if (!channel || !username || !achievement) return;
 
-        const achievementKey = `${username}-${achievement.ID}-${achievement.GameTitle}-${achievement.Title}`;
-        if (this.announcementHistory.has(achievementKey)) return;
+            const achievementKey = `${username}-${achievement.ID}-${achievement.GameTitle}-${achievement.Title}`;
+            if (this.announcementHistory.has(achievementKey)) return;
 
-        const badgeUrl = achievement.BadgeName
-            ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
-            : 'https://media.retroachievements.org/Badge/00000.png';
+            const badgeUrl = achievement.BadgeName
+                ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
+                : 'https://media.retroachievements.org/Badge/00000.png';
 
-        const userIconUrl = await DataService.getRAProfileImage(username) || 
-            `https://retroachievements.org/UserPic/${username}.png`;
+            const userIconUrl = await DataService.getRAProfileImage(username) || 
+                `https://retroachievements.org/UserPic/${username}.png`;
 
-        // Special game handling with proper game IDs
-        let authorName = '';
-        let authorIconUrl = '';
-        let files = [];
-        let color = '#00FF00';  // Default color
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle(`${achievement.GameTitle}`)
+                .setThumbnail(badgeUrl)
+                .setDescription(
+                    `**${username}** earned **${achievement.Title}**\n\n` +
+                    `*${achievement.Description || 'No description available'}*`
+                )
+                .setFooter({ 
+                    text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`, 
+                    iconURL: userIconUrl 
+                })
+                .setTimestamp();
 
-        const gameId = String(achievement.GameID); // Ensure string comparison
+            await this.queueAnnouncement({ embeds: [embed] });
+            this.announcementHistory.add(achievementKey);
 
-        // Add the logo file for special games
-        const logoFile = { 
-            attachment: './assets/logo_simple.png',
-            name: 'game_logo.png'
-        };
+            if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
 
-        if (gameId === '274') { // Shadow Game - UN Squadron
-            authorName = 'SHADOW GAME 🌘';
-            files = [logoFile];
-            authorIconUrl = 'attachment://game_logo.png';
-            color = '#FFD700';  // Gold color
-        } else if (gameId === '355') { // Monthly Challenge - ALTTP
-            authorName = 'MONTHLY CHALLENGE 🏆';
-            files = [logoFile];
-            authorIconUrl = 'attachment://game_logo.png';
-            color = '#00BFFF';  // Blue color
-        } else if (gameId === '319') { // Chrono Trigger
-            authorName = 'MONTHLY CHALLENGE 🏆';
-            files = [logoFile];
-            authorIconUrl = 'attachment://game_logo.png';
-            color = '#00BFFF';  // Blue color
+        } catch (error) {
+            console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
         }
-
-        const embed = new EmbedBuilder()
-            .setColor(color)
-            .setTitle(`${achievement.GameTitle}`)
-            .setThumbnail(badgeUrl)
-            .setDescription(
-                `**${username}** earned **${achievement.Title}**\n\n` +
-                `*${achievement.Description || 'No description available'}*`
-            )
-            .setFooter({ 
-                text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`, 
-                iconURL: userIconUrl 
-            })
-            .setTimestamp();
-
-        if (authorName) {
-            embed.setAuthor({ name: authorName, iconURL: authorIconUrl });
-        }
-
-        await this.queueAnnouncement({ embeds: [embed], files });
-        this.announcementHistory.add(achievementKey);
-
-        if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
-
-    } catch (error) {
-        console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
     }
-}
-    // ✅ Fix: Re-added `announcePointsAward` function
-  async announcePointsAward(username, points, reason) {
-    try {
-        // Skip if feed is paused
-        if (this.isPaused) {
-            return;
+
+    async announcePointsAward(username, points, reason) {
+        try {
+            if (this.isPaused) return;
+
+            if (!this.feedChannel) {
+                console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
+                return;
+            }
+
+            const awardKey = `${username}-${points}-${reason}-${Date.now()}`;
+            if (this.announcementHistory.has(awardKey)) {
+                console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${awardKey}`);
+                return;
+            }
+
+            this.announcementHistory.add(awardKey);
+
+            const userProfile = await DataService.getRAProfileImage(username);
+            
+            const embed = new EmbedBuilder()
+                .setColor('#FFD700')
+                .setAuthor({
+                    name: username,
+                    iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
+                    url: `https://retroachievements.org/user/${username}`
+                })
+                .setTitle('🏆 Points Awarded!')
+                .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
+                .setTimestamp();
+
+            await this.queueAnnouncement({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
+            this.announcementHistory.delete(awardKey);
         }
-
-        if (!this.feedChannel) {
-            console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
-            return;
-        }
-
-        const awardKey = `${username}-${points}-${reason}-${Date.now()}`;
-        if (this.announcementHistory.has(awardKey)) {
-            console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${awardKey}`);
-            return;
-        }
-
-        this.announcementHistory.add(awardKey);
-
-        const userProfile = await DataService.getRAProfileImage(username);
-        
-        const embed = new EmbedBuilder()
-            .setColor('#FFD700')
-            .setAuthor({
-                name: username,
-                iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
-                url: `https://retroachievements.org/user/${username}`
-            })
-            .setTitle('🏆 Points Awarded!')
-            .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
-            .setTimestamp();
-
-        await this.queueAnnouncement({ embeds: [embed] });
-
-        console.log(`[ACHIEVEMENT FEED] Queued points announcement for ${username}: ${points} points (${reason})`);
-    } catch (error) {
-        console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
-        this.announcementHistory.delete(awardKey);
     }
-}
 }
 
 module.exports = AchievementFeed;
