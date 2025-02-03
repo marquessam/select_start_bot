@@ -6,7 +6,7 @@ const database = require('./database');
 class AchievementFeed {
     constructor(client) {
         this.client = client;
-        this.feedChannel = process.env.ACHIEVEMENT_FEED_CHANNEL;
+        this.feedChannel = process.env.ACHIEVEMENT_FEED_CHANNEL || null;
         this.checkInterval = 5 * 60 * 1000; // Check every 5 minutes
         this.announcementHistory = new Set();
         this.announcementQueue = [];
@@ -23,10 +23,19 @@ class AchievementFeed {
     }
 
     startPeriodicCheck() {
+        if (!this.feedChannel) {
+            console.error('[ACHIEVEMENT FEED] ERROR: No channel ID configured! Check your .env file.');
+            return;
+        }
         setInterval(() => this.checkNewAchievements(), this.checkInterval);
     }
 
     async initialize() {
+        if (!this.feedChannel) {
+            console.error('[ACHIEVEMENT FEED] ERROR: No channel ID configured in .env!');
+            return;
+        }
+
         if (this.isInitializing) {
             console.log('[ACHIEVEMENT FEED] Already initializing...');
             while (this.isInitializing) {
@@ -38,7 +47,7 @@ class AchievementFeed {
         this.isInitializing = true;
         try {
             console.log('[ACHIEVEMENT FEED] Initializing...');
-            
+
             const [allAchievements, storedTimestamps] = await Promise.all([
                 raAPI.fetchAllRecentAchievements(),
                 database.getLastAchievementTimestamps()
@@ -73,11 +82,17 @@ class AchievementFeed {
 
         this.isProcessingQueue = true;
         try {
-            const channel = await this.client.channels.fetch(this.feedChannel);
+            const channel = await this.client.channels.fetch(this.feedChannel).catch(() => {
+                console.error(`[ACHIEVEMENT FEED] ERROR: Failed to fetch channel ID: ${this.feedChannel}`);
+                return null;
+            });
+
+            if (!channel) return;
+
             while (this.announcementQueue.length > 0) {
                 const messageOptions = this.announcementQueue.shift();
                 await channel.send(messageOptions);
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Prevent hitting rate limits
             }
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error processing announcements:', error);
@@ -98,9 +113,13 @@ class AchievementFeed {
                 raAPI.fetchAllRecentAchievements(),
                 database.getLastAchievementTimestamps()
             ]);
-            
-            const channel = await this.client.channels.fetch(this.feedChannel);
-            if (!channel) throw new Error('Achievement feed channel not found');
+
+            const channel = await this.client.channels.fetch(this.feedChannel).catch(() => {
+                console.error(`[ACHIEVEMENT FEED] ERROR: Failed to fetch channel ID: ${this.feedChannel}`);
+                return null;
+            });
+
+            if (!channel) return;
 
             for (const { username, achievements } of allAchievements) {
                 if (!achievements || achievements.length === 0) continue;
@@ -116,7 +135,7 @@ class AchievementFeed {
 
                     for (const achievement of newAchievements) {
                         await this.sendAchievementNotification(channel, username, achievement);
-                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await new Promise(resolve => setTimeout(resolve, 500)); // Prevent spam
                     }
                 }
             }
@@ -138,7 +157,7 @@ class AchievementFeed {
                 ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
                 : 'https://media.retroachievements.org/Badge/00000.png';
 
-            const userIconUrl = await DataService.getRAProfileImage(username) || 
+            const userIconUrl = await DataService.getRAProfileImage(username) ||
                 `https://retroachievements.org/UserPic/${username}.png`;
 
             const embed = new EmbedBuilder()
@@ -149,9 +168,9 @@ class AchievementFeed {
                     `**${username}** earned **${achievement.Title}**\n\n` +
                     `*${achievement.Description || 'No description available'}*`
                 )
-                .setFooter({ 
-                    text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`, 
-                    iconURL: userIconUrl 
+                .setFooter({
+                    text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`,
+                    iconURL: userIconUrl
                 })
                 .setTimestamp();
 
@@ -159,7 +178,6 @@ class AchievementFeed {
             this.announcementHistory.add(achievementKey);
 
             if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
-
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
         }
@@ -183,7 +201,7 @@ class AchievementFeed {
             this.announcementHistory.add(awardKey);
 
             const userProfile = await DataService.getRAProfileImage(username);
-            
+
             const embed = new EmbedBuilder()
                 .setColor('#FFD700')
                 .setAuthor({
