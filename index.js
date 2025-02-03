@@ -99,8 +99,15 @@ async function initializeServices(coreServices) {
     try {
         console.log('Initializing services...');
 
+        // Initialize services in dependency order
+        await coreServices.database.connect();
+        console.log('Database connected');
+
         await coreServices.userTracker.initialize();
         console.log('UserTracker initialized');
+
+        await coreServices.achievementSystem.setServices(coreServices);
+        console.log('AchievementSystem initialized');
 
         await coreServices.shadowGame.initialize();
         console.log('ShadowGame initialized');
@@ -118,8 +125,8 @@ async function initializeServices(coreServices) {
         console.log('AchievementFeed initialized');
 
         await coordinateUpdate(coreServices, true);
-
         console.log('All services initialized successfully');
+        
         return coreServices;
     } catch (error) {
         console.error('Service Initialization Error:', error);
