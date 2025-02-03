@@ -72,12 +72,13 @@ class Database {
         }
     }
 
-    async getCollection(collectionName) {
-        if (!this.db) {
-            throw new Error('[DATABASE] Not initialized. Call `connect()` first.');
-        }
-        return this.db.collection(collectionName);
+  async getCollection(collectionName) {
+    if (!this.db) {
+        throw new Error('[DATABASE] ERROR: Database connection not established.');
     }
+    console.log(`[DEBUG] Fetching collection: ${collectionName}`);
+    return this.db.collection(collectionName);
+}
 
     async ensureCollections() {
         try {
@@ -392,19 +393,15 @@ async saveCurrentChallenge(data) {
     }
 }
     
-    async getUserBonusPoints(username) {
-        try {
-            const collection = await this.getCollection('bonusPoints');
-            const points = await collection.find({ 
-                username: username.toLowerCase() 
-            }).toArray();
-            
-            return points || [];
-        } catch (error) {
-            ErrorHandler.logError(error, 'Get User Bonus Points');
-            return [];
-        }
+   async getUserAchievements(username) {
+    try {
+        const collection = await this.getCollection('achievement_records');
+        return await collection.find({ username: username.toLowerCase() }).toArray();
+    } catch (error) {
+        console.error('[DATABASE] Error fetching user achievements:', error);
+        return [];
     }
+}
 
     async cleanupDuplicatePoints() {
         try {
