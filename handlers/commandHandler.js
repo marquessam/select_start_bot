@@ -1,4 +1,3 @@
-// handlers/commandHandler.js
 const fs = require('fs');
 const path = require('path');
 const { Collection, PermissionFlagsBits } = require('discord.js');
@@ -221,9 +220,6 @@ class CommandHandler {
 
             return false;
         } catch (error) {
-            ErrorHandler.logError(error, `Reloading command: ${commandName}`);
-            return false;
-               } catch (error) {
             ErrorHandler.logError(error, `Reloading command: ${commandName}`);
             return false;
         }
