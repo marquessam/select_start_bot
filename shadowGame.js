@@ -6,6 +6,12 @@ class ShadowGame {
         this.config = null;
         this.isInitializing = false;
         this._initPromise = null;
+        this.services = null;
+    }
+
+    setServices(services) {
+        this.services = services;
+        console.log('[SHADOW GAME] Services linked:', Object.keys(services));
     }
 
     async initialize() {
