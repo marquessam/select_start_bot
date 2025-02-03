@@ -2,7 +2,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const database = require('./database');
-const UserStats = require('./userStats');
 const CommandHandler = require('./handlers/commandHandler');
 const UserTracker = require('./userTracker');
 const Announcer = require('./utils/announcer');
@@ -11,7 +10,7 @@ const ShadowGame = require('./shadowGame');
 const errorHandler = require('./utils/errorHandler');
 const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
-const PointsManager = require('./managers/pointsManager');
+const AchievementSystem = require('./achievementSystem');
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
@@ -55,24 +54,21 @@ async function createCoreServices() {
         console.log('Creating core services...');
         
         // Create services
-        const pointsManager = new PointsManager(database);
-        const userStats = new UserStats(database, { pointsManager });  // Pass pointsManager here
-        const userTracker = new UserTracker(database, userStats);
+        const achievementSystem = new AchievementSystem(database);
+        const userTracker = new UserTracker(database);
         const leaderboardCache = createLeaderboardCache(database);
         const commandHandler = new CommandHandler();
-        const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
+        const announcer = new Announcer(client, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
         const achievementFeed = new AchievementFeed(client, database);
 
         // Setup global references
-        leaderboardCache.setUserStats(userStats);
         global.leaderboardCache = leaderboardCache;
         global.achievementFeed = achievementFeed;
 
         // Create services object
         const services = {
-            pointsManager,
-            userStats,
+            achievementSystem,
             userTracker,
             leaderboardCache,
             commandHandler,
@@ -82,9 +78,11 @@ async function createCoreServices() {
             mobyAPI: MobyAPI
         };
 
-        // Pass services back to pointsManager and userStats
-        pointsManager.setServices(services);
-        userStats.setServices(services);
+        // Pass services reference to components that need it
+        achievementSystem.setServices(services);
+        userTracker.setServices(services);
+        leaderboardCache.setServices(services);
+        achievementFeed.setServices(services);
 
         console.log('Core services created successfully');
         return services;
@@ -93,19 +91,13 @@ async function createCoreServices() {
         throw error;
     }
 }
+
 async function initializeServices(coreServices) {
     try {
         console.log('Initializing services...');
 
-        // Initialize Points System first
-        console.log('Initializing Points System...');
-        console.log('Points System initialized');
-
         await coreServices.userTracker.initialize();
         console.log('UserTracker initialized');
-
-        await coreServices.userStats.loadStats(coreServices.userTracker);
-        console.log('UserStats initialized');
 
         await coreServices.shadowGame.initialize();
         console.log('ShadowGame initialized');
@@ -146,21 +138,6 @@ async function setupBot() {
     }
 }
 
-async function waitForUserStatsInitialization(userStats) {
-    if (!userStats.isInitializing && userStats.initializationComplete) {
-        return Promise.resolve();
-    }
-
-    return new Promise((resolve) => {
-        const timer = setInterval(() => {
-            if (!userStats.isInitializing && userStats.initializationComplete) {
-                clearInterval(timer);
-                resolve();
-            }
-        }, 100);
-    });
-}
-
 async function coordinateUpdate(services, force = false) {
     if (!force && services.leaderboardCache.hasInitialData) {
         console.log('[UPDATE] Skipping redundant update, using cached data');
@@ -169,30 +146,14 @@ async function coordinateUpdate(services, force = false) {
 
     console.log('[UPDATE] Starting coordinated update...');
     
-    if (!services?.leaderboardCache || !services?.userStats) {
+    if (!services?.leaderboardCache) {
         console.log('[UPDATE] Required services not available');
         return;
     }
 
     try {
-        if (services.userStats.isInitializing || !services.userStats.initializationComplete) {
-            console.log('[UPDATE] Waiting for UserStats initialization...');
-            await waitForUserStatsInitialization(services.userStats);
-        }
-
         const leaderboardData = await services.leaderboardCache.updateLeaderboards(force);
         console.log('[UPDATE] Leaderboard data updated');
-
-        if (!leaderboardData?.leaderboard) {
-            console.log('[UPDATE] No leaderboard data available');
-            return;
-        }
-
-        await services.userStats.recheckAllPoints();
-        console.log('[UPDATE] Points checked and processed');
-        
-        await services.userStats.saveStats();
-        console.log('[UPDATE] Stats saved');
 
         services.leaderboardCache.hasInitialData = true;
         console.log('[UPDATE] Coordinated update complete');
