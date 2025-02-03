@@ -6,7 +6,7 @@ const database = require('./database');
 class AchievementFeed {
     constructor(client) {
         this.client = client;
-        this.feedChannel = process.env.ACHIEVEMENT_FEED_CHANNEL || null;
+        this.feedChannel = process.env.ACHIEVEMENT_FEED_CHANNEL;
         this.checkInterval = 5 * 60 * 1000; // Check every 5 minutes
         this.announcementHistory = new Set();
         this.announcementQueue = [];
@@ -15,6 +15,12 @@ class AchievementFeed {
         this.initializationComplete = false;
         this._processingAchievements = false;
         this.isPaused = false;
+
+        // Validate feedChannel on initialization
+        if (!this.feedChannel) {
+            console.error('[ACHIEVEMENT FEED] ERROR: ACHIEVEMENT_FEED_CHANNEL environment variable is not set.');
+            throw new Error('ACHIEVEMENT_FEED_CHANNEL environment variable is required.');
+        }
     }
 
     setServices(services) {
@@ -23,19 +29,10 @@ class AchievementFeed {
     }
 
     startPeriodicCheck() {
-        if (!this.feedChannel) {
-            console.error('[ACHIEVEMENT FEED] ERROR: No channel ID configured! Check your .env file.');
-            return;
-        }
         setInterval(() => this.checkNewAchievements(), this.checkInterval);
     }
 
     async initialize() {
-        if (!this.feedChannel) {
-            console.error('[ACHIEVEMENT FEED] ERROR: No channel ID configured in .env!');
-            return;
-        }
-
         if (this.isInitializing) {
             console.log('[ACHIEVEMENT FEED] Already initializing...');
             while (this.isInitializing) {
@@ -47,6 +44,11 @@ class AchievementFeed {
         this.isInitializing = true;
         try {
             console.log('[ACHIEVEMENT FEED] Initializing...');
+
+            // Validate feedChannel again before proceeding
+            if (!this.feedChannel) {
+                throw new Error('ACHIEVEMENT_FEED_CHANNEL environment variable is not set.');
+            }
 
             const [allAchievements, storedTimestamps] = await Promise.all([
                 raAPI.fetchAllRecentAchievements(),
@@ -82,17 +84,21 @@ class AchievementFeed {
 
         this.isProcessingQueue = true;
         try {
-            const channel = await this.client.channels.fetch(this.feedChannel).catch(() => {
-                console.error(`[ACHIEVEMENT FEED] ERROR: Failed to fetch channel ID: ${this.feedChannel}`);
-                return null;
-            });
+            // Validate feedChannel before fetching
+            if (!this.feedChannel) {
+                throw new Error('ACHIEVEMENT_FEED_CHANNEL environment variable is not set.');
+            }
 
-            if (!channel) return;
+            const channel = await this.client.channels.fetch(this.feedChannel).catch(() => null);
+            if (!channel) {
+                console.error('[ACHIEVEMENT FEED] Error: Channel not found or invalid channel ID.');
+                return;
+            }
 
             while (this.announcementQueue.length > 0) {
                 const messageOptions = this.announcementQueue.shift();
                 await channel.send(messageOptions);
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Prevent hitting rate limits
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error processing announcements:', error);
@@ -109,17 +115,21 @@ class AchievementFeed {
 
         this._processingAchievements = true;
         try {
+            // Validate feedChannel before fetching
+            if (!this.feedChannel) {
+                throw new Error('ACHIEVEMENT_FEED_CHANNEL environment variable is not set.');
+            }
+
             const [allAchievements, storedTimestamps] = await Promise.all([
                 raAPI.fetchAllRecentAchievements(),
                 database.getLastAchievementTimestamps()
             ]);
 
-            const channel = await this.client.channels.fetch(this.feedChannel).catch(() => {
-                console.error(`[ACHIEVEMENT FEED] ERROR: Failed to fetch channel ID: ${this.feedChannel}`);
-                return null;
-            });
-
-            if (!channel) return;
+            const channel = await this.client.channels.fetch(this.feedChannel).catch(() => null);
+            if (!channel) {
+                console.error('[ACHIEVEMENT FEED] Error: Channel not found or invalid channel ID.');
+                return;
+            }
 
             for (const { username, achievements } of allAchievements) {
                 if (!achievements || achievements.length === 0) continue;
@@ -135,7 +145,7 @@ class AchievementFeed {
 
                     for (const achievement of newAchievements) {
                         await this.sendAchievementNotification(channel, username, achievement);
-                        await new Promise(resolve => setTimeout(resolve, 500)); // Prevent spam
+                        await new Promise(resolve => setTimeout(resolve, 500));
                     }
                 }
             }
@@ -178,6 +188,7 @@ class AchievementFeed {
             this.announcementHistory.add(achievementKey);
 
             if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
+
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
         }
