@@ -27,7 +27,6 @@ class ProfileCommand {
 
             // Fetch all necessary data concurrently
             const [
-                userStatsData,
                 userProgress,
                 currentChallenge,
                 yearlyLeaderboard,
@@ -35,7 +34,6 @@ class ProfileCommand {
                 yearlyPoints,
                 raProfileImage
             ] = await Promise.all([
-                DataService.getUserStats(username),
                 DataService.getUserProgress(username),
                 DataService.getCurrentChallenge(),
                 DataService.getLeaderboard('yearly'),
@@ -48,7 +46,6 @@ class ProfileCommand {
             const yearlyRank = this.calculateRank(username, yearlyLeaderboard);
             const monthlyRank = this.calculateRank(username, monthlyLeaderboard);
 
-            // Create embed
             const embed = new TerminalEmbed()
                 .setTerminalTitle(`USER PROFILE: ${username.toUpperCase()}`)
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING USER STATISTICS]');
@@ -65,124 +62,103 @@ class ProfileCommand {
 
             // Rankings
             const medals = { '1': '🥇', '2': '🥈', '3': '🥉' };
-            const monthlyMedal = monthlyRank.startsWith('#') ? medals[monthlyRank.slice(1)] || '' : '';
-            const yearlyMedal = yearlyRank.startsWith('#') ? medals[yearlyRank.slice(1)] || '' : '';
-
             embed.addTerminalField('RANKINGS',
-                `MONTHLY: ${monthlyMedal} ${monthlyRank}\n` +
-                `YEARLY: ${yearlyMedal} ${yearlyRank}`
+                `MONTHLY: ${monthlyRank.startsWith('#') ? `${medals[monthlyRank.slice(1)] || ''} ` : ''}${monthlyRank}\n` +
+                `YEARLY: ${yearlyRank.startsWith('#') ? `${medals[yearlyRank.slice(1)] || ''} ` : ''}${yearlyRank}`
             );
 
-            // Points Breakdown
+            // Process points by game
+            const gamePoints = new Map();
+            
+            for (const point of yearlyPoints) {
+                const gameId = point.gameId;
+                const type = point.reason.toLowerCase();
+                const isParticipation = type.includes('participation');
+                const isBeaten = type.includes('beaten');
+                const isMastery = type.includes('mastery');
+
+                if (!gamePoints.has(gameId)) {
+                    gamePoints.set(gameId, {
+                        name: point.reason.split(' - ')[0],
+                        points: [],
+                        displayOrder: []
+                    });
+                }
+
+                const game = gamePoints.get(gameId);
+                
+                // Only add each type once
+                if (isParticipation && !game.displayOrder.includes('participation')) {
+                    game.points.push(`${game.name} - 1 point`);
+                    game.displayOrder.push('participation');
+                }
+                if (isBeaten && !game.displayOrder.includes('beaten')) {
+                    game.points.push(`${game.name} - 3 points`);
+                    game.displayOrder.push('beaten');
+                }
+                if (isMastery && !game.displayOrder.includes('mastery')) {
+                    game.points.push(`${game.name} - 3 points 🏆`);
+                    game.displayOrder.push('mastery');
+                }
+            }
+
+            // Display Monthly Challenges
             const currentGames = await pointsManager.getCurrentMonthGames();
-            const pointsBreakdown = this.formatPointsBreakdown(yearlyPoints, currentGames);
+            const monthlyPoints = [];
+            const shadowPoints = [];
+            const masteryPoints = [];
 
-            // Monthly Games
-            if (pointsBreakdown.monthlyGames.length > 0) {
-                embed.addTerminalField('MONTHLY CHALLENGES',
-                    pointsBreakdown.monthlyGames.join('\n'));
+            for (const [gameId, game] of gamePoints) {
+                const isCurrentMonthly = currentGames?.monthlyGame.id === gameId;
+                const isCurrentShadow = currentGames?.shadowGame.id === gameId;
+                const hasMastery = game.displayOrder.includes('mastery');
+
+                if (hasMastery) {
+                    masteryPoints.push(...game.points.filter(p => p.includes('🏆')));
+                }
+
+                const regularPoints = game.points.filter(p => !p.includes('🏆'));
+                if (isCurrentMonthly || isCurrentShadow) {
+                    if (isCurrentMonthly) {
+                        monthlyPoints.push(...regularPoints.map(p => p + ' ⭐'));
+                    } else {
+                        shadowPoints.push(...regularPoints.map(p => p + ' 🌘'));
+                    }
+                } else {
+                    monthlyPoints.push(...regularPoints);
+                }
             }
 
-            // Shadow Games
-            if (pointsBreakdown.shadowGames.length > 0) {
-                embed.addTerminalField('SHADOW GAMES',
-                    pointsBreakdown.shadowGames.join('\n'));
+            if (monthlyPoints.length > 0) {
+                embed.addTerminalField('MONTHLY CHALLENGES', monthlyPoints.join('\n'));
             }
-
-            // Masteries
-            if (pointsBreakdown.mastery.length > 0) {
-                embed.addTerminalField('MASTERY ACHIEVEMENTS',
-                    pointsBreakdown.mastery.join('\n'));
+            if (shadowPoints.length > 0) {
+                embed.addTerminalField('SHADOW GAMES', shadowPoints.join('\n'));
+            }
+            if (masteryPoints.length > 0) {
+                embed.addTerminalField('MASTERY ACHIEVEMENTS', masteryPoints.join('\n'));
             }
 
             // Calculate totals
-            const totals = yearlyPoints.reduce((acc, p) => {
-                acc.points += p.points;
-                if (p.reason.toLowerCase().includes('participation')) acc.participations++;
-                if (p.reason.toLowerCase().includes('beaten')) acc.gamesBeaten++;
-                if (p.reason.toLowerCase().includes('mastery')) acc.gamesMastered++;
-                return acc;
-            }, { points: 0, participations: 0, gamesBeaten: 0, gamesMastered: 0 });
-
-            // Add statistics
+            const totals = this.calculateTotals(gamePoints);
             embed.addTerminalField('STATISTICS',
                 `Total Points: ${totals.points}\n` +
-                `Games Participated: ${totals.participations}\n` +
-                `Games Beaten: ${totals.gamesBeaten}\n` +
-                `Games Mastered: ${totals.gamesMastered}`
+                `Games Participated: ${totals.participated}\n` +
+                `Games Beaten: ${totals.beaten}\n` +
+                `Games Mastered: ${totals.mastered}`
             );
 
-            // Set profile image if available
             if (raProfileImage) {
                 embed.setThumbnail(raProfileImage);
             }
 
             embed.setTerminalFooter();
-            
             await message.channel.send({ embeds: [embed] });
-
-            if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
 
         } catch (error) {
             console.error('Profile Command Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
         }
-    }
-
-    formatPointsBreakdown(points, currentGames) {
-        const uniquePoints = new Map();
-
-        for (const point of points) {
-            const reason = point.reason.display || point.reason;
-            const [gameName, type] = reason.split(' - ');
-            
-            // Shorten game names
-            const shortName = gameName
-                .replace('The Legend of Zelda: ', '')
-                .replace('Legend of Zelda: ', '')
-                .trim();
-
-            const key = `${shortName}-${type}-${point.gameId}`;
-            
-            if (!uniquePoints.has(key)) {
-                uniquePoints.set(key, {
-                    gameName: shortName,
-                    type,
-                    points: point.points,
-                    gameId: point.gameId
-                });
-            }
-        }
-
-        // Categorize points
-        const categories = {
-            monthlyGames: [],
-            shadowGames: [],
-            mastery: []
-        };
-
-        for (const point of uniquePoints.values()) {
-            const isCurrentMonthly = currentGames?.monthlyGame.id === point.gameId;
-            const isCurrentShadow = currentGames?.shadowGame.id === point.gameId;
-            const isMastery = point.type.toLowerCase().includes('mastery');
-
-            const display = `${point.gameName} - ${point.points} point${point.points !== 1 ? 's' : ''}`;
-
-            if (isMastery) {
-                categories.mastery.push(`${display} 🏆`);
-            } else if (isCurrentShadow || point.gameId === currentGames?.shadowGame.id) {
-                categories.shadowGames.push(`${display}${isCurrentShadow ? ' 🌘' : ''}`);
-            } else {
-                categories.monthlyGames.push(`${display}${isCurrentMonthly ? ' ⭐' : ''}`);
-            }
-        }
-
-        // Sort each category
-        categories.monthlyGames.sort();
-        categories.shadowGames.sort();
-        categories.mastery.sort();
-
-        return categories;
     }
 
     calculateRank(username, leaderboard) {
@@ -201,6 +177,32 @@ class ProfileCommand {
         ) + 1;
 
         return `#${rank}`;
+    }
+
+    calculateTotals(gamePoints) {
+        const totals = {
+            points: 0,
+            participated: 0,
+            beaten: 0,
+            mastered: 0
+        };
+
+        for (const game of gamePoints.values()) {
+            if (game.displayOrder.includes('participation')) {
+                totals.participated++;
+                totals.points += 1;
+            }
+            if (game.displayOrder.includes('beaten')) {
+                totals.beaten++;
+                totals.points += 3;
+            }
+            if (game.displayOrder.includes('mastery')) {
+                totals.mastered++;
+                totals.points += 3;
+            }
+        }
+
+        return totals;
     }
 }
 
