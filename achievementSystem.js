@@ -134,35 +134,35 @@ class AchievementSystem {
      * Summarize a user’s points for a given month/year or entire year.
      * Reads from `achievement_records` and sums using pointsForAward().
      */
-    async calculatePoints(username, queryMonth = null, queryYear = null) {
-        const coll = await this.database.getCollection('achievement_records');
+async calculatePoints(username, queryMonth = null, queryYear = null) {
+  const coll = await this.database.getCollection('achievement_records');
 
-        const query = { username };
-        if (queryMonth && queryYear) {
-            query.year = queryYear;
-            query.month = queryMonth.padStart(2, '0');
-        } else if (queryYear) {
-            query.year = queryYear;
-        }
+  const query = { username };
+  if (queryMonth && queryYear) {
+    query.year = queryYear;
+    // Convert month to string before padStart
+    query.month = String(queryMonth).padStart(2, '0');
+  } else if (queryYear) {
+    query.year = queryYear;
+  }
 
-        const records = await coll.find(query).toArray();
-        let totalPoints = 0;
-        const breakdown = [];
+  const records = await coll.find(query).toArray();
+  let totalPoints = 0;
+  const breakdown = [];
 
-        for (const r of records) {
-            const points = this.pointsForAward(r.award, r.gameId, r.year, r.month);
-            totalPoints += points;
-            breakdown.push({
-                gameId: r.gameId,
-                year: r.year,
-                month: r.month,
-                award: r.award,
-                points
-            });
-        }
+  for (const r of records) {
+    const points = this.pointsForAward(r.award, r.gameId, r.year, r.month);
+    totalPoints += points;
+    breakdown.push({
+      gameId: r.gameId,
+      year: r.year,
+      month: r.month,
+      award: r.award,
+      points
+    });
+  }
 
-        return { totalPoints, breakdown };
-    }
+  return { totalPoints, breakdown };
 
     /**
      * Convert 'participation', 'beaten', 'mastered' into actual points,
