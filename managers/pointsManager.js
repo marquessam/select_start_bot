@@ -1,36 +1,6 @@
 // managers/pointsManager.js
 const { withTransaction } = require('../utils/transactions');
-const monthlyGames = {
-    // Key format: YYYY-MM
-    "2024-01": {
-        monthlyGame: {
-            id: "319",
-            name: "Chrono Trigger",
-            winConditions: [2266, 2281], // Achievement IDs for "beating" the game
-            allowMastery: true // Can earn mastery points for this game
-        },
-        shadowGame: {
-            id: "10024",
-            name: "Mario Tennis",
-            winConditions: [48411, 48412],
-            allowMastery: false // Shadow games never give mastery points
-        }
-    },
-    "2024-02": {
-        monthlyGame: {
-            id: "355",
-            name: "The Legend of Zelda: A Link to the Past",
-            winConditions: [2389],
-            allowMastery: true
-        },
-        shadowGame: {
-            id: "274",
-            name: "U.N. Squadron",
-            winConditions: [6422],
-            allowMastery: false
-        }
-    }
-};
+const { monthlyGames, pointValues } = require('../monthlyGames');
 
 class PointsManager {
     constructor(database) {
@@ -56,10 +26,47 @@ class PointsManager {
         );
     }
 
+    async canAwardPoints(username, gameId, pointType) {
+        const currentGames = this.getCurrentMonthGames();
+        
+        // Check if it's a current game
+        const isCurrentMonthly = currentGames?.monthlyGame.id === gameId;
+        const isCurrentShadow = currentGames?.shadowGame.id === gameId;
+        
+        // Handle Chrono Trigger special case
+        if (gameId === "319" && pointType !== 'mastery') {
+            return false;
+        }
+
+        // For past games, only allow mastery points
+        if (!isCurrentMonthly && !isCurrentShadow) {
+            return pointType === 'mastery' && this.isPastMonthlyGame(gameId);
+        }
+
+        // Don't allow mastery for shadow games
+        if (isCurrentShadow && pointType === 'mastery') {
+            return false;
+        }
+
+        return true;
+    }
+
     async processNewAchievements(username, achievements) {
         try {
-            const points = await this.processAchievements(username, achievements);
-            
+            // Group achievements by game
+            const achievementsByGame = achievements.reduce((acc, ach) => {
+                if (!acc[ach.GameID]) acc[ach.GameID] = [];
+                acc[ach.GameID].push(ach);
+                return acc;
+            }, {});
+
+            const points = [];
+            for (const [gameId, gameAchievements] of Object.entries(achievementsByGame)) {
+                const gamePoints = await this.processGameAchievements(username, gameId, gameAchievements);
+                points.push(...gamePoints);
+            }
+
+            // Award points
             for (const point of points) {
                 await this.awardPoints(username, point.points, point.reason);
             }
@@ -71,120 +78,61 @@ class PointsManager {
         }
     }
 
-    async processAchievements(username, achievements) {
+    async processGameAchievements(username, gameId, achievements) {
         const currentGames = this.getCurrentMonthGames();
-        if (!currentGames) return [];
-
         const points = [];
 
-        // Check current monthly game
-        const monthlyAchievements = achievements.filter(a => a.GameID === currentGames.monthlyGame.id);
-        if (monthlyAchievements.length > 0) {
-            const monthlyPoints = await this.checkGameProgress(
-                monthlyAchievements,
-                currentGames.monthlyGame,
-                true
-            );
-            points.push(...monthlyPoints);
-        }
+        // Get game config
+        let gameConfig = currentGames?.monthlyGame.id === gameId ? currentGames.monthlyGame :
+                        currentGames?.shadowGame.id === gameId ? currentGames.shadowGame :
+                        this.getPastMonthlyConfig(gameId);
 
-        // Check current shadow game
-        const shadowAchievements = achievements.filter(a => a.GameID === currentGames.shadowGame.id);
-        if (shadowAchievements.length > 0) {
-            const shadowPoints = await this.checkGameProgress(
-                shadowAchievements,
-                currentGames.shadowGame,
-                false
-            );
-            points.push(...shadowPoints);
-        }
+        if (!gameConfig) return points;
 
-        // Check past monthly games for mastery
-        const uniqueGameIds = [...new Set(achievements.map(a => a.GameID))];
-        for (const gameId of uniqueGameIds) {
-            if (this.isPastMonthlyGame(gameId)) {
-                const pastGameAchievements = achievements.filter(a => a.GameID === gameId);
-                const isMastered = this.checkMastery(pastGameAchievements);
-                if (isMastered) {
-                    const gameName = this.getGameName(gameId);
-                    points.push({
-                        type: 'mastery',
-                        points: 3,
-                        reason: {
-                            display: `${gameName} - Mastery`,
-                            internal: `mastery-${gameId}`,
-                            key: `mastery-${gameId}`
-                        }
-                    });
-                }
+        // Check if points already awarded
+        const existingPoints = await this.getUserGamePoints(username, gameId);
+
+        // Check participation (except for masteryOnly games)
+        if (!gameConfig.masteryOnly && 
+            !existingPoints.some(p => p.type === 'participation') &&
+            await this.canAwardPoints(username, gameId, 'participation')) {
+            
+            if (achievements.some(a => parseInt(a.DateEarned) > 0)) {
+                points.push({
+                    type: 'participation',
+                    points: pointValues.participation,
+                    reason: {
+                        display: `${gameConfig.name} - Participation`,
+                        internal: `participation-${gameId}`,
+                        key: `participation-${gameId}`
+                    }
+                });
             }
         }
 
-        return points;
-    }
-
-async checkGameProgress(achievements, gameConfig, isMonthly) {
-        const points = [];
-        
-        // Check participation (1 point)
-        if (achievements.some(a => parseInt(a.DateEarned) > 0)) {
-            points.push({
-                type: 'participation',
-                points: pointValues.participation,
-                reason: {
-                    display: `${gameConfig.name} - Participation`,
-                    internal: `participation-${gameConfig.id}`,
-                    key: `participation-${gameConfig.id}`
-                }
-            });
-        }
-
-        // Check beaten (3 points) - Requires both progression and win conditions if specified
-        let isBeaten = true;
-
-        // Check progression achievements if required
-        if (gameConfig.requireProgression && gameConfig.progression) {
-            isBeaten = gameConfig.progression.every(achId =>
-                achievements.some(a => 
-                    parseInt(a.ID) === achId && 
-                    parseInt(a.DateEarned) > 0
-                )
-            );
-        }
-
-        // Check win conditions
-        if (isBeaten && gameConfig.winConditions) {
-            if (gameConfig.requireAllWinConditions) {
-                isBeaten = gameConfig.winConditions.every(achId =>
-                    achievements.some(a => 
-                        parseInt(a.ID) === achId && 
-                        parseInt(a.DateEarned) > 0
-                    )
-                );
-            } else {
-                isBeaten = gameConfig.winConditions.some(achId =>
-                    achievements.some(a => 
-                        parseInt(a.ID) === achId && 
-                        parseInt(a.DateEarned) > 0
-                    )
-                );
+        // Check beaten
+        if (!existingPoints.some(p => p.type === 'beaten') &&
+            await this.canAwardPoints(username, gameId, 'beaten')) {
+            
+            const isBeaten = this.checkBeatenRequirements(achievements, gameConfig);
+            if (isBeaten) {
+                points.push({
+                    type: 'beaten',
+                    points: pointValues.beaten,
+                    reason: {
+                        display: `${gameConfig.name} - Game Beaten`,
+                        internal: `beaten-${gameId}`,
+                        key: `beaten-${gameId}`
+                    }
+                });
             }
         }
 
-        if (isBeaten) {
-            points.push({
-                type: 'beaten',
-                points: pointValues.beaten,
-                reason: {
-                    display: `${gameConfig.name} - Game Beaten`,
-                    internal: `beaten-${gameConfig.id}`,
-                    key: `beaten-${gameConfig.id}`
-                }
-            });
-        }
-
-        // Check mastery for monthly games (3 points)
-        if (isMonthly && gameConfig.allowMastery) {
+        // Check mastery
+        if (!existingPoints.some(p => p.type === 'mastery') &&
+            gameConfig.allowMastery &&
+            await this.canAwardPoints(username, gameId, 'mastery')) {
+            
             const isMastered = this.checkMastery(achievements);
             if (isMastered) {
                 points.push({
@@ -192,8 +140,8 @@ async checkGameProgress(achievements, gameConfig, isMonthly) {
                     points: pointValues.mastery,
                     reason: {
                         display: `${gameConfig.name} - Mastery`,
-                        internal: `mastery-${gameConfig.id}`,
-                        key: `mastery-${gameConfig.id}`
+                        internal: `mastery-${gameId}`,
+                        key: `mastery-${gameId}`
                     }
                 });
             }
@@ -201,32 +149,75 @@ async checkGameProgress(achievements, gameConfig, isMonthly) {
 
         return points;
     }
-    
-    checkMastery(achievements) {
-        const totalAchievements = achievements.length;
-        const earnedAchievements = achievements.filter(a => parseInt(a.DateEarned) > 0).length;
-        return totalAchievements > 0 && totalAchievements === earnedAchievements;
+
+    checkBeatenRequirements(achievements, gameConfig) {
+        // Check progression achievements if required
+        if (gameConfig.requireProgression && gameConfig.progression) {
+            const hasProgression = gameConfig.progression.every(achId =>
+                achievements.some(a => 
+                    parseInt(a.ID) === achId && 
+                    parseInt(a.DateEarned) > 0
+                )
+            );
+            if (!hasProgression) return false;
+        }
+
+        // Check win conditions
+        if (gameConfig.requireAllWinConditions) {
+            return gameConfig.winConditions.every(achId =>
+                achievements.some(a => 
+                    parseInt(a.ID) === achId && 
+                    parseInt(a.DateEarned) > 0
+                )
+            );
+        } else {
+            return gameConfig.winConditions.some(achId =>
+                achievements.some(a => 
+                    parseInt(a.ID) === achId && 
+                    parseInt(a.DateEarned) > 0
+                )
+            );
+        }
     }
 
-    getGameName(gameId) {
+    checkMastery(achievements) {
+        const total = achievements.length;
+        const earned = achievements.filter(a => parseInt(a.DateEarned) > 0).length;
+        return total > 0 && total === earned;
+    }
+
+    getPastMonthlyConfig(gameId) {
         for (const month of Object.values(monthlyGames)) {
-            if (month.monthlyGame.id === gameId) return month.monthlyGame.name;
-            if (month.shadowGame.id === gameId) return month.shadowGame.name;
+            if (month.monthlyGame.id === gameId) {
+                return month.monthlyGame;
+            }
         }
-        return 'Unknown Game';
+        return null;
+    }
+
+    async getUserGamePoints(username, gameId) {
+        const year = new Date().getFullYear().toString();
+        const points = await this.database.getUserBonusPoints(username);
+        return points.filter(p => 
+            p.year === year && 
+            p.gameId === gameId &&
+            p.technicalKey && 
+            p.technicalKey.endsWith(`-${gameId}`)
+        );
     }
 
     async awardPoints(username, points, reason) {
         try {
             const cleanUsername = username.toLowerCase().trim();
             const year = new Date().getFullYear().toString();
-            const technicalKey = reason.key || `${reason}-${Date.now()}`;
 
             const pointRecord = {
                 points,
-                reason: reason.display || reason,
-                internalReason: reason.internal || reason,
-                technicalKey,
+                reason: reason.display,
+                internalReason: reason.internal,
+                technicalKey: reason.key,
+                gameId: reason.key.split('-').pop(),
+                type: reason.key.split('-')[0],
                 year,
                 date: new Date().toISOString()
             };
@@ -235,15 +226,12 @@ async checkGameProgress(achievements, gameConfig, isMonthly) {
                 return await this.database.addUserBonusPoints(cleanUsername, pointRecord);
             });
 
-            if (success) {
-                // Announce points if achievement feed exists
-                if (this.services?.achievementFeed) {
-                    await this.services.achievementFeed.announcePointsAward(
-                        username, 
-                        points, 
-                        pointRecord.reason
-                    );
-                }
+            if (success && this.services?.achievementFeed) {
+                await this.services.achievementFeed.announcePointsAward(
+                    username, 
+                    points, 
+                    pointRecord.reason
+                );
             }
 
             return success;
