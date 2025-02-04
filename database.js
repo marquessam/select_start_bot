@@ -277,7 +277,23 @@ class Database {
             return false;
         }
     }
+async getGameProgress(username, gameId, options = {}) {
+    const collection = await this.getCollection('achievement_records');
+    const records = await collection.find(
+        { username, gameId },
+        { session: options.session }
+    ).toArray();
 
+    const totalAchievements = records.length;
+    const userProgress = (totalAchievements / game.totalAchievements) * 100;
+    const hasBeatenFlag = records.some(r => r.type === 'beaten');
+
+    return {
+        userProgress,
+        hasBeatenFlag,
+        totalAchievements
+    };
+}
 
     // ===================
     // User Management
