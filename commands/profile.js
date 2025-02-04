@@ -72,7 +72,8 @@ module.exports = {
             );
 
             // Points Breakdown
-            const pointsBreakdown = await this.formatPointsBreakdown(yearlyPoints);
+            const pointsBreakdown = await this.formatPointsBreakdown(yearlyPoints, { pointsManager });
+
 
             // Monthly Games
             if (pointsBreakdown.monthlyGames.length > 0) {
