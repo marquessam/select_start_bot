@@ -1,9 +1,16 @@
 // achievementSystem.js
+const AchievementQueue = require('./achievementQueue');
+
 class AchievementSystem {
     constructor(database) {
         this.database = database;
-        this.services = null;
+        this.queue = new AchievementQueue(database);
     }
+
+    async processAchievement(username, achievement) {
+        await this.queue.add(username, achievement);
+    }
+}
 
     static GameAward = {
         MASTERY: 'mastered',
