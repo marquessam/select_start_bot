@@ -1,10 +1,11 @@
-// achievementSystem.js
 const AchievementQueue = require('./achievementQueue');
+const AchievementTracker = require('./achievementTracker');
 
 class AchievementSystem {
     constructor(database) {
         this.database = database;
         this.queue = new AchievementQueue(database);
+        this.tracker = new AchievementTracker(database);
     }
 
     setServices(services) {
@@ -48,32 +49,38 @@ class AchievementSystem {
 
             console.log(`[ACHIEVEMENTS] ${username} progress in ${gameId}: ${gameProgress.highestAwardKind}`);
 
-            // Award points based on highest achievement
-            switch (gameProgress.highestAwardKind) {
-                case AchievementSystem.GameAward.MASTERY:
-                    // For mastery-only games like Chrono Trigger
-                    if (gameConfig.restrictions?.masteryOnly) {
-                        await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
-                    } else {
-                        // Regular game mastery includes all lower tiers
-                        await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
-                        await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
-                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
-                    }
-                    break;
+            // Use the tracker to update user progress and calculate points
+            const achievements = gameProgress.achievements || [];
+            const result = await this.tracker.updateUserProgress(username, gameId, achievements);
 
-                case AchievementSystem.GameAward.BEATEN:
-                    if (!gameConfig.restrictions?.masteryOnly) {
-                        await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
-                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
-                    }
-                    break;
+            if (result) {
+                const { progress, points, gameConfig } = result;
 
-                case AchievementSystem.GameAward.PARTICIPATION:
-                    if (!gameConfig.restrictions?.masteryOnly) {
-                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
-                    }
-                    break;
+                // Award points based on highest achievement
+                switch (gameProgress.highestAwardKind) {
+                    case AchievementSystem.GameAward.MASTERY:
+                        if (gameConfig.restrictions?.masteryOnly) {
+                            await this.addRecord(username, gameId, 'mastered', month, year, points.breakdown.mastery);
+                        } else {
+                            await this.addRecord(username, gameId, 'mastered', month, year, points.breakdown.mastery);
+                            await this.addRecord(username, gameId, 'beaten', month, year, points.breakdown.beaten);
+                            await this.addRecord(username, gameId, 'participation', month, year, points.breakdown.participation);
+                        }
+                        break;
+
+                    case AchievementSystem.GameAward.BEATEN:
+                        if (!gameConfig.restrictions?.masteryOnly) {
+                            await this.addRecord(username, gameId, 'beaten', month, year, points.breakdown.beaten);
+                            await this.addRecord(username, gameId, 'participation', month, year, points.breakdown.participation);
+                        }
+                        break;
+
+                    case AchievementSystem.GameAward.PARTICIPATION:
+                        if (!gameConfig.restrictions?.masteryOnly) {
+                            await this.addRecord(username, gameId, 'participation', month, year, points.breakdown.participation);
+                        }
+                        break;
+                }
             }
         } catch (error) {
             console.error('[ACHIEVEMENTS] Error checking achievements:', error);
