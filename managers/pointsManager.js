@@ -123,14 +123,14 @@ class PointsManager {
         return points;
     }
 
-    async checkGameProgress(achievements, gameConfig, isMonthly) {
+async checkGameProgress(achievements, gameConfig, isMonthly) {
         const points = [];
         
         // Check participation (1 point)
         if (achievements.some(a => parseInt(a.DateEarned) > 0)) {
             points.push({
                 type: 'participation',
-                points: 1,
+                points: pointValues.participation,
                 reason: {
                     display: `${gameConfig.name} - Participation`,
                     internal: `participation-${gameConfig.id}`,
@@ -139,18 +139,42 @@ class PointsManager {
             });
         }
 
-        // Check beaten (3 points)
-        const isBeaten = gameConfig.winConditions.every(achId =>
-            achievements.some(a => 
-                parseInt(a.ID) === achId && 
-                parseInt(a.DateEarned) > 0
-            )
-        );
+        // Check beaten (3 points) - Requires both progression and win conditions if specified
+        let isBeaten = true;
+
+        // Check progression achievements if required
+        if (gameConfig.requireProgression && gameConfig.progression) {
+            isBeaten = gameConfig.progression.every(achId =>
+                achievements.some(a => 
+                    parseInt(a.ID) === achId && 
+                    parseInt(a.DateEarned) > 0
+                )
+            );
+        }
+
+        // Check win conditions
+        if (isBeaten && gameConfig.winConditions) {
+            if (gameConfig.requireAllWinConditions) {
+                isBeaten = gameConfig.winConditions.every(achId =>
+                    achievements.some(a => 
+                        parseInt(a.ID) === achId && 
+                        parseInt(a.DateEarned) > 0
+                    )
+                );
+            } else {
+                isBeaten = gameConfig.winConditions.some(achId =>
+                    achievements.some(a => 
+                        parseInt(a.ID) === achId && 
+                        parseInt(a.DateEarned) > 0
+                    )
+                );
+            }
+        }
 
         if (isBeaten) {
             points.push({
                 type: 'beaten',
-                points: 3,
+                points: pointValues.beaten,
                 reason: {
                     display: `${gameConfig.name} - Game Beaten`,
                     internal: `beaten-${gameConfig.id}`,
@@ -165,7 +189,7 @@ class PointsManager {
             if (isMastered) {
                 points.push({
                     type: 'mastery',
-                    points: 3,
+                    points: pointValues.mastery,
                     reason: {
                         display: `${gameConfig.name} - Mastery`,
                         internal: `mastery-${gameConfig.id}`,
@@ -177,7 +201,7 @@ class PointsManager {
 
         return points;
     }
-
+    
     checkMastery(achievements) {
         const totalAchievements = achievements.length;
         const earnedAchievements = achievements.filter(a => parseInt(a.DateEarned) > 0).length;
