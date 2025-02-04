@@ -2,22 +2,16 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const database = require('./database');
+const UserStats = require('./userStats');
 const CommandHandler = require('./handlers/commandHandler');
 const UserTracker = require('./userTracker');
 const Announcer = require('./utils/announcer');
 const createLeaderboardCache = require('./leaderboardCache');
 const ShadowGame = require('./shadowGame');
-// ===========================
-// REPLACE these two lines:
-// const AchievementFeed = require('./achievementFeed');
-// const AchievementSystem = require('./achievementSystem');
-// ===========================
-// WITH your NEW classes that accept (database, raAPI, etc.):
-const NewAchievementSystem = require('./achievementSystem');
-const NewAchievementFeed = require('./achievementFeed');
-
-const raAPI = require('./raAPI'); // We'll keep requiring RA here
+const errorHandler = require('./utils/errorHandler');
+const AchievementFeed = require('./achievementFeed');
 const MobyAPI = require('./mobyAPI');
+const PointsManager = require('./managers/pointsManager');
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
@@ -56,58 +50,41 @@ async function connectDatabase() {
     }
 }
 
-/**
- * Create the "coreServices" object with new AchievementSystem & AchievementFeed.
- */
 async function createCoreServices() {
     try {
         console.log('Creating core services...');
         
-        // Initialize RA API with database
-        raAPI.setDatabase(database);
-
-        // Create each major service
-        // ======================================
-        // 1. Our new simpler AchievementSystem (requires db + raAPI)
-        const achievementSystem = new NewAchievementSystem(database, raAPI);
-
-        // 2. userTracker, announcer, shadowGame, etc. remain the same
-        const userTracker = new UserTracker(database);
+        // Create services
+        const pointsManager = new PointsManager(database);
+        const userStats = new UserStats(database, { pointsManager });  // Pass pointsManager here
+        const userTracker = new UserTracker(database, userStats);
         const leaderboardCache = createLeaderboardCache(database);
         const commandHandler = new CommandHandler();
-        const announcer = new Announcer(client, process.env.ANNOUNCEMENT_CHANNEL_ID);
+        const announcer = new Announcer(client, userStats, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
+        const achievementFeed = new AchievementFeed(client, database);
 
-        // 3. Our new simpler AchievementFeed (requires client, db, raAPI, achievementSystem)
-        const achievementFeed = new NewAchievementFeed(client, database, raAPI, achievementSystem);
+        // Setup global references
+        leaderboardCache.setUserStats(userStats);
+        global.leaderboardCache = leaderboardCache;
+        global.achievementFeed = achievementFeed;
 
-        // 4. Also include MobyAPI if you still use it
-        //    (already loaded above)
-
-        // Create a single object with all services
+        // Create services object
         const services = {
-            database,
-            raAPI,
-            achievementSystem,    // NEW simpler system
+            pointsManager,
+            userStats,
             userTracker,
             leaderboardCache,
             commandHandler,
             announcer,
             shadowGame,
-            achievementFeed,      // NEW simpler feed
+            achievementFeed,
             mobyAPI: MobyAPI
         };
 
-        // Setup global references (if needed by your code)
-        global.leaderboardCache = leaderboardCache;
-        global.achievementFeed = achievementFeed;
-
-        // Some classes in your code may still call .setServices(...)
-        achievementSystem.setServices?.(services);
-        userTracker.setServices(services);
-        leaderboardCache.setServices(services);
-        achievementFeed.setServices?.(services);
-        shadowGame.setServices(services);
+        // Pass services back to pointsManager and userStats
+        pointsManager.setServices(services);
+        userStats.setServices(services);
 
         console.log('Core services created successfully');
         return services;
@@ -116,48 +93,38 @@ async function createCoreServices() {
         throw error;
     }
 }
-
 async function initializeServices(coreServices) {
     try {
         console.log('Initializing services...');
 
-        // 1. Connect DB
-        await coreServices.database.connect();
-        console.log('Database connected');
+        // Initialize Points System first
+        console.log('Initializing Points System...');
+        console.log('Points System initialized');
 
-        // 2. userTracker
         await coreServices.userTracker.initialize();
         console.log('UserTracker initialized');
 
-        // 3. achievementSystem
-        //    (If your new system has no special init needed, we just log)
-        console.log('AchievementSystem initialized');
+        await coreServices.userStats.loadStats(coreServices.userTracker);
+        console.log('UserStats initialized');
 
-        // 4. shadowGame
         await coreServices.shadowGame.initialize();
         console.log('ShadowGame initialized');
 
-        // 5. announcer
         await coreServices.announcer.initialize();
         console.log('Announcer initialized');
 
-        // 6. commandHandler
         await coreServices.commandHandler.loadCommands(coreServices);
         console.log('CommandHandler initialized');
 
-        // 7. leaderboardCache
         await coreServices.leaderboardCache.initialize(true);
         console.log('LeaderboardCache initialized');
 
-        // 8. achievementFeed
-        //    The new feed has an "initialize()" method that starts its polling
         await coreServices.achievementFeed.initialize();
         console.log('AchievementFeed initialized');
 
-        // 9. Do a one-time "coordinatedUpdate" if needed
         await coordinateUpdate(coreServices, true);
+
         console.log('All services initialized successfully');
-        
         return coreServices;
     } catch (error) {
         console.error('Service Initialization Error:', error);
@@ -179,33 +146,86 @@ async function setupBot() {
     }
 }
 
+async function waitForUserStatsInitialization(userStats) {
+    if (!userStats.isInitializing && userStats.initializationComplete) {
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+        const timer = setInterval(() => {
+            if (!userStats.isInitializing && userStats.initializationComplete) {
+                clearInterval(timer);
+                resolve();
+            }
+        }, 100);
+    });
+}
+
 async function coordinateUpdate(services, force = false) {
     if (!force && services.leaderboardCache.hasInitialData) {
         console.log('[UPDATE] Skipping redundant update, using cached data');
         return;
     }
 
+    console.log('[UPDATE] Starting coordinated update...');
+    
+    if (!services?.leaderboardCache || !services?.userStats) {
+        console.log('[UPDATE] Required services not available');
+        return;
+    }
+
     try {
-        console.log('[UPDATE] Starting coordinated update...');
-        
-        if (!services?.leaderboardCache) {
-            throw new Error('LeaderboardCache service not available');
+        if (services.userStats.isInitializing || !services.userStats.initializationComplete) {
+            console.log('[UPDATE] Waiting for UserStats initialization...');
+            await waitForUserStatsInitialization(services.userStats);
         }
 
-        await services.leaderboardCache.updateLeaderboards(force);
-        services.leaderboardCache.hasInitialData = true;
+        const leaderboardData = await services.leaderboardCache.updateLeaderboards(force);
+        console.log('[UPDATE] Leaderboard data updated');
+
+        if (!leaderboardData?.leaderboard) {
+            console.log('[UPDATE] No leaderboard data available');
+            return;
+        }
+
+        await services.userStats.recheckAllPoints();
+        console.log('[UPDATE] Points checked and processed');
         
+        await services.userStats.saveStats();
+        console.log('[UPDATE] Stats saved');
+
+        services.leaderboardCache.hasInitialData = true;
         console.log('[UPDATE] Coordinated update complete');
     } catch (error) {
         console.error('[UPDATE] Error during coordinated update:', error);
     }
 }
 
-// Bot Event Handlers
+async function handleMessage(message, services) {
+    if (message.author.bot || !services) return;
+    
+    const { userTracker, shadowGame, commandHandler } = services;
+    const tasks = [];
+
+    if (message.channel.id === process.env.RA_CHANNEL_ID) {
+        tasks.push(userTracker.processMessage(message));
+    }
+
+    tasks.push(
+        shadowGame.checkMessage(message),
+        commandHandler.handleCommand(message, services)
+    );
+
+    await Promise.allSettled(tasks.map(task => 
+        task.catch(error => console.error('Message handling error:', error))
+    ));
+}
+
+// Bot Events
 client.once('ready', async () => {
     try {
         console.log(`Logged in as ${client.user.tag}`);
-        await setupBot();
+        const initializedServices = await setupBot();
     } catch (error) {
         console.error('Fatal initialization error:', error);
         process.exit(1);
@@ -214,21 +234,9 @@ client.once('ready', async () => {
 
 client.on('messageCreate', async (message) => {
     if (message.author.bot || !services) return;
-
-    try {
-        // Process messages in the RA channel for user tracking
-        if (message.channel.id === process.env.RA_CHANNEL_ID) {
-            await services.userTracker.processMessage(message);
-        }
-
-        // Process shadow game messages
-        await services.shadowGame.checkMessage(message);
-
-        // Handle commands
-        await services.commandHandler.handleCommand(message, services);
-    } catch (error) {
-        console.error('Message Handler Error:', error);
-    }
+    await handleMessage(message, services).catch(error => 
+        console.error('Message Handler Error:', error)
+    );
 });
 
 // Periodic Updates
@@ -248,6 +256,7 @@ const shutdown = async (signal) => {
     }
 };
 
+// Process Events
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('uncaughtException', (error) => {
@@ -258,4 +267,5 @@ process.on('unhandledRejection', (error) => {
     console.error('Unhandled Rejection:', error);
 });
 
+// Start Bot
 client.login(process.env.DISCORD_TOKEN);
