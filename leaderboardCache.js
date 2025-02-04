@@ -77,8 +77,10 @@ class LeaderboardCache {
     }
 
     _shouldUpdate() {
-        return !this.cache.lastUpdated ||
-               (Date.now() - this.cache.lastUpdated) > this.cache.updateInterval;
+        return (
+            !this.cache.lastUpdated ||
+            (Date.now() - this.cache.lastUpdated) > this.cache.updateInterval
+        );
     }
 
     async updateLeaderboards(force = false) {
@@ -98,27 +100,36 @@ class LeaderboardCache {
                 console.log('[LEADERBOARD CACHE] Updating leaderboards...');
 
                 const currentDate = new Date();
-                const currentMonth = currentDate.getMonth() + 1;
+                const currentMonth = currentDate.getMonth() + 1; // 1-12
                 const currentYear = currentDate.getFullYear();
                 const validUsers = Array.from(this.cache.validUsers);
 
-                // Get current month's games
+                // 1) Get current month's monthly & shadow games
+                //    e.g. { monthly: ["355"], shadow: ["274"] }
                 const monthlyGames = await this.services.achievementSystem.getMonthlyGames(
                     currentMonth, 
                     currentYear
                 );
 
-                // Get all game progress for each user
-                const monthlyPromises = validUsers.map(async username => {
-                    const userProgress = {};
-                    let totalPoints = 0;
+                // Flatten them to get a single array of relevant game IDs
+                const relevantGames = [
+                    ...(monthlyGames.monthly || []),
+                    ...(monthlyGames.shadow || [])
+                ];
 
-                    // Check each game's progress
-                    for (const gameId of Object.keys(this.services.achievementSystem.constructor.Games)) {
+                // 2) Build monthlyLeaderboard
+                //    For each user, fetch RA progress for each relevant game,
+                //    then call achievementSystem.calculatePoints() for that month.
+                const monthlyPromises = validUsers.map(async (username) => {
+                    // We'll store simple RA progress for each relevant game
+                    const userProgress = {};
+
+                    // For each relevant game, fetch RA progress from RA
+                    for (const gameId of relevantGames) {
                         const gameProgress = await this.services.raAPI.fetchCompleteGameProgress(username, gameId);
                         if (gameProgress) {
                             userProgress[gameId] = {
-                                completion: gameProgress.userCompletion || "0%",
+                                completion: gameProgress.userCompletion || '0%',
                                 completedAchievements: gameProgress.numAwardedToUser || 0,
                                 totalAchievements: gameProgress.numAchievements || 0,
                                 highestAward: gameProgress.highestAwardKind || null
@@ -126,8 +137,8 @@ class LeaderboardCache {
                         }
                     }
 
-                    // Calculate points using the achievement system
-                    const achievementPoints = await this.services.achievementSystem.calculatePoints(
+                    // Now fetch their actual points for the current month
+                    const monthlyPoints = await this.services.achievementSystem.calculatePoints(
                         username,
                         currentMonth,
                         currentYear
@@ -135,22 +146,23 @@ class LeaderboardCache {
 
                     return {
                         username,
-                        points: achievementPoints.total,
-                        games: achievementPoints.games,
+                        points: monthlyPoints.total,
+                        games: monthlyPoints.games,
                         progress: userProgress
                     };
                 });
 
                 this.cache.monthlyLeaderboard = await Promise.all(monthlyPromises);
 
-                // Update yearly leaderboard
-                const yearlyPromises = validUsers.map(async username => {
+                // 3) Build yearlyLeaderboard
+                //    For each user, call achievementSystem.calculatePoints(null, currentYear)
+                //    to get their total points in that year.
+                const yearlyPromises = validUsers.map(async (username) => {
                     const yearlyPoints = await this.services.achievementSystem.calculatePoints(
                         username,
                         null,
                         currentYear
                     );
-
                     return {
                         username,
                         points: yearlyPoints.total,
@@ -160,13 +172,14 @@ class LeaderboardCache {
 
                 this.cache.yearlyLeaderboard = await Promise.all(yearlyPromises);
 
-                // Sort leaderboards
+                // 4) Sort them descending by points
                 this.cache.monthlyLeaderboard.sort((a, b) => b.points - a.points);
                 this.cache.yearlyLeaderboard.sort((a, b) => b.points - a.points);
 
                 this.cache.lastUpdated = Date.now();
                 this.hasInitialData = true;
 
+                // Return an object with monthly data for any caller
                 return {
                     leaderboard: this.cache.monthlyLeaderboard,
                     games: monthlyGames,
@@ -206,11 +219,11 @@ class LeaderboardCache {
 
     getUserProgress(username) {
         const monthlyEntry = this.cache.monthlyLeaderboard.find(
-            user => user.username.toLowerCase() === username.toLowerCase()
+            (user) => user.username.toLowerCase() === username.toLowerCase()
         );
 
         const yearlyEntry = this.cache.yearlyLeaderboard.find(
-            user => user.username.toLowerCase() === username.toLowerCase()
+            (user) => user.username.toLowerCase() === username.toLowerCase()
         );
 
         return {
