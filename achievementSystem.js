@@ -23,7 +23,7 @@ class AchievementSystem {
             restrictions: {
                 month: 1,
                 year: 2025,
-                masteryOnly: true  // Only mastery points are available
+                masteryOnly: true
             }
         },
         "355": {  // ALTTP
@@ -86,64 +86,61 @@ class AchievementSystem {
 
             // Check month/year restrictions
             if (gameConfig.restrictions) {
-                const isValidMonth = !month || month === gameConfig.restrictions.month;
-                const isValidYear = !year || year === gameConfig.restrictions.year;
+                const isValidMonth = month === gameConfig.restrictions.month;
+                const isValidYear = year === gameConfig.restrictions.year;
                 if (!isValidMonth || !isValidYear) {
                     console.log(`[ACHIEVEMENTS] Game ${gameId} not valid for ${month}/${year}`);
                     return;
                 }
             }
 
-            const { raAPI } = this.services;
-            const gameProgress = await raAPI.fetchCompleteGameProgress(username, gameId);
+            // Get complete game progress
+            const gameProgress = await this.services.raAPI.fetchCompleteGameProgress(username, gameId);
             if (!gameProgress) {
                 console.log(`[ACHIEVEMENTS] No game progress found for ${username} in ${gameId}`);
                 return;
             }
 
-            console.log(`[ACHIEVEMENTS] Game progress for ${username} in ${gameId}:`, {
-                numAchievements: gameProgress.numAchievements,
-                numAwarded: gameProgress.numAwardedToUser,
+            // Log progress
+            console.log(`[ACHIEVEMENTS] Progress for ${username} in ${gameId}:`, {
                 completion: gameProgress.userCompletion,
-                highestAward: gameProgress.highestAwardKind
+                awarded: gameProgress.numAwardedToUser,
+                total: gameProgress.numAchievements
             });
 
-            const { highestAwardKind } = gameProgress;
+            // Check for completion statuses
+            const isMastered = gameProgress.numAchievements > 0 && 
+                             gameProgress.numAwardedToUser === gameProgress.numAchievements;
+            
+            const isBeaten = Object.values(gameProgress.achievements)
+                .some(ach => ach.type === 'progression' && ach.dateEarned);
 
-            // Award points based on highest award achieved
-            switch (highestAwardKind) {
-                case AchievementSystem.GameAward.MASTERY:
-                    console.log(`[ACHIEVEMENTS] ${username} has mastered ${gameId}`);
-                    if (gameConfig.restrictions?.masteryOnly) {
-                        await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
-                    } else {
-                        await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
-                        await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
-                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
-                    }
-                    break;
+            const hasParticipated = gameProgress.numAwardedToUser > 0;
 
-                case AchievementSystem.GameAward.BEATEN:
-                    console.log(`[ACHIEVEMENTS] ${username} has beaten ${gameId}`);
-                    if (!gameConfig.restrictions?.masteryOnly) {
-                        await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
-                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
-                    }
-                    break;
-
-                default:
-                    // Check for participation
-                    if (!gameConfig.restrictions?.masteryOnly && 
-                        gameProgress.numAwardedToUser > 0) {
-                        console.log(`[ACHIEVEMENTS] ${username} has participated in ${gameId}`);
-                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
-                    }
-                    break;
+            // Award points based on highest status achieved
+            if (isMastered) {
+                console.log(`[ACHIEVEMENTS] ${username} has mastered ${gameId}`);
+                if (!gameConfig.restrictions?.masteryOnly) {
+                    await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
+                    await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
+                }
+                await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
             }
+            else if (isBeaten && !gameConfig.restrictions?.masteryOnly) {
+                console.log(`[ACHIEVEMENTS] ${username} has beaten ${gameId}`);
+                await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
+                await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
+            }
+            else if (hasParticipated && !gameConfig.restrictions?.masteryOnly) {
+                console.log(`[ACHIEVEMENTS] ${username} has participated in ${gameId}`);
+                await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
+            }
+
         } catch (error) {
             console.error('[ACHIEVEMENTS] Error checking achievements:', error);
         }
     }
+
     async addRecord(username, gameId, type, month, year, points) {
         try {
             const cleanUsername = username.toLowerCase().trim();
@@ -152,10 +149,10 @@ class AchievementSystem {
                 gameId,
                 type,
                 points,
-                month: month || new Date().getMonth() + 1,
-                year: (year || new Date().getFullYear()).toString(),
+                month,
+                year: year.toString(),
                 date: new Date().toISOString(),
-                gameName: AchievementSystem.Games[gameId]?.name || 'Unknown Game'
+                gameName: this.getGameConfig(gameId)?.name || 'Unknown Game'
             };
 
             // Check for existing record
@@ -163,7 +160,7 @@ class AchievementSystem {
                 username: cleanUsername,
                 gameId,
                 type,
-                month: record.month,
+                month,
                 year: record.year
             });
 
@@ -175,13 +172,12 @@ class AchievementSystem {
             await this.database.getCollection('achievement_records').insertOne(record);
             console.log(`[ACHIEVEMENTS] Added record for ${username} - ${gameId} - ${type}`);
 
-            // Announce achievement if feed exists and isn't paused
+            // Announce points if needed
             if (this.services?.achievementFeed && !this.services.achievementFeed.isPaused) {
-                await this.services.achievementFeed.announceAchievementMilestone(
+                await this.services.achievementFeed.announcePointsAward(
                     username,
-                    type,
-                    gameId,
-                    points
+                    points,
+                    `${record.gameName} - ${type}`
                 );
             }
 
@@ -200,7 +196,8 @@ class AchievementSystem {
 
             const collection = await this.database.getCollection('achievement_records');
             const records = await collection.find(query).toArray();
-            
+            console.log(`[ACHIEVEMENTS] Found ${records.length} records for ${username}`);
+
             // Group by game
             const gamePoints = {};
             let total = 0;
