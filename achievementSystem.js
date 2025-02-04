@@ -79,52 +79,42 @@ class AchievementSystem {
     }
 }
 
-    async addRecord(username, gameId, type, month, year, points) {
-        try {
-            const cleanUsername = username.toLowerCase().trim();
-            const record = {
-                username: cleanUsername,
-                gameId,
-                type,
-                points,
-                month,
-                year: year.toString(),
-                date: new Date().toISOString(),
-                gameName: this.getGameConfig(gameId)?.name || 'Unknown Game'
-            };
+   async addRecord(username, gameId, type, month, year, points) {
+    try {
+        const cleanUsername = username.toLowerCase().trim();
+        const record = {
+            username: cleanUsername,
+            gameId,
+            type,
+            points,
+            month,
+            year: year.toString(),
+            date: new Date().toISOString(),
+            gameName: this.getGameConfig(gameId)?.name || 'Unknown Game'
+        };
 
-            // Check for existing record
-            const exists = await this.database.getCollection('achievement_records').findOne({
-                username: cleanUsername,
-                gameId,
-                type,
-                month,
-                year: record.year
-            });
+        // Check for existing record
+        const exists = await this.database.getCollection('achievement_records').findOne({
+            username: cleanUsername,
+            gameId,
+            type,
+            month,
+            year: record.year
+        });
 
-            if (exists) {
-                console.log(`[ACHIEVEMENTS] Record already exists for ${username} - ${gameId} - ${type}`);
-                return false;
-            }
-
-            await this.database.getCollection('achievement_records').insertOne(record);
-            console.log(`[ACHIEVEMENTS] Added record for ${username} - ${gameId} - ${type}`);
-
-            // Announce points if needed
-            if (this.services?.achievementFeed && !this.services.achievementFeed.isPaused) {
-                await this.services.achievementFeed.announcePointsAward(
-                    username,
-                    points,
-                    `${record.gameName} - ${type}`
-                );
-            }
-
-            return true;
-        } catch (error) {
-            console.error('[ACHIEVEMENTS] Error adding record:', error);
+        if (exists) {
+            console.log(`[ACHIEVEMENTS] Record already exists for ${username} - ${gameId} - ${type}`);
             return false;
         }
+
+        await this.database.getCollection('achievement_records').insertOne(record);
+        console.log(`[ACHIEVEMENTS] Added record for ${username} - ${gameId} - ${type}`);
+        return true;
+    } catch (error) {
+        console.error('[ACHIEVEMENTS] Error adding record:', error);
+        return false;
     }
+}
 
     async calculatePoints(username, month = null, year = null) {
         try {
