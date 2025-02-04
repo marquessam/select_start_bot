@@ -1,7 +1,7 @@
 // monthlyGames.js
 const monthlyGames = {
     // Key format: YYYY-MM
-    "2024-01": {
+    "2025-01": {
         monthlyGame: {
             id: "319",
             name: "Chrono Trigger",
@@ -9,7 +9,8 @@ const monthlyGames = {
             winConditions: [2266, 2281],
             requireProgression: true,
             requireAllWinConditions: false,
-            allowMastery: true
+            allowMastery: true,
+            masteryOnly: true  // Special flag for Chrono Trigger
         },
         shadowGame: {
             id: "10024",
@@ -20,7 +21,7 @@ const monthlyGames = {
             allowMastery: false
         }
     },
-    "2024-02": {
+    "2025-02": {
         monthlyGame: {
             id: "355",
             name: "The Legend of Zelda: A Link to the Past",
@@ -47,7 +48,7 @@ const monthlyGames = {
 const pointValues = {
     participation: 1,
     beaten: 3,
-    mastery: 3  // Only awarded for monthly games when allowMastery is true
+    mastery: 3
 };
 
 module.exports = { monthlyGames, pointValues };
