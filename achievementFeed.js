@@ -188,6 +188,9 @@ async sendAchievementNotification(channel, username, achievement) {
         await this.queueAnnouncement({ embeds: [embed], files });
         this.announcementHistory.add(achievementKey);
 
+        if (this.services?.pointsManager) {
+        await this.services.pointsManager.processNewAchievements(username, [achievement]);
+    }
         if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
 
     } catch (error) {
