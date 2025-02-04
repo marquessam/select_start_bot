@@ -155,7 +155,7 @@ class AchievementFeed {
         }
     }
 
-    async checkNewAchievements() {
+async checkNewAchievements() {
         if (this._processingAchievements || this.isPaused) {
             console.log('[ACHIEVEMENT FEED] Already processing or paused, skipping...');
             return;
@@ -163,32 +163,71 @@ class AchievementFeed {
 
         this._processingAchievements = true;
         try {
-            const validUsers = await this.database.getValidUsers();
+            // Check services availability
+            this.checkServiceAvailability();
+
+            const validUsers = await this.services.database.getValidUsers();
             const gameIds = Object.keys(this.services.achievementSystem.constructor.Games);
             
+            const channel = await this.client.channels.fetch(this.feedChannel);
+            if (!channel) throw new Error('Achievement feed channel not found');
+
+            console.log(`[ACHIEVEMENT FEED] Checking achievements for ${validUsers.length} users across ${gameIds.length} games...`);
+
             for (const username of validUsers) {
-                const lastCheckedTime = await database.getLastAchievementTimestamp(username) || 0;
+                const lastCheckedTime = await this.services.database.getLastAchievementTimestamp(username) || 0;
+                console.log(`[ACHIEVEMENT FEED] Checking ${username}, last checked: ${new Date(lastCheckedTime).toISOString()}`);
 
                 for (const gameId of gameIds) {
-                    const gameProgress = await raAPI.fetchCompleteGameProgress(username, gameId);
+                    const gameProgress = await this.services.raAPI.fetchCompleteGameProgress(username, gameId);
                     if (!gameProgress?.achievements) continue;
 
-                    // Check for new achievements
-                    for (const achievement of Object.values(gameProgress.achievements)) {
-                        if (new Date(achievement.dateEarned).getTime() > lastCheckedTime) {
-                            // Process achievement
-                            await this.processNewAchievement(username, gameId, achievement, gameProgress);
-                        }
-                    }
+                    // Process achievements
+                    const gameAchievements = Object.values(gameProgress.achievements);
+                    const newAchievements = gameAchievements.filter(achievement => {
+                        const earnedTime = new Date(achievement.dateEarned).getTime();
+                        return earnedTime > lastCheckedTime;
+                    });
 
-                    // Update last checked time if we found any new achievements
-                    if (Object.values(gameProgress.achievements).some(a => 
-                        new Date(a.dateEarned).getTime() > lastCheckedTime
-                    )) {
-                        await database.updateLastAchievementTimestamp(username, new Date().getTime());
+                    if (newAchievements.length > 0) {
+                        console.log(`[ACHIEVEMENT FEED] Found ${newAchievements.length} new achievements for ${username} in game ${gameId}`);
+                        
+                        // Check for game completion/mastery
+                        const currentMonth = new Date().getMonth() + 1;
+                        const currentYear = new Date().getFullYear();
+                        await this.services.achievementSystem.checkUserAchievements(
+                            username,
+                            gameId,
+                            currentMonth,
+                            currentYear
+                        );
+
+                        // Announce each achievement
+                        for (const achievement of newAchievements) {
+                            await this.sendAchievementNotification(
+                                channel,
+                                username,
+                                {
+                                    ...achievement,
+                                    GameID: gameId,
+                                    GameTitle: gameProgress.title,
+                                    Date: achievement.dateEarned,
+                                    Points: achievement.points || 0
+                                }
+                            );
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
+
+                        // Update last checked time
+                        await this.services.database.updateLastAchievementTimestamp(
+                            username,
+                            new Date().getTime()
+                        );
                     }
                 }
             }
+
+            console.log('[ACHIEVEMENT FEED] Achievement check completed');
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error checking achievements:', error);
         } finally {
