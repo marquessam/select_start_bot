@@ -7,10 +7,17 @@ const UserTracker = require('./userTracker');
 const Announcer = require('./utils/announcer');
 const createLeaderboardCache = require('./leaderboardCache');
 const ShadowGame = require('./shadowGame');
-const AchievementFeed = require('./achievementFeed');
+// ===========================
+// REPLACE these two lines:
+// const AchievementFeed = require('./achievementFeed');
+// const AchievementSystem = require('./achievementSystem');
+// ===========================
+// WITH your NEW classes that accept (database, raAPI, etc.):
+const NewAchievementSystem = require('./achievementSystem');
+const NewAchievementFeed = require('./achievementFeed');
+
+const raAPI = require('./raAPI'); // We'll keep requiring RA here
 const MobyAPI = require('./mobyAPI');
-const AchievementSystem = require('./achievementSystem');
-const raAPI = require('./raAPI');
 
 const REQUIRED_ENV_VARS = [
     'RA_CHANNEL_ID',
@@ -49,44 +56,57 @@ async function connectDatabase() {
     }
 }
 
+/**
+ * Create the "coreServices" object with new AchievementSystem & AchievementFeed.
+ */
 async function createCoreServices() {
     try {
         console.log('Creating core services...');
         
-        // Create services
-        const achievementSystem = new AchievementSystem(database);
+        // Initialize RA API with database
+        raAPI.setDatabase(database);
+
+        // Create each major service
+        // ======================================
+        // 1. Our new simpler AchievementSystem (requires db + raAPI)
+        const achievementSystem = new NewAchievementSystem(database, raAPI);
+
+        // 2. userTracker, announcer, shadowGame, etc. remain the same
         const userTracker = new UserTracker(database);
         const leaderboardCache = createLeaderboardCache(database);
         const commandHandler = new CommandHandler();
         const announcer = new Announcer(client, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
-        const achievementFeed = new AchievementFeed(client);
-        const raAPI = require('./raAPI');
-            raAPI.setDatabase(database);
 
-        // Create services object
+        // 3. Our new simpler AchievementFeed (requires client, db, raAPI, achievementSystem)
+        const achievementFeed = new NewAchievementFeed(client, database, raAPI, achievementSystem);
+
+        // 4. Also include MobyAPI if you still use it
+        //    (already loaded above)
+
+        // Create a single object with all services
         const services = {
             database,
             raAPI,
-            achievementSystem,
+            achievementSystem,    // NEW simpler system
             userTracker,
             leaderboardCache,
             commandHandler,
             announcer,
             shadowGame,
-            achievementFeed,
+            achievementFeed,      // NEW simpler feed
             mobyAPI: MobyAPI
         };
 
-        // Setup global references
+        // Setup global references (if needed by your code)
         global.leaderboardCache = leaderboardCache;
         global.achievementFeed = achievementFeed;
 
-        // Initialize service dependencies
-        achievementSystem.setServices(services);
+        // Some classes in your code may still call .setServices(...)
+        achievementSystem.setServices?.(services);
         userTracker.setServices(services);
         leaderboardCache.setServices(services);
-        achievementFeed.setServices(services);
+        achievementFeed.setServices?.(services);
         shadowGame.setServices(services);
 
         console.log('Core services created successfully');
@@ -101,31 +121,40 @@ async function initializeServices(coreServices) {
     try {
         console.log('Initializing services...');
 
-        // Initialize services in dependency order
+        // 1. Connect DB
         await coreServices.database.connect();
         console.log('Database connected');
 
+        // 2. userTracker
         await coreServices.userTracker.initialize();
         console.log('UserTracker initialized');
 
-        await coreServices.achievementSystem.setServices(coreServices);
+        // 3. achievementSystem
+        //    (If your new system has no special init needed, we just log)
         console.log('AchievementSystem initialized');
 
+        // 4. shadowGame
         await coreServices.shadowGame.initialize();
         console.log('ShadowGame initialized');
 
+        // 5. announcer
         await coreServices.announcer.initialize();
         console.log('Announcer initialized');
 
+        // 6. commandHandler
         await coreServices.commandHandler.loadCommands(coreServices);
         console.log('CommandHandler initialized');
 
+        // 7. leaderboardCache
         await coreServices.leaderboardCache.initialize(true);
         console.log('LeaderboardCache initialized');
 
+        // 8. achievementFeed
+        //    The new feed has an "initialize()" method that starts its polling
         await coreServices.achievementFeed.initialize();
         console.log('AchievementFeed initialized');
 
+        // 9. Do a one-time "coordinatedUpdate" if needed
         await coordinateUpdate(coreServices, true);
         console.log('All services initialized successfully');
         
@@ -219,7 +248,6 @@ const shutdown = async (signal) => {
     }
 };
 
-// Process Events
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('uncaughtException', (error) => {
@@ -230,5 +258,4 @@ process.on('unhandledRejection', (error) => {
     console.error('Unhandled Rejection:', error);
 });
 
-// Start Bot
 client.login(process.env.DISCORD_TOKEN);
