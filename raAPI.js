@@ -99,50 +99,49 @@ class RetroAchievementsAPI {
     }
 
     async fetchCompleteGameProgress(username, gameId) {
-        try {
-            const url = `${this.baseUrl}/API_GetGameInfoAndUserProgress.php?z=${process.env.RA_USERNAME}&y=${process.env.RA_API_KEY}&g=${gameId}&u=${username}`;
-            const response = await rateLimiter.makeRequest(url);
+    try {
+        const url = `${this.baseUrl}/API_GetGameInfoAndUserProgress.php?z=${process.env.RA_USERNAME}&y=${process.env.RA_API_KEY}&g=${gameId}&u=${username}`;
+        const response = await rateLimiter.makeRequest(url);
 
-            if (!response) {
-                throw new Error('No response from RA API');
-            }
+        if (!response) {
+            throw new Error('No response from RA API');
+        }
 
-            // Process the response to determine highest award
-            let highestAwardKind = null;
-            const totalAchievements = parseInt(response.NumAchievements) || 0;
-            const awardedAchievements = parseInt(response.NumAwardedToUser) || 0;
+        // Process the response to determine highest award
+        let highestAwardKind = null;
+        const totalAchievements = parseInt(response.NumAchievements) || 0;
+        const awardedAchievements = parseInt(response.NumAwardedToUser) || 0;
 
-            if (totalAchievements > 0) {
-                if (totalAchievements === awardedAchievements) {
-                    highestAwardKind = 'mastered';
-                } else {
-                    // Check for progression achievements
-                    const hasBeatenAchievement = Object.values(response.Achievements || {})
-                        .some(ach => ach.DateEarned && ach.Type === 3); // Type 3 is progression
-                    
-                    if (hasBeatenAchievement) {
-                        highestAwardKind = 'beaten';
-                    } else if (awardedAchievements > 0) {
-                        highestAwardKind = 'participation';
-                    }
+        if (totalAchievements > 0) {
+            if (totalAchievements === awardedAchievements) {
+                highestAwardKind = 'mastered';
+            } else {
+                // Check for progression achievements
+                const hasBeatenAchievement = Object.values(response.Achievements || {})
+                    .some(ach => ach.DateEarned && ach.Type === 3); // Type 3 is progression
+                
+                if (hasBeatenAchievement) {
+                    highestAwardKind = 'beaten';
+                } else if (awardedAchievements > 0) {
+                    highestAwardKind = 'participation';
                 }
             }
-
-            return {
-                gameId: response.ID,
-                title: response.Title,
-                numAchievements: totalAchievements,
-                numAwardedToUser: awardedAchievements,
-                userCompletion: response.UserCompletion,
-                highestAwardKind,
-                achievements: response.Achievements || {}
-            };
-        } catch (error) {
-            console.error(`[RA API] Error fetching game progress for ${username}, game ${gameId}:`, error);
-            return null;
         }
-    }
 
+        return {
+            gameId: response.ID,
+            title: response.Title,
+            numAchievements: totalAchievements,
+            numAwardedToUser: awardedAchievements,
+            userCompletion: response.UserCompletion,
+            highestAwardKind,
+            achievements: response.Achievements || {}
+        };
+    } catch (error) {
+        console.error(`[RA API] Error fetching game progress for ${username}, game ${gameId}:`, error);
+        return null;
+    }
+}
     async fetchAllRecentAchievements() {
         try {
             const validUsers = await this.getValidUsers();
