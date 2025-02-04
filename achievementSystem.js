@@ -76,6 +76,8 @@ class AchievementSystem {
 
     async checkUserAchievements(username, gameId, month, year) {
         try {
+            console.log(`[ACHIEVEMENTS] Checking achievements for ${username} in game ${gameId}`);
+            
             const gameConfig = this.getGameConfig(gameId);
             if (!gameConfig) {
                 console.log(`[ACHIEVEMENTS] No game config found for ${gameId}`);
@@ -86,23 +88,35 @@ class AchievementSystem {
             if (gameConfig.restrictions) {
                 const isValidMonth = !month || month === gameConfig.restrictions.month;
                 const isValidYear = !year || year === gameConfig.restrictions.year;
-                if (!isValidMonth || !isValidYear) return;
+                if (!isValidMonth || !isValidYear) {
+                    console.log(`[ACHIEVEMENTS] Game ${gameId} not valid for ${month}/${year}`);
+                    return;
+                }
             }
 
             const { raAPI } = this.services;
             const gameProgress = await raAPI.fetchCompleteGameProgress(username, gameId);
-            if (!gameProgress) return;
+            if (!gameProgress) {
+                console.log(`[ACHIEVEMENTS] No game progress found for ${username} in ${gameId}`);
+                return;
+            }
+
+            console.log(`[ACHIEVEMENTS] Game progress for ${username} in ${gameId}:`, {
+                numAchievements: gameProgress.numAchievements,
+                numAwarded: gameProgress.numAwardedToUser,
+                completion: gameProgress.userCompletion,
+                highestAward: gameProgress.highestAwardKind
+            });
 
             const { highestAwardKind } = gameProgress;
 
             // Award points based on highest award achieved
             switch (highestAwardKind) {
                 case AchievementSystem.GameAward.MASTERY:
-                    // For mastery-only games like Chrono Trigger
+                    console.log(`[ACHIEVEMENTS] ${username} has mastered ${gameId}`);
                     if (gameConfig.restrictions?.masteryOnly) {
                         await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
                     } else {
-                        // Regular game mastery includes all lower tiers
                         await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
                         await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
                         await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
@@ -110,6 +124,7 @@ class AchievementSystem {
                     break;
 
                 case AchievementSystem.GameAward.BEATEN:
+                    console.log(`[ACHIEVEMENTS] ${username} has beaten ${gameId}`);
                     if (!gameConfig.restrictions?.masteryOnly) {
                         await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
                         await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
@@ -120,6 +135,7 @@ class AchievementSystem {
                     // Check for participation
                     if (!gameConfig.restrictions?.masteryOnly && 
                         gameProgress.numAwardedToUser > 0) {
+                        console.log(`[ACHIEVEMENTS] ${username} has participated in ${gameId}`);
                         await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
                     }
                     break;
@@ -128,7 +144,6 @@ class AchievementSystem {
             console.error('[ACHIEVEMENTS] Error checking achievements:', error);
         }
     }
-
     async addRecord(username, gameId, type, month, year, points) {
         try {
             const cleanUsername = username.toLowerCase().trim();
