@@ -7,71 +7,6 @@ class AchievementSystem {
         this.queue = new AchievementQueue(database);
     }
 
-    async processAchievement(username, achievement) {
-        await this.queue.add(username, achievement);
-    }
-}
-
-    static GameAward = {
-        MASTERY: 'mastered',
-        BEATEN: 'beaten',
-        PARTICIPATION: 'participation'
-    };
-
-    static Games = {
-        "319": {  // Chrono Trigger
-            name: "Chrono Trigger",
-            points: {
-                participation: 1,
-                beaten: 3,
-                mastery: 3
-            },
-            monthly: true,
-            restrictions: {
-                month: 1,
-                year: 2025,
-                masteryOnly: true
-            }
-        },
-        "355": {  // ALTTP
-            name: "The Legend of Zelda: A Link to the Past",
-            points: {
-                participation: 1,
-                beaten: 3,
-                mastery: 3
-            },
-            monthly: true,
-            restrictions: {
-                month: 2,
-                year: 2025
-            }
-        },
-        "10024": {  // Mario Tennis
-            name: "Mario Tennis",
-            points: {
-                participation: 1,
-                beaten: 3
-            },
-            monthly: true,
-            restrictions: {
-                month: 1,
-                year: 2025
-            }
-        },
-        "274": {  // U.N. Squadron
-            name: "U.N. Squadron",
-            points: {
-                participation: 1,
-                beaten: 3
-            },
-            shadowGame: true,
-            restrictions: {
-                month: 2,
-                year: 2025
-            }
-        }
-    };
-
     setServices(services) {
         this.services = services;
         console.log('[ACHIEVEMENT SYSTEM] Services linked:', Object.keys(services));
@@ -81,7 +16,11 @@ class AchievementSystem {
         return AchievementSystem.Games[gameId];
     }
 
-   async checkUserAchievements(username, gameId, month, year) {
+    async processAchievement(username, achievement) {
+        await this.queue.add(username, achievement);
+    }
+
+    async checkUserAchievements(username, gameId, month, year) {
         try {
             console.log(`[ACHIEVEMENTS] Checking ${username} for game ${gameId} (${month}/${year})`);
             
@@ -111,7 +50,7 @@ class AchievementSystem {
 
             // Award points based on highest achievement
             switch (gameProgress.highestAwardKind) {
-                case 'mastered':
+                case AchievementSystem.GameAward.MASTERY:
                     // For mastery-only games like Chrono Trigger
                     if (gameConfig.restrictions?.masteryOnly) {
                         await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
@@ -123,14 +62,14 @@ class AchievementSystem {
                     }
                     break;
 
-                case 'beaten':
+                case AchievementSystem.GameAward.BEATEN:
                     if (!gameConfig.restrictions?.masteryOnly) {
                         await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
                         await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
                     }
                     break;
 
-                case 'participation':
+                case AchievementSystem.GameAward.PARTICIPATION:
                     if (!gameConfig.restrictions?.masteryOnly) {
                         await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
                     }
@@ -250,5 +189,66 @@ class AchievementSystem {
         };
     }
 }
+
+// Static properties
+AchievementSystem.GameAward = {
+    MASTERY: 'mastered',
+    BEATEN: 'beaten',
+    PARTICIPATION: 'participation'
+};
+
+AchievementSystem.Games = {
+    "319": {  // Chrono Trigger
+        name: "Chrono Trigger",
+        points: {
+            participation: 1,
+            beaten: 3,
+            mastery: 3
+        },
+        monthly: true,
+        restrictions: {
+            month: 1,
+            year: 2025,
+            masteryOnly: true
+        }
+    },
+    "355": {  // ALTTP
+        name: "The Legend of Zelda: A Link to the Past",
+        points: {
+            participation: 1,
+            beaten: 3,
+            mastery: 3
+        },
+        monthly: true,
+        restrictions: {
+            month: 2,
+            year: 2025
+        }
+    },
+    "10024": {  // Mario Tennis
+        name: "Mario Tennis",
+        points: {
+            participation: 1,
+            beaten: 3
+        },
+        monthly: true,
+        restrictions: {
+            month: 1,
+            year: 2025
+        }
+    },
+    "274": {  // U.N. Squadron
+        name: "U.N. Squadron",
+        points: {
+            participation: 1,
+            beaten: 3
+        },
+        shadowGame: true,
+        restrictions: {
+            month: 2,
+            year: 2025
+        }
+    }
+};
 
 module.exports = AchievementSystem;
