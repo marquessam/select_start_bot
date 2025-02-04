@@ -207,20 +207,31 @@ module.exports = {
                 .setTerminalTitle('YEARLY RANKINGS')
                 .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
 
-            if (rankedUsers.length > 0) {
-                embed.addTerminalField('TOP RANKINGS',
-                    rankedUsers
-                        .map(user => {
-                            const medals = ['🥇', '🥈', '🥉'];
-                            const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
-                            return `${medal} #${user.rank} ${user.username}: ${user.totalPoints} points\n` +
-                                   `   ┗ Games: ${user.participations} joined, ${user.gamesBeaten} beaten, ${user.gamesMastered} mastered`;
-                        })
-                        .join('\n\n'));
-            } else {
-                embed.addTerminalField('STATUS', 'No rankings available');
-            }
+if (rankedUsers.length > 0) {
+    // Split users into chunks of 5 for display
+    const chunks = [];
+    for (let i = 0; i < rankedUsers.length; i += 5) {
+        chunks.push(rankedUsers.slice(i, i + 5));
+    }
 
+    // Display each chunk in its own field
+    chunks.forEach((chunk, index) => {
+        const startRank = index * 5 + 1;
+        const endRank = Math.min((index + 1) * 5, rankedUsers.length);
+        
+        embed.addTerminalField(
+            `RANKINGS ${startRank}-${endRank}`,
+            chunk.map(user => {
+                const medals = ['🥇', '🥈', '🥉'];
+                const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
+                return `${medal} #${user.rank} ${user.username}: ${user.totalPoints} points\n` +
+                       `   ┗ Games: ${user.participations} joined, ${user.gamesBeaten} beaten, ${user.gamesMastered} mastered`;
+            }).join('\n\n')
+        );
+    });
+} else {
+    embed.addTerminalField('STATUS', 'No rankings available');
+}
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
             if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
