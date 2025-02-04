@@ -1,274 +1,202 @@
 // achievementSystem.js
+
+const monthConfig = require('./monthConfig');
+
 class AchievementSystem {
-    constructor(database) {
-        this.database = database;
-        // ----------------------------
-        // Removed queue & tracker references:
-        // this.queue = new AchievementQueue(database);
-        // this.tracker = new AchievementTracker(database);
-        // ----------------------------
-    }
+  constructor(database, raAPI) {
+    this.database = database;
+    this.raAPI = raAPI;
+  }
 
-    setServices(services) {
-        this.services = services;
-        console.log('[ACHIEVEMENT SYSTEM] Services linked:', Object.keys(services));
-    }
+  /**
+   * Called whenever a new achievement is detected from RA.
+   * We figure out if it's relevant to a monthly or shadow game
+   * (either current month or a past month for mastery).
+   */
+  async processAchievement(username, achievement) {
+    try {
+      const gameId = achievement.GameID;
+      // We'll check all entries in monthConfig to see if this game is monthlyGame or shadowGame
+      const now = new Date();
+      const currentKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    getGameConfig(gameId) {
-        return AchievementSystem.Games[gameId];
-    }
-
-    /**
-     * DIRECT approach:
-     * Instead of queue, just call checkUserAchievements immediately.
-     */
-    async processAchievement(username, achievement) {
-        // For demonstration, let's assume we always use the current month/year
-        // to check validity of that game, etc.
-        const now = new Date();
-        const month = now.getMonth() + 1; // 1-12
-        const year = now.getFullYear();
-
-        // Call checkUserAchievements for each achievement’s game
-        await this.checkUserAchievements(username, achievement.GameID, month, year);
-    }
-
-    /**
-     * checkUserAchievements – Determines if the user earned participation, beaten, or mastered
-     * (based on RA data) and inserts records.
-     */
-    async checkUserAchievements(username, gameId, month, year) {
-        try {
-            console.log(`[ACHIEVEMENTS] Checking ${username} for game ${gameId} (${month}/${year})`);
-
-            const gameConfig = this.getGameConfig(gameId);
-            if (!gameConfig) {
-                console.log(`[ACHIEVEMENTS] No config for game ${gameId}`);
-                return;
-            }
-
-            // Check month/year restrictions if any
-            if (gameConfig.restrictions) {
-                const isValidMonth = month === gameConfig.restrictions.month;
-                const isValidYear = year === gameConfig.restrictions.year;
-                if (!isValidMonth || !isValidYear) {
-                    console.log(`[ACHIEVEMENTS] Game ${gameId} not valid for ${month}/${year}`);
-                    return;
-                }
-            }
-
-            // Fetch RA progress
-            const gameProgress = await this.services.raAPI.fetchCompleteGameProgress(username, gameId);
-            if (!gameProgress) {
-                console.log(`[ACHIEVEMENTS] No progress found for ${username} in ${gameId}`);
-                return;
-            }
-
-            console.log(`[ACHIEVEMENTS] ${username} progress in ${gameId}: ${gameProgress.highestAwardKind}`);
-
-            // Award points based on highest achievement
-            switch (gameProgress.highestAwardKind) {
-                case AchievementSystem.GameAward.MASTERY:
-                    if (gameConfig.restrictions?.masteryOnly) {
-                        await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
-                    } else {
-                        await this.addRecord(username, gameId, 'mastered', month, year, gameConfig.points.mastery);
-                        await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
-                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
-                    }
-                    break;
-
-                case AchievementSystem.GameAward.BEATEN:
-                    if (!gameConfig.restrictions?.masteryOnly) {
-                        await this.addRecord(username, gameId, 'beaten', month, year, gameConfig.points.beaten);
-                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
-                    }
-                    break;
-
-                case AchievementSystem.GameAward.PARTICIPATION:
-                    if (!gameConfig.restrictions?.masteryOnly) {
-                        await this.addRecord(username, gameId, 'participation', month, year, gameConfig.points.participation);
-                    }
-                    break;
-
-                default:
-                    // No achievements at all
-                    break;
-            }
-        } catch (error) {
-            console.error('[ACHIEVEMENTS] Error checking achievements:', error);
+      for (const [key, games] of Object.entries(monthConfig)) {
+        const { monthlyGame, shadowGame } = games;
+        if (gameId !== monthlyGame && gameId !== shadowGame) {
+          continue; // Not relevant for that month
         }
-    }
 
-    /**
-     * Insert a record if it doesn’t exist.
-     */
-    async addRecord(username, gameId, type, month, year, points) {
-        try {
-            const cleanUsername = username.toLowerCase().trim();
-            const record = {
-                username: cleanUsername,
-                gameId,
-                type,
-                points,
-                month,
-                year: year.toString(),
-                date: new Date().toISOString(),
-                gameName: this.getGameConfig(gameId)?.name || 'Unknown Game'
-            };
-
-            // Check for existing record
-            const exists = await this.database.getCollection('achievement_records').findOne({
-                username: cleanUsername,
-                gameId,
-                type,
-                month,
-                year: record.year
-            });
-
-            if (exists) {
-                console.log(`[ACHIEVEMENTS] Record already exists for ${username} - ${gameId} - ${type}`);
-                return false;
-            }
-
-            await this.database.getCollection('achievement_records').insertOne(record);
-            console.log(`[ACHIEVEMENTS] Added record for ${username} - ${gameId} - ${type}`);
-            return true;
-        } catch (error) {
-            console.error('[ACHIEVEMENTS] Error adding record:', error);
-            return false;
+        // If the month is in the future, skip awarding
+        if (key > currentKey) {
+          continue;
         }
-    }
 
-    /**
-     * calculatePoints – Summarizes a user’s points for a given month/year.
-     */
-    async calculatePoints(username, month = null, year = null) {
-        try {
-            const query = { username: username.toLowerCase() };
-            if (month) query.month = parseInt(month);
-            if (year) query.year = year.toString();
+        // If it's a shadow game and the key < currentKey (a past month), skip awarding entirely
+        const isShadow = (gameId === shadowGame);
+        const isMonthly = !isShadow; // or (gameId === monthlyGame);
 
-            const collection = await this.database.getCollection('achievement_records');
-            const records = await collection.find(query).toArray();
-            console.log(`[ACHIEVEMENTS] Found ${records.length} records for ${username}`);
-
-            // Group by game
-            const gamePoints = {};
-            let total = 0;
-
-            for (const record of records) {
-                if (!gamePoints[record.gameId]) {
-                    gamePoints[record.gameId] = {
-                        name: record.gameName,
-                        points: 0,
-                        achievements: []
-                    };
-                }
-
-                gamePoints[record.gameId].points += record.points;
-                gamePoints[record.gameId].achievements.push({
-                    type: record.type,
-                    points: record.points,
-                    date: record.date
-                });
-                total += record.points;
-            }
-
-            return {
-                total,
-                games: gamePoints
-            };
-        } catch (error) {
-            console.error('[ACHIEVEMENTS] Error calculating points:', error);
-            return { total: 0, games: {} };
+        const isPastMonth = (key < currentKey);
+        if (isShadow && isPastMonth) {
+          // Shadow awarding is only valid in the actual month
+          continue;
         }
+
+        // Now fetch user progress from RA to see if they're at participation, beaten, or mastery
+        const gameProgress = await this.raAPI.fetchCompleteGameProgress(username, gameId);
+        if (!gameProgress) {
+          continue;
+        }
+
+        // Convert RA's data to an internal "award" string: participation, beaten, mastered
+        const newAward = this.determineAward(gameProgress.highestAwardKind, isMonthly);
+
+        if (!newAward) {
+          continue;
+        }
+
+        // If it's a PAST monthly month, we only allow awarding mastery
+        if (isPastMonth && isMonthly && newAward !== 'mastered') {
+          // That means user is only at participation or beaten after the month ended, skip
+          continue;
+        }
+
+        // Save or update the record
+        await this.saveOrUpdateRecord(username, gameId, key, newAward);
+      }
+    } catch (error) {
+      console.error('[ACHIEVEMENT SYSTEM] processAchievement error:', error);
+    }
+  }
+
+  /**
+   * "highestAwardKind" from RA is usually "mastered", "beaten", "participation", or null
+   * If it's shadow, we don't do mastery, so we treat "mastered" as "beaten".
+   */
+  determineAward(highestAwardKind, isMonthly) {
+    if (!highestAwardKind) return null;
+    if (!isMonthly && highestAwardKind === 'mastered') {
+      // For shadow, there's no mastery, treat it as beaten
+      return 'beaten';
+    }
+    return highestAwardKind; // 'participation', 'beaten', or 'mastered'
+  }
+
+  /**
+   * Insert or update a single record in `achievement_records` for the user+game+month.
+   * If the user’s new award outranks the old one, we update it.
+   */
+  async saveOrUpdateRecord(username, gameId, monthKey, newAward) {
+    const [year, month] = monthKey.split('-'); // "2025-01" => year=2025, month=01
+
+    const collection = await this.database.getCollection('achievement_records');
+    const existing = await collection.findOne({ username, gameId, year, month });
+
+    if (!existing) {
+      // Insert brand new record
+      const doc = {
+        username,
+        gameId,
+        year,
+        month,
+        award: newAward, // 'participation' | 'beaten' | 'mastered'
+        date: new Date().toISOString()
+      };
+      await collection.insertOne(doc);
+      console.log(`[AchievementSystem] Inserted new record: ${username}, game ${gameId}, ${monthKey}, ${newAward}`);
+    } else {
+      // If the user’s new award outranks the old one, update
+      const oldRank = this.awardRank(existing.award);
+      const newRank = this.awardRank(newAward);
+      if (newRank > oldRank) {
+        await collection.updateOne(
+          { _id: existing._id },
+          { $set: { award: newAward } }
+        );
+        console.log(`[AchievementSystem] Upgraded record: ${username}, game ${gameId}, from ${existing.award} to ${newAward}`);
+      }
+    }
+  }
+
+  awardRank(award) {
+    switch (award) {
+      case 'participation': return 1;
+      case 'beaten': return 2;
+      case 'mastered': return 3;
+      default: return 0;
+    }
+  }
+
+  /**
+   * Summarizes a user’s points for a given month+year or entire year.
+   * It reads `achievement_records` and sums the points for each award.
+   */
+  async calculatePoints(username, queryMonth = null, queryYear = null) {
+    const collection = await this.database.getCollection('achievement_records');
+
+    const query = { username };
+    if (queryMonth && queryYear) {
+      query.year = queryYear;
+      query.month = queryMonth.padStart(2, '0');
+    } else if (queryYear) {
+      query.year = queryYear;
     }
 
-    /**
-     * Returns monthly vs shadow games for a specific month/year
-     */
-    async getMonthlyGames(month, year) {
-        const games = Object.entries(AchievementSystem.Games)
-            .filter(([_, config]) => {
-                if (!config.restrictions) return false;
-                return config.restrictions.month === month && 
-                       config.restrictions.year === year;
-            })
-            .map(([gameId, config]) => ({
-                gameId,
-                name: config.name,
-                isMonthly: config.monthly || false,
-                isShadow: config.shadowGame || false
-            }));
+    const records = await collection.find(query).toArray();
+    let totalPoints = 0;
+    const breakdown = [];
 
-        return {
-            monthly: games.filter(g => g.isMonthly),
-            shadow: games.filter(g => g.isShadow)
-        };
+    for (const r of records) {
+      const points = this.pointsForAward(r.award, r.gameId, r.year, r.month);
+      totalPoints += points;
+      breakdown.push({
+        gameId: r.gameId,
+        year: r.year,
+        month: r.month,
+        award: r.award,
+        points
+      });
     }
+
+    return { totalPoints, breakdown };
+  }
+
+  /**
+   * Convert the single 'award' (participation, beaten, mastered) into total points
+   * for that single record. 
+   * - For monthly: 
+   *    - participation = 1
+   *    - beaten = 4 (1+3)
+   *    - mastered = 7 (1+3+3)
+   * - For shadow: 
+   *    - participation = 1
+   *    - beaten = 4 (1+3)
+   *    - (no "mastered" in shadow, but if forced => 4)
+   */
+  pointsForAward(award, gameId, year, month) {
+    // figure out if gameId is monthly or shadow in that month
+    const key = `${year}-${month.padStart(2, '0')}`;
+    const cfg = monthConfig[key];
+    if (!cfg) {
+      // no data => default to monthly logic or 0
+      return 0;
+    }
+    let isMonthly = (cfg.monthlyGame === gameId);
+    let isShadow = (cfg.shadowGame === gameId);
+
+    if (award === 'participation') {
+      return 1;
+    } else if (award === 'beaten') {
+      return 4; // 1 + 3
+    } else if (award === 'mastered') {
+      if (isMonthly) {
+        return 7; // 1 + 3 + 3
+      } else {
+        // shadow can't be 'mastered' normally, but if it is, treat as beaten=4
+        return 4;
+      }
+    }
+    return 0;
+  }
 }
-
-// Static properties / constants
-AchievementSystem.GameAward = {
-    MASTERY: 'mastered',
-    BEATEN: 'beaten',
-    PARTICIPATION: 'participation'
-};
-
-// Example game definitions
-AchievementSystem.Games = {
-    "319": { // Chrono Trigger
-        name: "Chrono Trigger",
-        points: {
-            participation: 1,
-            beaten: 3,
-            mastery: 3
-        },
-        monthly: true,
-        restrictions: {
-            month: 1,
-            year: 2025,
-            masteryOnly: true
-        }
-    },
-    "355": { // ALTTP
-        name: "The Legend of Zelda: A Link to the Past",
-        points: {
-            participation: 1,
-            beaten: 3,
-            mastery: 3
-        },
-        monthly: true,
-        restrictions: {
-            month: 2,
-            year: 2025
-          }
-    },
-    "10024": {  // Mario Tennis
-        name: "Mario Tennis",
-        points: {
-            participation: 1,
-            beaten: 3
-        },
-        monthly: true,
-        restrictions: {
-            month: 1,
-            year: 2025
-        }
-    },
-    "274": {  // U.N. Squadron
-        name: "U.N. Squadron",
-        points: {
-            participation: 1,
-            beaten: 3
-        },
-        shadowGame: true,
-        restrictions: {
-            month: 2,
-            year: 2025
-        }
-    }
-};
 
 module.exports = AchievementSystem;
