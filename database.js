@@ -388,33 +388,33 @@ async getGameProgress(username, gameId, options = {}) {
     }
 
     async getUserStats(username) {
-        try {
-            const [yearlyAchievements, monthlyAchievements] = await Promise.all([
-                this.getYearlyAchievements(new Date().getFullYear()),
-                this.getMonthlyAchievements(new Date().getMonth() + 1, new Date().getFullYear())
-            ]);
-
-            const userYearlyAchievements = yearlyAchievements.filter(
-                a => a.username === username.toLowerCase()
-            );
-            const userMonthlyAchievements = monthlyAchievements.filter(
-                a => a.username === username.toLowerCase()
-            );
-
-            return {
-                username: username,
-                yearlyPoints: userYearlyAchievements.reduce((sum, a) => sum + a.points, 0),
-                monthlyPoints: userMonthlyAchievements.reduce((sum, a) => sum + a.points, 0),
-                achievements: {
-                    yearly: userYearlyAchievements,
-                    monthly: userMonthlyAchievements
-                }
-            };
-        } catch (error) {
-            console.error('[DATABASE] Error getting user stats:', error);
-            return null;
-        }
+    try {
+        const stats = await this.getCollection('userstats').findOne({ username });
+        return stats || {
+            yearlyPoints: {},
+            completedGames: {},
+            gamesParticipated: 0,
+            gamesBeaten: 0,
+            gamesMastered: 0
+        };
+    } catch (error) {
+        console.error('[DATABASE] Error getting user stats:', error);
+        throw error;
     }
+}
+
+async updateUserStats(username, stats) {
+    try {
+        await this.getCollection('userstats').updateOne(
+            { username },
+            { $set: stats },
+            { upsert: true }
+        );
+    } catch (error) {
+        console.error('[DATABASE] Error updating user stats:', error);
+        throw error;
+    }
+}
 
     async calculateLeaderboard(month = null, year = null) {
         try {
