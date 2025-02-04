@@ -1,86 +1,75 @@
-// achievementFeed.js
-const { EmbedBuilder } = require('discord.js');
+// commands/leaderboard.js
+module.exports = {
+  name: 'leaderboard',
+  description: 'Show monthly or yearly leaderboard',
 
-class AchievementFeed {
-  constructor(client, database, raAPI, achievementSystem) {
-    this.client = client;
-    this.database = database;
-    this.raAPI = raAPI;
-    this.achievementSystem = achievementSystem;
-
-    this.feedChannelId = process.env.ACHIEVEMENT_FEED_CHANNEL;
-    this.checkInterval = 5 * 60 * 1000; // 5 min
-    this.isChecking = false;
-
-    // We store known achievements in memory so we don't repost duplicates
-    this.knownAchievements = new Set();
-  }
-
-  async initialize() {
-    if (!this.feedChannelId) {
-      throw new Error('ACHIEVEMENT_FEED_CHANNEL not set in env');
+  async execute(message, args, { achievementSystem, database }) {
+    // usage: "!leaderboard month" or "!leaderboard year"
+    const sub = (args[0] || '').toLowerCase();
+    if (sub === 'year') {
+      await this.showYearly(message, achievementSystem);
+    } else {
+      await this.showMonthly(message, achievementSystem);
     }
+  },
 
-    // Start the periodic check
-    this.checkAchievements();
-    setInterval(() => this.checkAchievements(), this.checkInterval);
+  async showMonthly(message, achievementSystem) {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = String(now.getFullYear());
 
-    console.log('[AchievementFeed] Initialized');
-  }
+    // We'll fetch all valid users from the database
+    const validUsers = await achievementSystem.database.getValidUsers();
 
-  async checkAchievements() {
-    if (this.isChecking) return;
-    this.isChecking = true;
-
-    try {
-      const all = await this.raAPI.fetchAllRecentAchievements();
-      for (const { username, achievements } of all) {
-        for (const ach of achievements) {
-          // build a unique key 
-          const key = `${username}-${ach.ID}-${ach.Date}`;
-          if (!this.knownAchievements.has(key)) {
-            // post it to Discord
-            await this.postAchievement(username, ach);
-            // call achievement system to see if it awards monthly/shadow points
-            await this.achievementSystem.processAchievement(username, ach);
-            // remember it
-            this.knownAchievements.add(key);
-          }
-        }
+    // For each, sum their monthly points
+    const rows = [];
+    for (const username of validUsers) {
+      const { totalPoints } = await achievementSystem.calculatePoints(username, month, year);
+      if (totalPoints > 0) {
+        rows.push({ username, points: totalPoints });
       }
-    } catch (err) {
-      console.error('[AchievementFeed] checkAchievements error:', err);
-    } finally {
-      this.isChecking = false;
     }
-  }
 
-  async postAchievement(username, achievement) {
-    try {
-      const channel = await this.client.channels.fetch(this.feedChannelId);
-      if (!channel) return;
+    rows.sort((a, b) => b.points - a.points);
 
-      const badgeUrl = achievement.BadgeName
-        ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
-        : 'https://media.retroachievements.org/Badge/00000.png';
-
-      const embed = new EmbedBuilder()
-        .setAuthor({ name: username })
-        .setTitle(achievement.Title)
-        .setDescription(achievement.Description || 'No description')
-        .setThumbnail(badgeUrl)
-        .setFooter({ text: `Points: ${achievement.Points}` })
-        .setTimestamp(new Date(achievement.Date));
-
-      // Optional: label if it’s a monthly or shadow game 
-      // (like [Monthly] or [Shadow]) 
-      // you can do logic checking monthConfig if you'd like
-
-      await channel.send({ embeds: [embed] });
-    } catch (err) {
-      console.error('[AchievementFeed] postAchievement error:', err);
+    if (rows.length === 0) {
+      await message.channel.send(`No monthly points found for ${year}-${month}!`);
+      return;
     }
-  }
-}
 
-module.exports = AchievementFeed;
+    let reply = `**Monthly Leaderboard for ${year}-${month}:**\n`;
+    rows.forEach((r, i) => {
+      reply += `\n**${i + 1}.** ${r.username} - ${r.points} pts`;
+    });
+
+    await message.channel.send(reply);
+  },
+
+  async showYearly(message, achievementSystem) {
+    const now = new Date();
+    const year = String(now.getFullYear());
+    const validUsers = await achievementSystem.database.getValidUsers();
+
+    const rows = [];
+    for (const username of validUsers) {
+      const { totalPoints } = await achievementSystem.calculatePoints(username, null, year);
+      if (totalPoints > 0) {
+        rows.push({ username, points: totalPoints });
+      }
+    }
+
+    rows.sort((a, b) => b.points - a.points);
+
+    if (rows.length === 0) {
+      await message.channel.send(`No yearly points found for ${year}.`);
+      return;
+    }
+
+    let reply = `**Yearly Leaderboard for ${year}:**\n`;
+    rows.forEach((r, i) => {
+      reply += `\n**${i + 1}.** ${r.username} - ${r.points} pts`;
+    });
+
+    await message.channel.send(reply);
+  }
+};
