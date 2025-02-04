@@ -33,10 +33,12 @@ function getTimeRemaining(endDate) {
     }
 }
 
-module.exports = {
-    name: 'leaderboard',
-    description: 'Display monthly or yearly leaderboards',
-    
+class LeaderboardCommand {
+    constructor() {
+        this.name = 'leaderboard';
+        this.description = 'Display monthly or yearly leaderboards';
+    }
+
     async execute(message, args, { shadowGame, pointsManager }) {
         try {
             if (!args.length) {
@@ -55,9 +57,7 @@ module.exports = {
                 return;
             }
 
-            const subcommand = args[0].toLowerCase();
-
-            switch(subcommand) {
+            switch(args[0].toLowerCase()) {
                 case 'month':
                     await this.displayMonthlyLeaderboard(message, shadowGame);
                     break;
@@ -66,13 +66,123 @@ module.exports = {
                     break;
                 default:
                     await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid option\nUse !leaderboard to see available options\n[Ready for input]█\x1b[0m```');
-                    if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
             }
         } catch (error) {
             console.error('Leaderboard Command Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to process leaderboard command\n[Ready for input]█\x1b[0m```');
         }
-    },
+    }
+
+    async displayYearlyLeaderboard(message, shadowGame, pointsManager) {
+        try {
+            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
+
+            const validUsers = await DataService.getValidUsers();
+            const year = new Date().getFullYear().toString();
+
+            const userStats = await Promise.all(
+                validUsers.map(async username => {
+                    const yearlyPoints = await pointsManager.getUserPoints(username, year);
+                    
+                    // Process points by game
+                    const gamePoints = new Map();
+                    
+                    for (const point of yearlyPoints) {
+                        const gameId = point.gameId;
+                        const type = point.reason.toLowerCase();
+                        
+                        if (!gamePoints.has(gameId)) {
+                            gamePoints.set(gameId, {
+                                participation: false,
+                                beaten: false,
+                                mastery: false,
+                                points: 0
+                            });
+                        }
+                        
+                        const game = gamePoints.get(gameId);
+                        
+                        // Only count each type once per game
+                        if (type.includes('participation') && !game.participation) {
+                            game.participation = true;
+                            game.points += 1;
+                        }
+                        if (type.includes('beaten') && !game.beaten) {
+                            game.beaten = true;
+                            game.points += 3;
+                        }
+                        if (type.includes('mastery') && !game.mastery) {
+                            game.mastery = true;
+                            game.points += 3;
+                        }
+                    }
+
+                    // Calculate totals
+                    const totals = {
+                        totalPoints: 0,
+                        gamesJoined: 0,
+                        gamesBeaten: 0,
+                        gamesMastered: 0
+                    };
+
+                    for (const game of gamePoints.values()) {
+                        totals.totalPoints += game.points;
+                        if (game.participation) totals.gamesJoined++;
+                        if (game.beaten) totals.gamesBeaten++;
+                        if (game.mastery) totals.gamesMastered++;
+                    }
+
+                    return {
+                        username,
+                        ...totals
+                    };
+                })
+            );
+
+            // Sort users by points and other criteria
+            const rankedUsers = userStats
+                .filter(user => user.totalPoints > 0)
+                .sort((a, b) => {
+                    if (a.totalPoints !== b.totalPoints) return b.totalPoints - a.totalPoints;
+                    if (a.gamesBeaten !== b.gamesBeaten) return b.gamesBeaten - a.gamesBeaten;
+                    return b.gamesMastered - a.gamesMastered;
+                })
+                .map((user, index) => ({ ...user, rank: index + 1 }));
+
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('YEARLY RANKINGS')
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
+
+            // Split rankings into chunks of 5 users
+            const chunks = [];
+            for (let i = 0; i < rankedUsers.length; i += 5) {
+                chunks.push(rankedUsers.slice(i, i + 5));
+            }
+
+            chunks.forEach((chunk, index) => {
+                const fieldTitle = `RANKINGS ${index * 5 + 1}-${Math.min((index + 1) * 5, rankedUsers.length)}`;
+                const fieldContent = chunk.map(user => {
+                    const medals = ['🥇', '🥈', '🥉'];
+                    const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
+                    return `${medal} #${user.rank} ${user.username}: ${user.totalPoints} points\n` +
+                           `   ┗ Games: ${user.gamesJoined} joined, ${user.gamesBeaten} beaten, ${user.gamesMastered} mastered`;
+                }).join('\n\n');
+
+                embed.addTerminalField(fieldTitle, fieldContent);
+            });
+
+            if (rankedUsers.length === 0) {
+                embed.addTerminalField('STATUS', 'No rankings available');
+            }
+
+            embed.setTerminalFooter();
+            await message.channel.send({ embeds: [embed] });
+
+        } catch (error) {
+            console.error('Yearly Leaderboard Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
+        }
+    }
 
     async displayMonthlyLeaderboard(message, shadowGame) {
         try {
@@ -110,29 +220,25 @@ module.exports = {
                     `TIME REMAINING: ${timeRemaining}`
                 );
 
-            // Add top rankings
-            for (const user of rankedUsers) {
-                if (!user.displayInMain && user.rank > 3) continue;
-
-                const medals = ['🥇', '🥈', '🥉'];
-                const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
-
-                embed.addTerminalField(
-                    `${medal} RANK #${user.rank} - ${user.username}`,
-                    `ACHIEVEMENTS: ${user.completedAchievements}/${user.totalAchievements}\n` +
-                    `PROGRESS: ${user.completionPercentage}%`
-                );
+            // Split users into chunks of 5 for display
+            const chunks = [];
+            for (let i = 0; i < rankedUsers.length; i += 5) {
+                chunks.push(rankedUsers.slice(i, i + 5));
             }
 
-            // Add remaining participants
-            const remainingUsers = rankedUsers.filter(user => !user.displayInMain);
-            if (remainingUsers.length > 0) {
-                const remainingText = remainingUsers
-                    .map(user => `#${user.rank} ${user.username} (${user.completionPercentage}%)`)
-                    .join('\n');
+            chunks.forEach((chunk, index) => {
+                const startRank = index * 5 + 1;
+                const endRank = Math.min((index + 1) * 5, rankedUsers.length);
+                
+                const fieldContent = chunk.map(user => {
+                    const medals = ['🥇', '🥈', '🥉'];
+                    const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
+                    return `${medal} #${user.rank} ${user.username}\n` +
+                           `   ┗ ${user.completedAchievements}/${user.totalAchievements} (${user.completionPercentage}%)`;
+                }).join('\n\n');
 
-                embed.addTerminalField('ADDITIONAL PARTICIPANTS', remainingText);
-            }
+                embed.addTerminalField(`RANKINGS ${startRank}-${endRank}`, fieldContent);
+            });
 
             if (activeUsers.length === 0) {
                 embed.addTerminalField('STATUS', 'No active participants yet');
@@ -140,107 +246,12 @@ module.exports = {
 
             embed.setTerminalFooter();
             await message.channel.send({ embeds: [embed] });
-            if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
 
         } catch (error) {
             console.error('Monthly Leaderboard Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
         }
-    },
-
-    async displayYearlyLeaderboard(message, shadowGame, pointsManager) {
-        try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
-
-            const validUsers = await DataService.getValidUsers();
-            const year = new Date().getFullYear().toString();
-
-            // Get points for all users
-            const userPoints = await Promise.all(
-                validUsers.map(async username => {
-                    const points = await pointsManager.getUserPoints(username, year);
-                    
-                    // Count achievements and categorize points
-                    const stats = points.reduce((acc, p) => {
-                        acc.totalPoints += p.points;
-                        
-                        if (p.reason.toLowerCase().includes('participation')) acc.participations++;
-                        if (p.reason.toLowerCase().includes('beaten')) acc.gamesBeaten++;
-                        if (p.reason.toLowerCase().includes('mastery')) acc.gamesMastered++;
-                        
-                        return acc;
-                    }, { 
-                        totalPoints: 0, 
-                        participations: 0, 
-                        gamesBeaten: 0, 
-                        gamesMastered: 0 
-                    });
-
-                    return {
-                        username,
-                        ...stats
-                    };
-                })
-            );
-
-            // Filter and sort users
-            const rankedUsers = userPoints
-                .filter(user => user.totalPoints > 0)
-                .sort((a, b) => {
-                    // Sort by total points first
-                    if (b.totalPoints !== a.totalPoints) {
-                        return b.totalPoints - a.totalPoints;
-                    }
-                    // Then by games beaten
-                    if (b.gamesBeaten !== a.gamesBeaten) {
-                        return b.gamesBeaten - a.gamesBeaten;
-                    }
-                    // Then by masteries
-                    return b.gamesMastered - a.gamesMastered;
-                })
-                .map((user, index) => ({
-                    ...user,
-                    rank: index + 1
-                }));
-
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('YEARLY RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
-
-if (rankedUsers.length > 0) {
-    // Split users into chunks of 5 for display
-    const chunks = [];
-    for (let i = 0; i < rankedUsers.length; i += 5) {
-        chunks.push(rankedUsers.slice(i, i + 5));
     }
-
-    // Display each chunk in its own field
-    chunks.forEach((chunk, index) => {
-        const startRank = index * 5 + 1;
-        const endRank = Math.min((index + 1) * 5, rankedUsers.length);
-        
-        embed.addTerminalField(
-            `RANKINGS ${startRank}-${endRank}`,
-            chunk.map(user => {
-                const medals = ['🥇', '🥈', '🥉'];
-                const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
-                return `${medal} #${user.rank} ${user.username}: ${user.totalPoints} points\n` +
-                       `   ┗ Games: ${user.participations} joined, ${user.gamesBeaten} beaten, ${user.gamesMastered} mastered`;
-            }).join('\n\n')
-        );
-    });
-} else {
-    embed.addTerminalField('STATUS', 'No rankings available');
-}
-            embed.setTerminalFooter();
-            await message.channel.send({ embeds: [embed] });
-            if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
-
-        } catch (error) {
-            console.error('Yearly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
-        }
-    },
 
     rankUsersByProgress(users) {
         return users
@@ -255,4 +266,6 @@ if (rankedUsers.length > 0) {
                 displayInMain: index < 3
             }));
     }
-};
+}
+
+module.exports = new LeaderboardCommand();
