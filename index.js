@@ -61,6 +61,8 @@ async function createCoreServices() {
         const announcer = new Announcer(client, process.env.ANNOUNCEMENT_CHANNEL_ID);
         const shadowGame = new ShadowGame();
         const achievementFeed = new AchievementFeed(client);
+        const raAPI = require('./raAPI');
+            raAPI.setDatabase(database);
 
         // Create services object
         const services = {
