@@ -154,61 +154,88 @@ module.exports = {
         }
     },
 
-    async displayYearlyLeaderboard(message, shadowGame, pointsManager) {
-        try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
+   async displayYearlyLeaderboard(message, shadowGame, pointsManager) {
+    try {
+        await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
 
-            const validUsers = await DataService.getValidUsers();
-            const year = new Date().getFullYear().toString();
+        const validUsers = await DataService.getValidUsers();
+        const year = new Date().getFullYear().toString();
 
-            // Get points for all users
-            const userPoints = await Promise.all(
-                validUsers.map(async username => {
-                    const points = await pointsManager.getUserPoints(username, year);
-                    return {
-                        username,
-                        points: points.reduce((sum, p) => sum + p.points, 0),
-                        achievements: points.length
-                    };
-                })
-            );
+        // Get points for all users
+        const userPoints = await Promise.all(
+            validUsers.map(async username => {
+                const points = await pointsManager.getUserPoints(username, year);
+                
+                // Count achievements and categorize points
+                const stats = points.reduce((acc, p) => {
+                    acc.totalPoints += p.points;
+                    
+                    if (p.reason.toLowerCase().includes('participation')) acc.participations++;
+                    if (p.reason.toLowerCase().includes('beaten')) acc.gamesBeaten++;
+                    if (p.reason.toLowerCase().includes('mastery')) acc.gamesMastered++;
+                    
+                    return acc;
+                }, { 
+                    totalPoints: 0, 
+                    participations: 0, 
+                    gamesBeaten: 0, 
+                    gamesMastered: 0 
+                });
 
-            // Filter and sort users
-            const rankedUsers = userPoints
-                .filter(user => user.points > 0)
-                .sort((a, b) => b.points - a.points || b.achievements - a.achievements)
-                .map((user, index) => ({
-                    ...user,
-                    rank: index + 1
-                }));
+                return {
+                    username,
+                    ...stats
+                };
+            })
+        );
 
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('YEARLY RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
+        // Filter and sort users
+        const rankedUsers = userPoints
+            .filter(user => user.totalPoints > 0)
+            .sort((a, b) => {
+                // Sort by total points first
+                if (b.totalPoints !== a.totalPoints) {
+                    return b.totalPoints - a.totalPoints;
+                }
+                // Then by games beaten
+                if (b.gamesBeaten !== a.gamesBeaten) {
+                    return b.gamesBeaten - a.gamesBeaten;
+                }
+                // Then by masteries
+                return b.gamesMastered - a.gamesMastered;
+            })
+            .map((user, index) => ({
+                ...user,
+                rank: index + 1
+            }));
 
-            if (rankedUsers.length > 0) {
-                embed.addTerminalField('TOP USERS',
-                    rankedUsers
-                        .map(user => {
-                            const medals = ['🥇', '🥈', '🥉'];
-                            const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
-                            return `${medal} #${user.rank} ${user.username}: ${user.points} points`;
-                        })
-                        .join('\n'));
-            } else {
-                embed.addTerminalField('STATUS', 'No rankings available');
-            }
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('YEARLY RANKINGS')
+            .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
 
-            embed.setTerminalFooter();
-            await message.channel.send({ embeds: [embed] });
-            if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
-
-        } catch (error) {
-            console.error('Yearly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
+        if (rankedUsers.length > 0) {
+            embed.addTerminalField('TOP RANKINGS',
+                rankedUsers
+                    .map(user => {
+                        const medals = ['🥇', '🥈', '🥉'];
+                        const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
+                        return `${medal} #${user.rank} ${user.username}: ${user.totalPoints} points\n` +
+                               `   ┗ Games: ${user.participations} joined, ${user.gamesBeaten} beaten, ${user.gamesMastered} mastered`;
+                    })
+                    .join('\n\n'));
+        } else {
+            embed.addTerminalField('STATUS', 'No rankings available');
         }
-    },
 
+        embed.setTerminalFooter();
+        await message.channel.send({ embeds: [embed] });
+        if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
+
+    } catch (error) {
+        console.error('Yearly Leaderboard Error:', error);
+        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
+    }
+}
     rankUsersWithTies(users) {
         const sortedUsers = [...users].sort((a, b) => {
             const percentDiff = parseFloat(b.completionPercentage) - parseFloat(a.completionPercentage);
