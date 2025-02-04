@@ -131,81 +131,44 @@ class AchievementFeed {
         }
     }
 
-    async checkNewAchievements() {
-        if (this._processingAchievements || this.isPaused) {
-            console.log('[ACHIEVEMENT FEED] Already processing or paused, skipping...');
-            return;
-        }
+async checkNewAchievements() {
+    if (this._processingAchievements || this.isPaused) return;
+    this._processingAchievements = true;
 
-        this._processingAchievements = true;
-        try {
-            const [allAchievements, storedTimestamps] = await Promise.all([
-                this.services.raAPI.fetchAllRecentAchievements(),
-                this.services.database.getLastAchievementTimestamps()
-            ]);
-            
-            const channel = await this.client.channels.fetch(this.feedChannel);
-            if (!channel) throw new Error('Achievement feed channel not found');
+    try {
+        const allAchievements = await this.services.raAPI.fetchAllRecentAchievements();
+        
+        for (const { username, achievements } of allAchievements) {
+            const lastCheckedTime = await this.services.database.getLastAchievementTimestamp(username);
+            const newAchievements = achievements.filter(
+                a => new Date(a.Date).getTime() > lastCheckedTime
+            );
 
-            for (const { username, achievements } of allAchievements) {
-                if (!achievements || achievements.length === 0) continue;
-
-                const lastCheckedTime = storedTimestamps[username.toLowerCase()] || 0;
-                const newAchievements = achievements
-                    .filter(a => new Date(a.Date).getTime() > lastCheckedTime)
-                    .sort((a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime());
-
-                if (newAchievements.length > 0) {
-                    console.log(`[ACHIEVEMENT FEED] Found ${newAchievements.length} new achievements for ${username}`);
-                    
-                    // Update timestamp first to prevent duplicates
-                    const latestTime = new Date(newAchievements[newAchievements.length - 1].Date).getTime();
-                    await this.services.database.updateLastAchievementTimestamp(username.toLowerCase(), latestTime);
-
-                    // First announce achievements
-                    for (const achievement of newAchievements) {
-                        await this.sendAchievementNotification(channel, username, achievement);
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-
-                    // Then check if any are from tracked games and process achievement system points
-                    if (this.services?.achievementSystem) {
-                        const trackedGames = new Set(Object.keys(this.services.achievementSystem.constructor.Games));
-                        const trackedAchievements = newAchievements.filter(a => trackedGames.has(String(a.GameID)));
-                        
-                        if (trackedAchievements.length > 0) {
-                            const currentMonth = new Date().getMonth() + 1;
-                            const currentYear = new Date().getFullYear();
-                            
-                            // Group by game
-                            const gameAchievements = {};
-                            for (const ach of trackedAchievements) {
-                                if (!gameAchievements[ach.GameID]) {
-                                    gameAchievements[ach.GameID] = [];
-                                }
-                                gameAchievements[ach.GameID].push(ach);
-                            }
-
-                            // Process each game's achievements
-                            for (const [gameId, achievements] of Object.entries(gameAchievements)) {
-                                await this.services.achievementSystem.checkUserAchievements(
-                                    username,
-                                    gameId,
-                                    currentMonth,
-                                    currentYear
-                                );
-                            }
-                        }
-                    }
+            if (newAchievements.length > 0) {
+                // Process achievements through the queue
+                for (const achievement of newAchievements) {
+                    await this.services.achievementSystem.processAchievement(
+                        username,
+                        achievement
+                    );
                 }
-            }
-        } catch (error) {
-            console.error('[ACHIEVEMENT FEED] Error checking achievements:', error);
-        } finally {
-            this._processingAchievements = false;
-        }
-    }
 
+                // Update timestamp after processing
+                const latestTime = Math.max(
+                    ...newAchievements.map(a => new Date(a.Date).getTime())
+                );
+                await this.services.database.updateLastAchievementTimestamp(
+                    username, 
+                    latestTime
+                );
+            }
+        }
+    } catch (error) {
+        console.error('[ACHIEVEMENT FEED] Error:', error);
+    } finally {
+        this._processingAchievements = false;
+    }
+}
     async sendAchievementNotification(channel, username, achievement) {
         try {
             if (!channel || !username || !achievement) return;
