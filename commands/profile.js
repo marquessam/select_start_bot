@@ -142,50 +142,104 @@ module.exports = {
         return 'No Rank';
     },
 
-    async formatPointsBreakdown(points) {
-        // Group points by game and type
-        const groupedPoints = new Map();
+async formatPointsBreakdown(points) {
+    // Create a Map to track unique game-type combinations
+    const uniquePoints = new Map();
 
-        for (const point of points) {
-            // Handle both object and string reason formats
-            const reason = typeof point.reason === 'object' ? point.reason.display : point.reason;
-            const [gameName, type] = reason.split(' - ');
-            const key = `${gameName}-${type}-${point.gameId}`;
+    for (const point of points) {
+        // Split reason into game name and type
+        let [gameName, type] = (point.reason.display || point.reason).split(' - ');
+        
+        // Shorten common game names
+        gameName = gameName
+            .replace('The Legend of Zelda: ', '')
+            .replace('Legend of Zelda: ', '')
+            .trim();
 
-            // Only add if we don't have this exact combination already
-            if (!groupedPoints.has(key)) {
-                groupedPoints.set(key, point);
-            }
+        const key = `${gameName}-${type}-${point.gameId}`;
+        
+        // Only store the first occurrence of each unique game-type combination
+        if (!uniquePoints.has(key)) {
+            uniquePoints.set(key, {
+                gameName,
+                type,
+                points: point.points,
+                gameId: point.gameId
+            });
         }
+    }
 
-        // Sort points into categories
-        const categories = {
-            participations: [],
-            gamesBeaten: [],
-            gamesMastered: []
-        };
+    // Sort points into categories
+    const categories = {
+        monthlyGames: [],
+        shadowGames: [],
+        mastery: []
+    };
 
-        for (const point of groupedPoints.values()) {
-            let gameName = point.reason.split('-')[0].trim();
+    // Get current month's games for special highlighting
+    const currentGames = new PointsSystem(this.database).getCurrentMonthGames();
+    
+    for (const point of uniquePoints.values()) {
+        const isCurrentMonthly = currentGames?.monthlyGame.id === point.gameId;
+        const isCurrentShadow = currentGames?.shadowGame.id === point.gameId;
+        const isMastery = point.type.toLowerCase().includes('mastery');
 
-            // Shorten "The Legend of Zelda: A Link to the Past" to "Zelda: A Link to the Past"
-            if (gameName.includes("The Legend of Zelda")) {
-                gameName = gameName.replace("The Legend of", "");
-            }
-
-            const pointString = `${gameName} - ${point.points} point${point.points !== 1 ? 's' : ''}`;
-
-            if (point.reason.toLowerCase().includes('participation')) {
-                categories.participations.push(pointString);
-            } else if (point.reason.toLowerCase().includes('beaten')) {
-                categories.gamesBeaten.push(pointString);
-            } else if (point.reason.toLowerCase().includes('mastery')) {
-                categories.gamesMastered.push(pointString);
-            }
+        const display = `${point.gameName} - ${point.points} point${point.points !== 1 ? 's' : ''}`;
+        
+        if (isMastery) {
+            categories.mastery.push(`${display} 🏆`);
+        } else if (isCurrentShadow || point.gameId === currentGames?.shadowGame.id) {
+            categories.shadowGames.push(`${display}${isCurrentShadow ? ' 🌘' : ''}`);
+        } else {
+            categories.monthlyGames.push(`${display}${isCurrentMonthly ? ' ⭐' : ''}`);
         }
+    }
 
-        return categories;
-    },
+    // Sort categories
+    categories.monthlyGames.sort();
+    categories.shadowGames.sort();
+    categories.mastery.sort();
+
+    return categories;
+}
+
+// Updated section of execute function that displays points
+// Add this after the rankings field:
+
+if (yearlyPoints.length > 0) {
+    const pointsBreakdown = await this.formatPointsBreakdown(yearlyPoints);
+
+    if (pointsBreakdown.monthlyGames.length > 0) {
+        embed.addTerminalField('MONTHLY CHALLENGES',
+            pointsBreakdown.monthlyGames.join('\n'));
+    }
+
+    if (pointsBreakdown.shadowGames.length > 0) {
+        embed.addTerminalField('SHADOW GAMES',
+            pointsBreakdown.shadowGames.join('\n'));
+    }
+
+    if (pointsBreakdown.mastery.length > 0) {
+        embed.addTerminalField('MASTERIES',
+            pointsBreakdown.mastery.join('\n'));
+    }
+}
+
+// Add totals and statistics
+const pointStats = yearlyPoints.reduce((acc, p) => {
+    acc.total += p.points;
+    if (p.reason.toLowerCase().includes('participation')) acc.participations++;
+    if (p.reason.toLowerCase().includes('beaten')) acc.gamesBeaten++;
+    if (p.reason.toLowerCase().includes('mastery')) acc.gamesMastered++;
+    return acc;
+}, { total: 0, participations: 0, gamesBeaten: 0, gamesMastered: 0 });
+
+embed.addTerminalField('STATISTICS',
+    `Total Points: ${pointStats.total}\n` +
+    `Games Participated: ${pointStats.participations}\n` +
+    `Games Beaten: ${pointStats.gamesBeaten}\n` +
+    `Games Mastered: ${pointStats.gamesMastered}`
+);
 
     calculateYearlyStats(points, userStats) {
         const currentYear = new Date().getFullYear().toString();
