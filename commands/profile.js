@@ -2,9 +2,11 @@
 const TerminalEmbed = require('../utils/embedBuilder');
 const DataService = require('../services/dataService');
 
-module.exports = {
-    name: 'profile',
-    description: 'Displays user profile and stats',
+class ProfileCommand {
+    constructor() {
+        this.name = 'profile';
+        this.description = 'Displays user profile and stats';
+    }
 
     async execute(message, args, { shadowGame, userStats, pointsManager }) {
         try {
@@ -72,8 +74,8 @@ module.exports = {
             );
 
             // Points Breakdown
-            const pointsBreakdown = await this.formatPointsBreakdown(yearlyPoints, { pointsManager });
-
+            const currentGames = await pointsManager.getCurrentMonthGames();
+            const pointsBreakdown = this.formatPointsBreakdown(yearlyPoints, currentGames);
 
             // Monthly Games
             if (pointsBreakdown.monthlyGames.length > 0) {
@@ -125,29 +127,10 @@ module.exports = {
             console.error('Profile Command Error:', error);
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve profile\n[Ready for input]█\x1b[0m```');
         }
-    },
+    }
 
-    calculateRank(username, leaderboard) {
-        const user = leaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
-        if (!user) return 'No Rank';
-
-        const metric = user.totalPoints || user.completionPercentage || 0;
-        if (metric === 0) return 'No Rank';
-
-        const sortedLeaderboard = leaderboard
-            .filter(u => (u.totalPoints || u.completionPercentage) > 0)
-            .sort((a, b) => (b.totalPoints || b.completionPercentage) - (a.totalPoints || a.completionPercentage));
-
-        const rank = sortedLeaderboard.findIndex(u => 
-            u.username.toLowerCase() === username.toLowerCase()
-        ) + 1;
-
-        return `#${rank}`;
-    },
-
-    async formatPointsBreakdown(points) {
+    formatPointsBreakdown(points, currentGames) {
         const uniquePoints = new Map();
-        const currentGames = pointsManager.getCurrentMonthGames();
 
         for (const point of points) {
             const reason = point.reason.display || point.reason;
@@ -201,4 +184,24 @@ module.exports = {
 
         return categories;
     }
-};
+
+    calculateRank(username, leaderboard) {
+        const user = leaderboard.find(u => u.username.toLowerCase() === username.toLowerCase());
+        if (!user) return 'No Rank';
+
+        const metric = user.totalPoints || user.completionPercentage || 0;
+        if (metric === 0) return 'No Rank';
+
+        const sortedLeaderboard = leaderboard
+            .filter(u => (u.totalPoints || u.completionPercentage) > 0)
+            .sort((a, b) => (b.totalPoints || b.completionPercentage) - (a.totalPoints || a.completionPercentage));
+
+        const rank = sortedLeaderboard.findIndex(u => 
+            u.username.toLowerCase() === username.toLowerCase()
+        ) + 1;
+
+        return `#${rank}`;
+    }
+}
+
+module.exports = new ProfileCommand();
