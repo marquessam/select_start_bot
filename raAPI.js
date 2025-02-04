@@ -2,10 +2,10 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const ErrorHandler = require('./utils/errorHandler');
 
-// Rate limiter setup
+// Rate limiting setup with more conservative values
 const rateLimiter = {
     requests: new Map(),
-    cooldown: 1250, // Slightly increased cooldown to prevent rate limits
+    cooldown: 2500, // 2.5 seconds between requests
     queue: [],
     processing: false,
 
@@ -27,16 +27,13 @@ const rateLimiter = {
 
                 const response = await fetch(url, {
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Basic ${Buffer.from(`${process.env.RA_USERNAME}:${process.env.RA_API_KEY}`).toString('base64')}`
+                        'Content-Type': 'application/json'
                     }
                 });
 
-                this.requests.set(url, Date.now());
-
                 if (!response.ok) {
                     if (response.status === 429 && retries < 3) {
-                        console.warn(`[RA API] Rate limit hit. Retrying in ${(this.cooldown * 2) / 1000} sec...`);
+                        console.warn(`[RA API] Rate limit hit. Waiting ${this.cooldown * 2}ms...`);
                         await new Promise(resolve => setTimeout(resolve, this.cooldown * 2));
                         this.queue.push({ url, resolve, reject, retries: retries + 1 });
                         continue;
@@ -45,7 +42,12 @@ const rateLimiter = {
                 }
 
                 const data = await response.json();
+                this.requests.set(url, Date.now());
                 resolve(data);
+
+                // Add delay after successful request
+                await new Promise(resolve => setTimeout(resolve, this.cooldown));
+
             } catch (error) {
                 reject(error);
             }
@@ -61,39 +63,35 @@ const rateLimiter = {
     }
 };
 
-// Cache setup
-const cache = {
-    userProfiles: new Map(),
-    gameProgress: new Map(),
-    cacheTimeout: 5 * 60 * 1000 // 5 minutes
-};
-
 class RetroAchievementsAPI {
     constructor() {
         this.baseUrl = 'https://retroachievements.org/API';
+        this.validUsers = null;
+        this.database = null;
+    }
+
+    setDatabase(database) {
+        this.database = database;
+    }
+
+    async getValidUsers() {
+        if (!this.database) {
+            console.error('[RA API] Database not initialized');
+            return [];
+        }
+        if (!this.validUsers) {
+            this.validUsers = await this.database.getValidUsers();
+        }
+        return this.validUsers;
     }
 
     async fetchUserProfile(username) {
-        const cacheKey = `profile-${username.toLowerCase()}`;
-        const cachedData = cache.userProfiles.get(cacheKey);
-        
-        if (cachedData && (Date.now() - cachedData.timestamp < cache.cacheTimeout)) {
-            return cachedData.data;
-        }
-
         try {
             const url = `${this.baseUrl}/API_GetUserSummary.php?z=${process.env.RA_USERNAME}&y=${process.env.RA_API_KEY}&u=${username}`;
             const response = await rateLimiter.makeRequest(url);
 
             if (!response || !response.UserPic) return null;
-
-            const profileUrl = `https://retroachievements.org${response.UserPic}`;
-            cache.userProfiles.set(cacheKey, {
-                data: profileUrl,
-                timestamp: Date.now()
-            });
-
-            return profileUrl;
+            return `https://retroachievements.org${response.UserPic}`;
         } catch (error) {
             console.error(`[RA API] Error fetching user profile for ${username}:`, error);
             return null;
@@ -101,13 +99,6 @@ class RetroAchievementsAPI {
     }
 
     async fetchCompleteGameProgress(username, gameId) {
-        const cacheKey = `progress-${username.toLowerCase()}-${gameId}`;
-        const cachedData = cache.gameProgress.get(cacheKey);
-        
-        if (cachedData && (Date.now() - cachedData.timestamp < cache.cacheTimeout)) {
-            return cachedData.data;
-        }
-
         try {
             const url = `${this.baseUrl}/API_GetGameInfoAndUserProgress.php?z=${process.env.RA_USERNAME}&y=${process.env.RA_API_KEY}&g=${gameId}&u=${username}`;
             const response = await rateLimiter.makeRequest(url);
@@ -116,98 +107,70 @@ class RetroAchievementsAPI {
                 throw new Error('No response from RA API');
             }
 
-            // Process the response into our needed format
-            const processedData = {
+            // Process the response to determine highest award
+            let highestAwardKind = null;
+            const totalAchievements = parseInt(response.NumAchievements) || 0;
+            const awardedAchievements = parseInt(response.NumAwardedToUser) || 0;
+
+            if (totalAchievements > 0) {
+                if (totalAchievements === awardedAchievements) {
+                    highestAwardKind = 'mastered';
+                } else {
+                    // Check for progression achievements
+                    const hasBeatenAchievement = Object.values(response.Achievements || {})
+                        .some(ach => ach.DateEarned && ach.Type === 3); // Type 3 is progression
+                    
+                    if (hasBeatenAchievement) {
+                        highestAwardKind = 'beaten';
+                    } else if (awardedAchievements > 0) {
+                        highestAwardKind = 'participation';
+                    }
+                }
+            }
+
+            return {
                 gameId: response.ID,
                 title: response.Title,
-                numAchievements: response.NumAchievements,
-                numAwardedToUser: response.NumAwardedToUser,
-                numAwardedToUserHardcore: response.NumAwardedToUserHardcore,
+                numAchievements: totalAchievements,
+                numAwardedToUser: awardedAchievements,
                 userCompletion: response.UserCompletion,
-                userCompletionHardcore: response.UserCompletionHardcore,
-                highestAwardKind: this.determineHighestAward(response),
+                highestAwardKind,
                 achievements: response.Achievements || {}
             };
-
-            cache.gameProgress.set(cacheKey, {
-                data: processedData,
-                timestamp: Date.now()
-            });
-
-            return processedData;
         } catch (error) {
             console.error(`[RA API] Error fetching game progress for ${username}, game ${gameId}:`, error);
             return null;
         }
     }
 
-    determineHighestAward(gameData) {
-        if (!gameData.Achievements || Object.keys(gameData.Achievements).length === 0) {
-            return null;
-        }
-
-        // Check if all achievements are completed
-        const totalAchievements = Object.keys(gameData.Achievements).length;
-        const completedAchievements = Object.values(gameData.Achievements)
-            .filter(ach => ach.DateEarned).length;
-
-        if (totalAchievements === completedAchievements) {
-            return 'mastered';
-        }
-
-        // Check for beaten status (at least one win condition achievement)
-        const hasBeatenAchievement = Object.values(gameData.Achievements)
-            .some(ach => ach.DateEarned && ach.type === 'progression');
-
-        if (hasBeatenAchievement) {
-            return 'beaten';
-        }
-
-        // If any achievements earned, consider it participation
-        if (completedAchievements > 0) {
-            return 'participation';
-        }
-
-        return null;
-    }
-
     async fetchAllRecentAchievements() {
         try {
-            console.log('[RA API] Fetching ALL recent achievements...');
-
             const validUsers = await this.getValidUsers();
-            if (!Array.isArray(validUsers) || validUsers.length === 0) {
-                console.warn('[RA API] No valid users found, returning empty achievements list.');
+            if (!validUsers || validUsers.length === 0) {
+                console.warn('[RA API] No valid users found');
                 return [];
             }
 
+            console.log(`[RA API] Fetching recent achievements for ${validUsers.length} users...`);
             const allAchievements = [];
-            const CHUNK_SIZE = 1;
-            const CHUNK_DELAY_MS = 1500;
 
-            for (let i = 0; i < validUsers.length; i += CHUNK_SIZE) {
-                const chunk = validUsers.slice(i, i + CHUNK_SIZE);
+            // Process users one at a time with delay
+            for (const username of validUsers) {
+                try {
+                    const url = `${this.baseUrl}/API_GetUserRecentAchievements.php?z=${process.env.RA_USERNAME}&y=${process.env.RA_API_KEY}&u=${username}&c=50`;
+                    const recentData = await rateLimiter.makeRequest(url);
 
-                const chunkPromises = chunk.map(async username => {
-                    try {
-                        const url = `${this.baseUrl}/API_GetUserRecentAchievements.php?z=${process.env.RA_USERNAME}&y=${process.env.RA_API_KEY}&u=${username}&c=50`;
-                        const recentData = await rateLimiter.makeRequest(url);
-
-                        return { 
-                            username, 
-                            achievements: Array.isArray(recentData) ? recentData : [] 
-                        };
-                    } catch (error) {
-                        console.error(`[RA API] Error fetching achievements for ${username}:`, error);
-                        return { username, achievements: [] };
+                    if (Array.isArray(recentData) && recentData.length > 0) {
+                        allAchievements.push({
+                            username,
+                            achievements: recentData
+                        });
                     }
-                });
 
-                const chunkResults = await Promise.all(chunkPromises);
-                allAchievements.push(...chunkResults);
-
-                if (i + CHUNK_SIZE < validUsers.length) {
-                    await new Promise(resolve => setTimeout(resolve, CHUNK_DELAY_MS));
+                    // Extra delay between users
+                    await new Promise(resolve => setTimeout(resolve, 2500));
+                } catch (error) {
+                    console.error(`[RA API] Error fetching achievements for ${username}:`, error);
                 }
             }
 
@@ -217,12 +180,8 @@ class RetroAchievementsAPI {
             return [];
         }
     }
-
-    async getValidUsers() {
-        // This should be implemented to get users from your database
-        // For now, returning an empty array as placeholder
-        return [];
-    }
 }
 
-module.exports = new RetroAchievementsAPI();
+// Create and export a singleton instance
+const raAPI = new RetroAchievementsAPI();
+module.exports = raAPI;
