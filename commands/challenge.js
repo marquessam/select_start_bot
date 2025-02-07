@@ -1,128 +1,92 @@
-// File: src/commands/challenge.js
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const Game = require('../models/Game');
-const RetroAchievementsAPI = require('../services/retroAchievements');
-
-function getTimeRemaining() {
-    const now = new Date();
-    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const diff = endDate - now;
-
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
-    return `${days}d ${hours}h ${minutes}m`;
-}
-
-async function displayChallenge(game, raAPI) {
-    const gameInfo = await raAPI.getGameInfo(game.gameId);
-    
-    const embed = new EmbedBuilder()
-        .setColor('#0099ff')
-        .setTitle(game.title)
-        .setThumbnail(`https://media.retroachievements.org${gameInfo.ImageIcon}`)
-        .setImage(`https://media.retroachievements.org${gameInfo.ImageBoxArt}`);
-
-    // Add game details
-    let details = '';
-    details += `**Console:** ${gameInfo.Console}\n`;
-    details += `**Genre:** ${gameInfo.Genre}\n`;
-    details += `**Developer:** ${gameInfo.Developer || 'N/A'}\n`;
-    details += `**Publisher:** ${gameInfo.Publisher}\n`;
-    details += `**Release Date:** ${gameInfo.Released}\n`;
-    details += `**Total Achievements:** ${game.numAchievements}\n\n`;
-    
-    // Add time remaining
-    details += `**Time Remaining:** ${getTimeRemaining()}\n`;
-
-    // Add completion requirements
-    let requirements = '**Requirements:**\n';
-    if (game.requireProgression) {
-        requirements += '• Complete all progression achievements\n';
-    }
-    if (game.winCondition && game.winCondition.length > 0) {
-        if (game.requireAllWinConditions) {
-            requirements += '• Complete all win condition achievements\n';
-        } else {
-            requirements += '• Complete at least one win condition achievement\n';
-        }
-    }
-    if (game.masteryCheck) {
-        requirements += '• Optional: Master all achievements for bonus points\n';
-    }
-
-    embed.addFields(
-        { name: 'Game Information', value: details },
-        { name: 'Challenge Requirements', value: requirements }
-    );
-
-    return embed;
-}
+    // commands/challenge.js
+const TerminalEmbed = require('../utils/embedBuilder');
+const database = require('../database');
 
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('challenge')
-        .setDescription('Shows current challenge information')
-        .addStringOption(option =>
-            option.setName('type')
-                .setDescription('Type of challenge to display')
-                .setRequired(false)
-                .addChoices(
-                    { name: 'Monthly', value: 'monthly' },
-                    { name: 'Shadow', value: 'shadow' }
-                )),
-
-    async execute(interaction) {
+    name: 'challenge',
+    description: 'Shows current monthly challenge and shadow game status',
+    async execute(message, args, { shadowGame }) {
         try {
-            const isSlashCommand = interaction.isChatInputCommand?.();
-            const args = isSlashCommand 
-                ? [interaction.options.getString('type')] 
-                : interaction.content.slice(1).trim().split(/ +/).slice(1);
-            
-            const type = args[0]?.toLowerCase() || 'monthly';
-            
-            if (!['monthly', 'shadow'].includes(type)) {
-                const response = 'Please specify either "monthly" or "shadow" (e.g., !challenge monthly)';
-                return isSlashCommand ? interaction.reply(response) : interaction.reply(response);
-            }
+            const currentChallenge = await database.getCurrentChallenge();
+            const shadowGameData = await database.getShadowGame();
 
-            const currentDate = new Date();
-            const currentMonth = currentDate.getMonth() + 1;
-            const currentYear = currentDate.getFullYear();
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('CURRENT CHALLENGES')
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]');
 
-            const game = await Game.findOne({
-                month: currentMonth,
-                year: currentYear,
-                type: type.toUpperCase()
-            });
+            // Add monthly challenge info
+            if (currentChallenge && currentChallenge.gameId) {
+                embed.addTerminalField('MONTHLY CHALLENGE',
+                    `GAME: "${currentChallenge.gameName}"\n` +
+                    `DATES: ${currentChallenge.startDate} to ${currentChallenge.endDate}\n\n` +
+                    `POINTS AVAILABLE:\n` +
+                    `- Participation: 1 point\n` +
+                    `- Game Completion: 3 points\n` +
+                    `- Mastery: 3 points\n\n` +
+                    `RULES:\n${currentChallenge.rules.map(rule => `> ${rule}`).join('\n')}`
+                );
 
-            if (!game) {
-                const response = `No ${type} game found for the current month.`;
-                return isSlashCommand ? interaction.reply(response) : interaction.reply(response);
-            }
-
-            const raAPI = new RetroAchievementsAPI(
-                process.env.RA_USERNAME,
-                process.env.RA_API_KEY
-            );
-
-            const embed = await displayChallenge(game, raAPI);
-            
-            if (isSlashCommand) {
-                await interaction.reply({ embeds: [embed] });
+                if (currentChallenge.gameIcon) {
+                    embed.setThumbnail(`https://retroachievements.org${currentChallenge.gameIcon}`);
+                }
             } else {
-                await interaction.channel.send({ embeds: [embed] });
+                embed.addTerminalField('MONTHLY CHALLENGE', 'No active challenge found');
             }
+
+            // Enhanced shadow game display
+        if (shadowGameData && shadowGameData.triforceState?.power?.collected) {
+            // Shadow game is unlocked - show parallel challenge
+            embed.addTerminalField('SHADOW CHALLENGE UNLOCKED',
+                `GAME: ${shadowGameData.finalReward.gameName} (SNES)\n\n` +
+                `POINTS AVAILABLE:\n` +
+                `Participation: 1 point\n` +
+                `Completion: 3 points\n\n` +
+                `This challenge runs parallel to your current quest.`
+            );
+        } else if (!shadowGameData || !shadowGameData.active) {
+            // No shadow game active
+            embed.addTerminalField('THE SACRED REALM', 
+                '```ansi\n\x1b[33m' +
+                'An ancient power stirs in the shadows...\n' +
+                'But its presence remains hidden.\n' +
+                '\x1b[0m```');
+        } else if (shadowGameData.triforceState) {
+                // Triforce hunt active
+                const wisdom = shadowGameData.triforceState.wisdom;
+                const courage = shadowGameData.triforceState.courage;
+                
+                embed.addTerminalField('THE SACRED REALM',
+                    '```ansi\n\x1b[33m' +
+                    'The sacred triangles lie scattered across our realm...\n\n' +
+                    `TRIFORCE OF WISDOM\n` +
+                    `${wisdom.found}/${wisdom.required} fragments restored\n\n` +
+                    `TRIFORCE OF COURAGE\n` +
+                    `${courage.found}/${courage.required} fragments restored\n\n` +
+                    `TRIFORCE OF POWER\n` +
+                    `Status: ${shadowGameData.triforceState.power.collected ? 'Reclaimed from darkness' : 'Still held by Ganon...'}\n` +
+                    '\x1b[0m```'
+                );
+
+                if (wisdom.found === wisdom.required && 
+                    courage.found === courage.required && 
+                    !shadowGameData.triforceState.power.collected) {
+                    embed.addTerminalField('ANCIENT PROPHECY',
+                        '```ansi\n\x1b[33m' +
+                        'Wisdom and Courage shine with sacred light!\n' +
+                        'But darkness still grips the Triforce of Power...\n' +
+                        'Only by defeating Ganon can the final piece be claimed.\n\n' +
+                        'Face your destiny, hero...\n' +
+                        '\x1b[0m```'
+                    );
+                }
+            }
+
+            embed.setTerminalFooter();
+            await message.channel.send({ embeds: [embed] });
 
         } catch (error) {
-            console.error('Error in challenge command:', error);
-            const response = 'Error getting challenge information.';
-            if (isSlashCommand) {
-                await interaction.reply(response);
-            } else {
-                await interaction.reply(response);
-            }
+            console.error('Challenge Command Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve challenge data\n[Ready for input]█\x1b[0m```');
         }
     }
 };
