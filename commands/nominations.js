@@ -229,23 +229,39 @@ const nominations = {
         }
 
         const gameName = args.join(' ');
-        const nominations = await database.getNominations();
-        const nomination = nominations.find(n => n.game.toLowerCase() === gameName.toLowerCase());
+        const collection = await database.getCollection('nominations');
+        const nominationsDoc = await collection.findOne({ _id: 'nominations' });
 
-        if (!nomination) {
+        if (!nominationsDoc || !nominationsDoc.nominations) {
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] No nominations found in the database\n[Ready for input]█\x1b[0m```');
+            return;
+        }
+
+        let foundNomination = null;
+        let foundPeriod = null;
+
+        // Iterate over each period to find the nomination.
+        for (const period in nominationsDoc.nominations) {
+            const nomination = nominationsDoc.nominations[period].find(n => n.game.toLowerCase() === gameName.toLowerCase());
+            if (nomination) {
+                foundNomination = nomination;
+                foundPeriod = period;
+                break;
+            }
+        }
+
+        if (!foundNomination) {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Nomination not found\n[Ready for input]█\x1b[0m```');
             return;
         }
 
-        const collection = await database.getCollection('nominations');
-        const period = new Date().toISOString().slice(0, 7);
-
+        // Remove the nomination from the correct period.
         await collection.updateOne(
             { _id: 'nominations' },
-            { 
-                $pull: { 
-                    [`nominations.${period}`]: { game: nomination.game }
-                } 
+            {
+                $pull: {
+                    [`nominations.${foundPeriod}`]: { game: foundNomination.game }
+                }
             }
         );
 
@@ -253,9 +269,9 @@ const nominations = {
             .setTerminalTitle('NOMINATION REMOVED')
             .setTerminalDescription('[UPDATE SUCCESSFUL]')
             .addTerminalField('DETAILS',
-                `GAME: ${nomination.game}\n` +
-                `PLATFORM: ${nomination.platform}\n` +
-                `SUBMITTED BY: ${nomination.discordUsername}`)
+                `GAME: ${foundNomination.game}\n` +
+                `PLATFORM: ${foundNomination.platform}\n` +
+                `SUBMITTED BY: ${foundNomination.discordUsername}`)
             .setTerminalFooter();
 
         await message.channel.send({ embeds: [embed] });
