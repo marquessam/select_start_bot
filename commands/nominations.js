@@ -14,8 +14,8 @@ const nominations = {
 
             const subcommand = args[0].toLowerCase();
 
-            // Define admin-only subcommands
-            const adminCommands = ['open', 'close', 'remove', 'edit'];
+            // Define admin-only subcommands (added "clear")
+            const adminCommands = ['open', 'close', 'remove', 'edit', 'clear'];
             
             // Check permissions only for admin subcommands
             if (adminCommands.includes(subcommand)) {
@@ -49,6 +49,9 @@ const nominations = {
                 case 'close':
                     await this.handleClose(message);
                     break;
+                case 'clear':
+                    await this.handleClear(message);
+                    break;
                 default:
                     await this.showHelp(message);
             }
@@ -72,7 +75,8 @@ const nominations = {
             '\n!nominations open - Open nominations\n' +
             '!nominations close - Close nominations\n' +
             '!nominations remove <game> - Remove a nomination\n' +
-            '!nominations edit <game> | <new name> [platform] - Edit a nomination';
+            '!nominations edit <game> | <new name> [platform] - Edit a nomination\n' +
+            '!nominations clear - Clear all nominations and reset nomination counts';
 
         const embed = new TerminalEmbed()
             .setTerminalTitle('NOMINATION SYSTEM')
@@ -159,8 +163,7 @@ const nominations = {
         await message.channel.send('```ansi\n\x1b[32m> Accessing nominations database...\x1b[0m```');
 
         // Retrieve the full nominations document.
-        // This assumes your nominations are stored in a document with _id: 'nominations'
-        // and structured like: { _id: 'nominations', nominations: { 'YYYY-MM': [ ... ], ... } }
+        // Assumes structure: { _id: 'nominations', nominations: { 'YYYY-MM': [ ... ], ... } }
         const collection = await database.getCollection('nominations');
         const nominationsDoc = await collection.findOne({ _id: 'nominations' });
         
@@ -334,6 +337,28 @@ const nominations = {
             .addTerminalField('UPDATED',
                 `GAME: ${newName}\n` +
                 `PLATFORM: ${newPlatform}`)
+            .setTerminalFooter();
+
+        await message.channel.send({ embeds: [embed] });
+    },
+
+    // New subcommand to clear all nominations and reset nomination counts.
+    async handleClear(message) {
+        const collection = await database.getCollection('nominations');
+        
+        // Reset the nominations document by setting the nominations field to an empty object.
+        await collection.updateOne(
+            { _id: 'nominations' },
+            { $set: { nominations: {} } }
+        );
+
+        // If there is additional user-specific nomination count data elsewhere,
+        // include its reset logic here.
+        
+        const embed = new TerminalEmbed()
+            .setTerminalTitle('NOMINATIONS CLEARED')
+            .setTerminalDescription('[RESET SUCCESSFUL]')
+            .addTerminalField('DETAILS', 'All nominations have been cleared and users may now submit new nominations.')
             .setTerminalFooter();
 
         await message.channel.send({ embeds: [embed] });
