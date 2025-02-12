@@ -30,7 +30,7 @@ const nominations = {
                 }
             }
 
-            switch(subcommand) {
+            switch (subcommand) {
                 case 'view':
                     await this.handleView(message, shadowGame);
                     break;
@@ -155,72 +155,73 @@ const nominations = {
         await message.channel.send({ embeds: [embed] });
     },
 
- async handleView(message, shadowGame) {
-    await message.channel.send('```ansi\n\x1b[32m> Accessing nominations database...\x1b[0m```');
-    
-    // Retrieve the full nominations document.
-    // This assumes your nominations are stored in a document with _id: 'nominations'
-    // and structured like: { _id: 'nominations', nominations: { '2023-03': [...], '2023-04': [...], ... } }
-    const collection = await database.getCollection('nominations');
-    const nominationsDoc = await collection.findOne({ _id: 'nominations' });
-    
-    if (!nominationsDoc || !nominationsDoc.nominations) {
+    async handleView(message, shadowGame) {
+        await message.channel.send('```ansi\n\x1b[32m> Accessing nominations database...\x1b[0m```');
+
+        // Retrieve the full nominations document.
+        // This assumes your nominations are stored in a document with _id: 'nominations'
+        // and structured like: { _id: 'nominations', nominations: { 'YYYY-MM': [ ... ], ... } }
+        const collection = await database.getCollection('nominations');
+        const nominationsDoc = await collection.findOne({ _id: 'nominations' });
+        
+        if (!nominationsDoc || !nominationsDoc.nominations) {
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('NOMINATED TITLES')
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]')
+                .addTerminalField('STATUS', 'No nominations found')
+                .setTerminalFooter();
+            
+            await message.channel.send({ embeds: [embed] });
+            return;
+        }
+        
+        // Combine nominations from all periods into a single array.
+        let allNominations = [];
+        for (const period in nominationsDoc.nominations) {
+            if (Array.isArray(nominationsDoc.nominations[period])) {
+                allNominations = allNominations.concat(nominationsDoc.nominations[period]);
+            }
+        }
+        
+        if (!allNominations.length) {
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('NOMINATED TITLES')
+                .setTerminalDescription('[DATABASE ACCESS GRANTED]')
+                .addTerminalField('STATUS', 'No nominations found')
+                .setTerminalFooter();
+            
+            await message.channel.send({ embeds: [embed] });
+            return;
+        }
+        
+        // Group nominations by platform for display
+        const groupedNominations = allNominations.reduce((acc, nom) => {
+            if (!acc[nom.platform]) acc[nom.platform] = [];
+            acc[nom.platform].push(`${nom.game} (by ${nom.discordUsername})`);
+            return acc;
+        }, {});
+        
         const embed = new TerminalEmbed()
             .setTerminalTitle('NOMINATED TITLES')
-            .setTerminalDescription('[DATABASE ACCESS GRANTED]')
-            .addTerminalField('STATUS', 'No nominations found')
-            .setTerminalFooter();
+            .setTerminalDescription('[DATABASE ACCESS GRANTED]');
         
-        await message.channel.send({ embeds: [embed] });
-        return;
-    }
-    
-    // Combine nominations from all periods into a single array.
-    let allNominations = [];
-    for (const period in nominationsDoc.nominations) {
-        if (Array.isArray(nominationsDoc.nominations[period])) {
-            allNominations = allNominations.concat(nominationsDoc.nominations[period]);
+        for (const [platform, games] of Object.entries(groupedNominations).sort()) {
+            if (games.length > 0) {
+                embed.addTerminalField(
+                    `PLATFORM: ${platform.toUpperCase()}`,
+                    games.map(game => `> ${game}`).join('\n')
+                );
+            }
         }
-    }
-    
-    if (!allNominations.length) {
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('NOMINATED TITLES')
-            .setTerminalDescription('[DATABASE ACCESS GRANTED]')
-            .addTerminalField('STATUS', 'No nominations found')
-            .setTerminalFooter();
         
+        embed.setTerminalFooter();
         await message.channel.send({ embeds: [embed] });
-        return;
-    }
-    
-    // Group nominations by platform for display
-    const groupedNominations = allNominations.reduce((acc, nom) => {
-        if (!acc[nom.platform]) acc[nom.platform] = [];
-        acc[nom.platform].push(`${nom.game} (by ${nom.discordUsername})`);
-        return acc;
-    }, {});
-    
-    const embed = new TerminalEmbed()
-        .setTerminalTitle('NOMINATED TITLES')
-        .setTerminalDescription('[DATABASE ACCESS GRANTED]');
-    
-    for (const [platform, games] of Object.entries(groupedNominations).sort()) {
-        if (games.length > 0) {
-            embed.addTerminalField(
-                `PLATFORM: ${platform.toUpperCase()}`,
-                games.map(game => `> ${game}`).join('\n')
-            );
+        
+        if (shadowGame) {
+            await shadowGame.tryShowError(message);
         }
-    }
-    
-    embed.setTerminalFooter();
-    await message.channel.send({ embeds: [embed] });
-    
-    if (shadowGame) {
-        await shadowGame.tryShowError(message);
-    }
-}
+    },
+
     async handleRemove(message, args) {
         if (args.length < 1) {
             await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid syntax\nUsage: !nominations remove <game name>\n[Ready for input]█\x1b[0m```');
