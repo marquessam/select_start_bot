@@ -1,4 +1,4 @@
-    // commands/challenge.js
+// commands/challenge.js
 const TerminalEmbed = require('../utils/embedBuilder');
 const database = require('../database');
 
@@ -33,52 +33,24 @@ module.exports = {
                 embed.addTerminalField('MONTHLY CHALLENGE', 'No active challenge found');
             }
 
-            // Enhanced shadow game display
-        if (shadowGameData && shadowGameData.triforceState?.power?.collected) {
-            // Shadow game is unlocked - show parallel challenge
-            embed.addTerminalField('SHADOW CHALLENGE UNLOCKED',
-                `GAME: ${shadowGameData.finalReward.gameName} (SNES)\n\n` +
-                `POINTS AVAILABLE:\n` +
-                `Participation: 1 point\n` +
-                `Completion: 3 points\n\n` +
-                `This challenge runs parallel to your current quest.`
-            );
-        } else if (!shadowGameData || !shadowGameData.active) {
-            // No shadow game active
-            embed.addTerminalField('THE SACRED REALM', 
-                '```ansi\n\x1b[33m' +
-                'An ancient power stirs in the shadows...\n' +
-                'But its presence remains hidden.\n' +
-                '\x1b[0m```');
-        } else if (shadowGameData.triforceState) {
-                // Triforce hunt active
-                const wisdom = shadowGameData.triforceState.wisdom;
-                const courage = shadowGameData.triforceState.courage;
-                
-                embed.addTerminalField('THE SACRED REALM',
-                    '```ansi\n\x1b[33m' +
-                    'The sacred triangles lie scattered across our realm...\n\n' +
-                    `TRIFORCE OF WISDOM\n` +
-                    `${wisdom.found}/${wisdom.required} fragments restored\n\n` +
-                    `TRIFORCE OF COURAGE\n` +
-                    `${courage.found}/${courage.required} fragments restored\n\n` +
-                    `TRIFORCE OF POWER\n` +
-                    `Status: ${shadowGameData.triforceState.power.collected ? 'Reclaimed from darkness' : 'Still held by Ganon...'}\n` +
-                    '\x1b[0m```'
+            // Shadow game display based on revealed status
+            if (shadowGameData && shadowGameData.revealed) {
+                // Shadow game is unlocked - show the game info
+                embed.addTerminalField('SHADOW CHALLENGE UNLOCKED',
+                    `GAME: ${shadowGameData.finalReward.gameName} (${shadowGameData.finalReward.platform})\n\n` +
+                    `POINTS AVAILABLE:\n` +
+                    `Participation: 1 point\n` +
+                    `Completion: 3 points\n\n` +
+                    `This challenge runs parallel to your current quest.`
                 );
-
-                if (wisdom.found === wisdom.required && 
-                    courage.found === courage.required && 
-                    !shadowGameData.triforceState.power.collected) {
-                    embed.addTerminalField('ANCIENT PROPHECY',
-                        '```ansi\n\x1b[33m' +
-                        'Wisdom and Courage shine with sacred light!\n' +
-                        'But darkness still grips the Triforce of Power...\n' +
-                        'Only by defeating Ganon can the final piece be claimed.\n\n' +
-                        'Face your destiny, hero...\n' +
-                        '\x1b[0m```'
-                    );
-                }
+            } else {
+                // Shadow game is hidden
+                embed.addTerminalField('SHADOW CHALLENGE', 
+                    '```ansi\n\x1b[33m' +
+                    'An ancient power stirs in the shadows...\n' +
+                    'But its presence remains hidden.\n\n' +
+                    'Use !shadowgame to attempt to unveil the challenge.\n' +
+                    '\x1b[0m```');
             }
 
             embed.setTerminalFooter();
