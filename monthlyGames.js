@@ -41,6 +41,26 @@ const monthlyGames = {
             requireAllWinConditions: true,
             allowMastery: false
         }
+    },
+    "2025-03": {
+        monthlyGame: {
+            id: "113355",
+            name: "Mega Man X5",
+            progression: [87067, 87078, 87079],
+            winConditions: [87083, 87084, 87085],
+            requireProgression: true,
+            requireAllWinConditions: false,
+            allowMastery: true
+        },
+        shadowGame: {
+            id: "8181",
+            name: "Monster Rancher Advance 2",
+            progression: [171381, 171382, 171383, 171384, 171385, 171386, 171387, 171388, 171389, 171390],
+            winConditions: [171391],
+            requireProgression: true,
+            requireAllWinConditions: true,
+            allowMastery: false
+        }
     }
 };
 
