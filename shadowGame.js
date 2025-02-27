@@ -51,7 +51,7 @@ class ShadowGame {
             revealed: false,
             expectedGameName: "Monster Rancher Advance 2",
             finalReward: {
-                gameId: "7181",
+                gameId: "8181",
                 gameName: "Monster Rancher Advance 2",
                 platform: "GBA",
                 points: {
@@ -160,7 +160,7 @@ class ShadowGame {
                 'This challenge may be undertaken alongside your current quest.\n' +
                 'Rewards:\n' +
                 'Participation: 1 point\n' +
-                'Beaten: 3  points' +
+                'Beaten: 3 points' +
                 '\x1b[0m```'
             )
             .setURL(`https://retroachievements.org/game/${gameId}`);
