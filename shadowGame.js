@@ -27,7 +27,7 @@ class ShadowGame {
             try {
                 this.config = await database.getShadowGame();
 
-                if (!this.config || !this.isValidTriforceState(this.config.triforceState)) {
+                if (!this.config || !this.isValidConfig(this.config)) {
                     console.log('[SHADOW GAME] Invalid or missing data, resetting progress...');
                     await this.resetProgress();
                 }
@@ -45,43 +45,29 @@ class ShadowGame {
         return this._initPromise;
     }
 
-   async resetProgress() {
-    this.config = {
-        active: true,
-        currentProgress: 0,
-        triforceState: {
-            wisdom: { 
-                required: 6, 
-                found: 0, 
-                pieces: ["W1X4BY", "W2K5MN", "W3R8ST", "W4Y6PV", "W5J9CH", "W6F7GD"], 
-                collected: [] 
-            },
-            courage: { 
-                required: 6, 
-                found: 0, 
-                pieces: ["C1B5NM", "C2K4LP", "C3R8TW", "C4Y2XQ", "C5V5BN", "C6H7JD"], 
-                collected: [] 
-            },
-            power: { collected: false }
-        },
-        finalReward: {
-            gameId: "274",
-            gameName: "U.N. Squadron",
-            platform: "SNES",
-            points: {
-                participation: 1,
-                beaten: 3
+    async resetProgress() {
+        this.config = {
+            active: false,
+            revealed: false,
+            expectedGameName: "Monster Rancher Advance 2",
+            finalReward: {
+                gameId: "7181",
+                gameName: "Monster Rancher Advance 2",
+                platform: "GBA",
+                points: {
+                    participation: 1,
+                    beaten: 3
+                }
             }
-        }
-    };
+        };
 
-    await database.saveShadowGame(this.config);
-    console.log('[SHADOW GAME] Progress reset.');
-}
+        await database.saveShadowGame(this.config);
+        console.log('[SHADOW GAME] Progress reset.');
+    }
 
     async checkMessage(message) {
         if (!this.config) await this.initialize();
-        if (!message.content.startsWith('!triforce')) return;
+        if (!message.content.startsWith('!shadowgame')) return;
 
         const args = message.content.split(/\s+/);
         
@@ -89,13 +75,9 @@ class ShadowGame {
             return await this.showStatus(message);
         }
         
-        if (args[1].toLowerCase() === 'power') {
-            return await this.handlePowerCollection(message);
-        }
-        
-        if (args.length === 3) {
-            return await this.handlePieceCollection(message, args[1], args[2]);
-        }
+        // Check if the user is trying to guess the shadow game
+        const guess = args.slice(1).join(' ');
+        return await this.handleGameGuess(message, guess);
     }
 
     async showStatus(message) {
@@ -110,20 +92,13 @@ class ShadowGame {
             embed.setURL(`https://retroachievements.org/game/${status.gameId}`);
         }
 
-        if (status.prophecy) {
-            embed.addFields({
-                name: 'ANCIENT PROPHECY',
-                value: status.prophecy
-            });
-        }
-
         await message.channel.send({ embeds: [embed] });
     }
 
     async getStatusDisplay() {
-        if (!this.config || !this.config.active) {
+        if (!this.config) {
             return {
-                title: 'THE SACRED REALM',
+                title: 'SHADOW CHALLENGE',
                 description: '```ansi\n\x1b[33m' +
                     'An ancient power stirs in the shadows...\n' +
                     'But its presence remains hidden.\n' +
@@ -131,165 +106,78 @@ class ShadowGame {
             };
         }
 
-        const { wisdom, courage, power } = this.config.triforceState;
-        
-        if (power.collected) {
+        if (!this.config.revealed) {
             return {
-                title: 'SHADOW CHALLENGE UNLOCKED',
+                title: 'SHADOW CHALLENGE',
                 description: '```ansi\n\x1b[33m' +
-                    `A new trial emerges from the darkness...\n\n` +
-                    `GAME: ${this.config.finalReward.gameName}\n\n` +
-                    `REWARDS:\n` +
-                    `Mark of Participation: ${this.config.finalReward.points.participation} sacred point\n` +
-                    `Mark of Completion: ${this.config.finalReward.points.beaten} sacred points\n\n` +
-                    'This challenge runs parallel to your current quest.\n' +
-                    '\x1b[0m```',
-                gameId: this.config.finalReward.gameId
+                    'The shadow game is hidden...\n' +
+                    'Please input the name of the shadow game to activate it.\n' +
+                    '\x1b[0m```'
             };
         }
 
-        const status = {
-            title: 'THE SACRED REALM',
+        // Shadow game is revealed
+        return {
+            title: 'SHADOW CHALLENGE UNLOCKED',
             description: '```ansi\n\x1b[33m' +
-                'The sacred triangles lie scattered across our realm...\n\n' +
-                `TRIFORCE OF WISDOM\n` +
-                `${wisdom.found}/${wisdom.required} fragments restored\n\n` +
-                `TRIFORCE OF COURAGE\n` +
-                `${courage.found}/${courage.required} fragments restored\n\n` +
-                `TRIFORCE OF POWER\n` +
-                `Status: ${power.collected ? 'Reclaimed from darkness' : 'Still held by Ganon...'}\n` +
-                '\x1b[0m```'
+                `A new trial emerges from the darkness...\n\n` +
+                `GAME: ${this.config.finalReward.gameName}\n\n` +
+                `REWARDS:\n` +
+                `Participation: ${this.config.finalReward.points.participation} sacred point\n` +
+                `Beaten: ${this.config.finalReward.points.beaten} sacred points\n\n` +
+                'This challenge runs parallel to your current quest.\n' +
+                '\x1b[0m```',
+            gameId: this.config.finalReward.gameId
         };
-
-        if (wisdom.found === wisdom.required && courage.found === courage.required && !power.collected) {
-            status.prophecy = '```ansi\n\x1b[33m' +
-                'Wisdom and Courage shine with sacred light!\n' +
-                'But darkness still grips the Triforce of Power...\n' +
-                'Only by defeating Ganon can the final piece be claimed.\n\n' +
-                'Face your destiny, hero...\n' +
-                '\x1b[0m```';
-        }
-
-        return status;
     }
 
-    async handlePieceCollection(message, piece, code) {
-        if (!['wisdom', 'courage'].includes(piece.toLowerCase())) {
-            await message.channel.send('```ansi\n\x1b[31mUnknown power...\x1b[0m```');
+    async handleGameGuess(message, guess) {
+        if (this.config.revealed) {
+            await message.channel.send('```ansi\n\x1b[33mThe shadow game has already been revealed!\x1b[0m```');
             return;
         }
 
-        const triforce = this.config.triforceState[piece.toLowerCase()];
-        
-        if (!triforce.pieces.includes(code)) {
-            await message.channel.send('```ansi\n\x1b[31mThis incantation holds no power here...\x1b[0m```');
-            return;
+        if (guess.toLowerCase() === this.config.expectedGameName.toLowerCase()) {
+            this.config.revealed = true;
+            this.config.active = true;
+            await database.saveShadowGame(this.config);
+            await this.revealShadowChallenge(message);
+        } else {
+            await message.channel.send('```ansi\n\x1b[31mThat is not the correct shadow game...\x1b[0m```');
         }
-
-        if (triforce.collected.includes(code)) {
-            await message.channel.send('```ansi\n\x1b[33mThis ancient power has already been restored to the Sacred Realm...\x1b[0m```');
-            return;
-        }
-
-        triforce.collected.push(code);
-        triforce.found++;
-        await database.saveShadowGame(this.config);
-
-        const remaining = triforce.required - triforce.found;
-        await message.channel.send(
-            '```ansi\n\x1b[33m' +
-            `A fragment of the Triforce of ${piece} resonates!\n` +
-            `${remaining} fragments remain lost...\n` +
-            '\x1b[0m```'
-        );
-
-        if (triforce.found === triforce.required) {
-            await this.handleTriforceProgress(message, piece);
-        }
-    }
-
-    async handleTriforceProgress(message, piece) {
-        await message.channel.send(
-            '```ansi\n\x1b[33m' +
-            `The Triforce of ${piece.toUpperCase()} has been fully restored!\n` +
-            '\x1b[0m```'
-        );
-
-        if (this.config.triforceState.wisdom.found === this.config.triforceState.wisdom.required && 
-            this.config.triforceState.courage.found === this.config.triforceState.courage.required) {
-            await message.channel.send(
-                '```ansi\n\x1b[33m' +
-                'Wisdom and Courage shine with sacred light!\n\n' +
-                'Only the final trial remains...\n' +
-                '\x1b[0m```'
-            );
-        }
-    }
-
-    async handlePowerCollection(message) {
-        if (this.config.triforceState.wisdom.found < this.config.triforceState.wisdom.required || 
-            this.config.triforceState.courage.found < this.config.triforceState.courage.required) {
-            await message.channel.send(
-                '```ansi\n\x1b[31m' +
-                'Ganon\'s dark magic still protects the Triforce of Power...\n' +
-                'None have yet proven strong enough to break his seal.\n' +
-                '\x1b[0m```'
-            );
-            return;
-        }
-
-        this.config.triforceState.power.collected = true;
-        await database.saveShadowGame(this.config);
-        await this.revealShadowChallenge(message);
     }
 
     async revealShadowChallenge(message) {
-    const { gameName, gameId, platform } = this.config.finalReward;
+        const { gameName, gameId, platform } = this.config.finalReward;
 
-    const embed = new EmbedBuilder()
-        .setColor('#FFD700')
-        .setTitle('THE TRIFORCE UNITED')
-        .setDescription(
-            '```ansi\n' +
-            '\x1b[33mAs the three golden triangles resonate as one, ' +
-            'a new trial emerges from the shadows...\n\n' +
-            `${gameName} (${platform})\n\n` +
-            'This challenge may be undertaken alongside your current quest.\n' +
-            'Rewards for the worthy:\n' +
-            'Mark of Participation: 1 sacred point\n' +
-            'Mark of Completion: 3 sacred points' +
-            '\x1b[0m```'
-        )
-        .setURL(`https://retroachievements.org/game/${gameId}`);
+        const embed = new EmbedBuilder()
+            .setColor('#FFD700')
+            .setTitle('SHADOW CHALLENGE REVEALED')
+            .setDescription(
+                '```ansi\n' +
+                '\x1b[33mThe shadows part to reveal a new challenge...\n\n' +
+                `${gameName} (${platform})\n\n` +
+                'This challenge may be undertaken alongside your current quest.\n' +
+                'Rewards:\n' +
+                'Participation: 1 point\n' +
+                'Beaten: 3  points' +
+                '\x1b[0m```'
+            )
+            .setURL(`https://retroachievements.org/game/${gameId}`);
 
-    await message.channel.send({ embeds: [embed] });
-}
+        await message.channel.send({ embeds: [embed] });
+    }
 
     isActive() {
-        return this.config?.active && this.config?.triforceState?.power?.collected;
+        return this.config?.active && this.config?.revealed;
     }
 
-    isValidTriforceState(state) {
-        return state &&
-               state.wisdom && 
-               Array.isArray(state.wisdom.collected) &&
-               state.courage && 
-               Array.isArray(state.courage.collected) &&
-               state.power &&
-               typeof state.power.collected === 'boolean';
-    }
-
-    async tryShowError(message) {
-        // Optional error hints for debugging
-        if (this.config?.triforceState?.wisdom?.found === 5 &&
-            this.config?.triforceState?.courage?.found === 5) {
-            await message.channel.send(
-                '```ansi\n\x1b[31m' +
-                '[ERROR 0x3F7]: Ancient data corruption detected...\n' +
-                'Sacred text fragments remain hidden in the system.\n' +
-                '\x1b[0m```'
-            );
-        }
+    isValidConfig(config) {
+        return config &&
+               typeof config.active === 'boolean' &&
+               typeof config.revealed === 'boolean' &&
+               config.expectedGameName &&
+               config.finalReward;
     }
 }
 
