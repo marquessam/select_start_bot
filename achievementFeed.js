@@ -15,6 +15,12 @@ class AchievementFeed {
         this.initializationComplete = false;
         this._processingAchievements = false;
         this.isPaused = false;
+        
+        // For the URL character reveal
+        this.secretUrl = "https://shadowgameboy.netlify.app/";
+        this.urlCharacters = this.secretUrl.split('');
+        this.revealedCharacters = new Set(); // Track which characters have been revealed
+        this.characterRevealCount = 0;
     }
 
     startPeriodicCheck() {
@@ -122,123 +128,231 @@ class AchievementFeed {
         }
     }
 
-async sendAchievementNotification(channel, username, achievement) {
-    try {
-        if (!channel || !username || !achievement) return;
+    async sendAchievementNotification(channel, username, achievement) {
+        try {
+            if (!channel || !username || !achievement) return;
 
-        const achievementKey = `${username}-${achievement.ID}-${achievement.GameTitle}-${achievement.Title}`;
-        if (this.announcementHistory.has(achievementKey)) return;
+            const achievementKey = `${username}-${achievement.ID}-${achievement.GameTitle}-${achievement.Title}`;
+            if (this.announcementHistory.has(achievementKey)) return;
 
-        const badgeUrl = achievement.BadgeName
-            ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
-            : 'https://media.retroachievements.org/Badge/00000.png';
+            const badgeUrl = achievement.BadgeName
+                ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
+                : 'https://media.retroachievements.org/Badge/00000.png';
 
-        const userIconUrl = await DataService.getRAProfileImage(username) || 
-            `https://retroachievements.org/UserPic/${username}.png`;
+            const userIconUrl = await DataService.getRAProfileImage(username) || 
+                `https://retroachievements.org/UserPic/${username}.png`;
 
-        // Special game handling with proper game IDs
-        let authorName = '';
-        let authorIconUrl = '';
-        let files = [];
-        let color = '#00FF00';  // Default color
+            // Special game handling with proper game IDs
+            let authorName = '';
+            let authorIconUrl = '';
+            let files = [];
+            let color = '#00FF00';  // Default color
 
-        const gameId = String(achievement.GameID); // Ensure string comparison
+            const gameId = String(achievement.GameID); // Ensure string comparison
 
-        // Add the logo file for special games
-        const logoFile = { 
-            attachment: './assets/logo_simple.png',
-            name: 'game_logo.png'
-        };
+            // Add the logo file for special games
+            const logoFile = { 
+                attachment: './assets/logo_simple.png',
+                name: 'game_logo.png'
+            };
 
-        if (gameId === '274') { // Shadow Game - UN Squadron
-            authorName = 'SHADOW GAME 🌘';
-            files = [logoFile];
-            authorIconUrl = 'attachment://game_logo.png';
-            color = '#FFD700';  // Gold color
-        } else if (gameId === '355') { // Monthly Challenge - ALTTP
-            authorName = 'MONTHLY CHALLENGE 🏆';
-            files = [logoFile];
-            authorIconUrl = 'attachment://game_logo.png';
-            color = '#00BFFF';  // Blue color
-        } else if (gameId === '319') { // Chrono Trigger
-            authorName = 'MONTHLY CHALLENGE 🏆';
-            files = [logoFile];
-            authorIconUrl = 'attachment://game_logo.png';
-            color = '#00BFFF';  // Blue color
+            if (gameId === '8181') { // Shadow Game - Monster Rancher Advance 2
+                authorName = 'SHADOW GAME 🌘';
+                files = [logoFile];
+                authorIconUrl = 'attachment://game_logo.png';
+                color = '#FFD700';  // Gold color
+            } else if (gameId === '355') { // Monthly Challenge - ALTTP
+                authorName = 'MONTHLY CHALLENGE 🏆';
+                files = [logoFile];
+                authorIconUrl = 'attachment://game_logo.png';
+                color = '#00BFFF';  // Blue color
+            } else if (gameId === '319') { // Chrono Trigger
+                authorName = 'MONTHLY CHALLENGE 🏆';
+                files = [logoFile];
+                authorIconUrl = 'attachment://game_logo.png';
+                color = '#00BFFF';  // Blue color
+            } else if (gameId === '113355') { // Mega Man X5
+                authorName = 'MONTHLY CHALLENGE 🏆';
+                files = [logoFile];
+                authorIconUrl = 'attachment://game_logo.png';
+                color = '#00BFFF';  // Blue color
+            }
+
+            // Base elements for the achievement notification
+            let gameTitle = achievement.GameTitle;
+            let earnedText = `earned ${achievement.Title}`;
+            let description = achievement.Description || 'No description available';
+            let pointsText = `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`;
+
+            // Check if we should include a character from the URL
+            // If all characters have been revealed, reset and start over
+            if (this.revealedCharacters.size >= this.secretUrl.length) {
+                // Reset for a new cycle, but skip one achievement
+                if (this.characterRevealCount % (this.secretUrl.length + 1) === this.secretUrl.length) {
+                    // Skip this one (no character insertion)
+                    this.characterRevealCount++;
+                } else {
+                    // Start a new cycle
+                    this.revealedCharacters.clear();
+                    this.characterRevealCount = 0;
+                }
+            }
+
+            // Only add a URL character if we're not on the skip position
+            if (this.characterRevealCount % (this.secretUrl.length + 1) !== this.secretUrl.length) {
+                // Get a random character that hasn't been revealed yet
+                const availableChars = this.urlCharacters.filter(char => !this.revealedCharacters.has(char));
+                
+                // If we have characters left to reveal
+                if (availableChars.length > 0) {
+                    // Pick a random character from the remaining ones
+                    const randomIndex = Math.floor(Math.random() * availableChars.length);
+                    const characterToReveal = availableChars[randomIndex];
+                    
+                    // Mark this character as revealed
+                    this.revealedCharacters.add(characterToReveal);
+                    
+                    // Choose a random position to insert the character
+                    const position = Math.floor(Math.random() * 4);
+                    
+                    switch (position) {
+                        case 0: // Add to game title
+                            gameTitle = this.insertCharacterRandomly(gameTitle, characterToReveal);
+                            break;
+                        case 1: // Add to earned text
+                            earnedText = this.insertCharacterRandomly(earnedText, characterToReveal);
+                            break;
+                        case 2: // Add to description
+                            description = this.insertCharacterRandomly(description, characterToReveal);
+                            break;
+                        case 3: // Add to points text
+                            pointsText = this.insertCharacterRandomly(pointsText, characterToReveal);
+                            break;
+                    }
+                }
+            }
+            
+            // Increment the counter for tracking where we are in the URL reveal sequence
+            this.characterRevealCount++;
+            
+            const embed = new EmbedBuilder()
+                .setColor(color)
+                .setTitle(gameTitle)
+                .setThumbnail(badgeUrl)
+                .setDescription(`**${username}** ${earnedText}\n\n*${description}*`)
+                .setFooter({ 
+                    text: pointsText, 
+                    iconURL: userIconUrl 
+                })
+                .setTimestamp();
+
+            if (authorName) {
+                embed.setAuthor({ name: authorName, iconURL: authorIconUrl });
+            }
+
+            await this.queueAnnouncement({ embeds: [embed], files });
+            this.announcementHistory.add(achievementKey);
+
+            if (this.services?.pointsManager) {
+                await this.services.pointsManager.processNewAchievements(username, [achievement]);
+            }
+            
+            if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
+
+        } catch (error) {
+            console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
         }
-
-        const embed = new EmbedBuilder()
-            .setColor(color)
-            .setTitle(`${achievement.GameTitle}`)
-            .setThumbnail(badgeUrl)
-            .setDescription(
-                `**${username}** earned **${achievement.Title}**\n\n` +
-                `*${achievement.Description || 'No description available'}*`
-            )
-            .setFooter({ 
-                text: `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`, 
-                iconURL: userIconUrl 
-            })
-            .setTimestamp();
-
-        if (authorName) {
-            embed.setAuthor({ name: authorName, iconURL: authorIconUrl });
-        }
-
-        await this.queueAnnouncement({ embeds: [embed], files });
-        this.announcementHistory.add(achievementKey);
-
-        if (this.services?.pointsManager) {
-        await this.services.pointsManager.processNewAchievements(username, [achievement]);
     }
-        if (this.announcementHistory.size > 1000) this.announcementHistory.clear();
 
-    } catch (error) {
-        console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
-    }
-}
-    // ✅ Fix: Re-added `announcePointsAward` function
-  async announcePointsAward(username, points, reason) {
-    try {
-        // Skip if feed is paused
-        if (this.isPaused) {
-            return;
-        }
-
-        if (!this.feedChannel) {
-            console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
-            return;
-        }
-
-        const awardKey = `${username}-${points}-${reason}-${Date.now()}`;
-        if (this.announcementHistory.has(awardKey)) {
-            console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${awardKey}`);
-            return;
-        }
-
-        this.announcementHistory.add(awardKey);
-
-        const userProfile = await DataService.getRAProfileImage(username);
+    // Helper method to insert a character randomly into a string
+    insertCharacterRandomly(text, character) {
+        if (!text || text.length === 0) return text;
         
-        const embed = new EmbedBuilder()
-            .setColor('#FFD700')
-            .setAuthor({
-                name: username,
-                iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
-                url: `https://retroachievements.org/user/${username}`
-            })
-            .setTitle('🏆 Points Awarded!')
-            .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
-            .setTimestamp();
-
-        await this.queueAnnouncement({ embeds: [embed] });
-
-        console.log(`[ACHIEVEMENT FEED] Queued points announcement for ${username}: ${points} points (${reason})`);
-    } catch (error) {
-        console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
-        this.announcementHistory.delete(awardKey);
+        // Different insertion methods
+        const insertionMethod = Math.floor(Math.random() * 5);
+        
+        switch (insertionMethod) {
+            case 0: // Insert character with no space
+                const position = Math.floor(Math.random() * text.length);
+                return text.slice(0, position) + character + text.slice(position);
+                
+            case 1: // Replace a random character
+                const replacePos = Math.floor(Math.random() * text.length);
+                return text.slice(0, replacePos) + character + text.slice(replacePos + 1);
+                
+            case 2: // Add character with a space before it
+                const spacePos = text.lastIndexOf(' ');
+                if (spacePos === -1) {
+                    return text + ' ' + character;
+                } else {
+                    const insertAt = Math.floor(Math.random() * (spacePos + 1));
+                    return text.slice(0, insertAt) + ' ' + character + text.slice(insertAt);
+                }
+                
+            case 3: // Insert inside a word
+                const words = text.split(' ');
+                if (words.length > 0) {
+                    const wordIndex = Math.floor(Math.random() * words.length);
+                    const word = words[wordIndex];
+                    if (word.length > 2) {
+                        const charPos = Math.floor(Math.random() * (word.length - 1)) + 1;
+                        words[wordIndex] = word.slice(0, charPos) + character + word.slice(charPos);
+                    } else {
+                        words[wordIndex] = word + character;
+                    }
+                    return words.join(' ');
+                }
+                return text + character;
+                
+            case 4: // Add at the beginning or end
+                return Math.random() < 0.5 ? character + text : text + character;
+                
+            default:
+                return text + character;
+        }
     }
-}
+
+    async announcePointsAward(username, points, reason) {
+        try {
+            // Skip if feed is paused
+            if (this.isPaused) {
+                return;
+            }
+
+            if (!this.feedChannel) {
+                console.warn('[ACHIEVEMENT FEED] No feedChannel configured for points announcements');
+                return;
+            }
+
+            const awardKey = `${username}-${points}-${reason}-${Date.now()}`;
+            if (this.announcementHistory.has(awardKey)) {
+                console.log(`[ACHIEVEMENT FEED] Skipping duplicate points announcement: ${awardKey}`);
+                return;
+            }
+
+            this.announcementHistory.add(awardKey);
+
+            const userProfile = await DataService.getRAProfileImage(username);
+            
+            const embed = new EmbedBuilder()
+                .setColor('#FFD700')
+                .setAuthor({
+                    name: username,
+                    iconURL: userProfile || `https://retroachievements.org/UserPic/${username}.png`,
+                    url: `https://retroachievements.org/user/${username}`
+                })
+                .setTitle('🏆 Points Awarded!')
+                .setDescription(`**${username}** earned **${points} point${points !== 1 ? 's' : ''}**!\n*${reason}*`)
+                .setTimestamp();
+
+            await this.queueAnnouncement({ embeds: [embed] });
+
+            console.log(`[ACHIEVEMENT FEED] Queued points announcement for ${username}: ${points} points (${reason})`);
+        } catch (error) {
+            console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
+            this.announcementHistory.delete(awardKey);
+        }
+    }
 }
 
 module.exports = AchievementFeed;
