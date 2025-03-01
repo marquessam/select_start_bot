@@ -364,3 +364,14 @@ async function fetchAllRecentAchievements() {
         return [];
     }
 }
+
+// Export all functions
+module.exports = {
+    fetchLeaderboardData,
+    fetchAllRecentAchievements,
+    fetchUserProfile,
+    fetchHistoricalProgress,
+    fetchCompleteGameProgress,
+    getGameCompletionStats,
+    batchFetchUserProgress
+};
