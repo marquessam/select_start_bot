@@ -124,8 +124,17 @@ async function fetchLeaderboardData(force = false) {
         const validUsers = await database.getValidUsers();
         console.log(`[RA API] Tracking games for ${validUsers.length} users.`);
 
-        // Include all tracked games - UPDATED FOR MARCH
-        const userProgressData = await batchFetchUserProgress(validUsers, ['113355', '7181', '355', '274', '319', '10024']);
+        // Make sure Mega Man X5 is the first game in the array for March
+        const month = new Date().getMonth() + 1;
+        const year = new Date().getFullYear();
+        const isMarchChallenge = month === 3 && year === 2025;
+        
+        // Include all tracked games but prioritize the current month's games
+        const trackedGames = isMarchChallenge 
+            ? ['113355', '7181', '355', '274', '319', '10024'] 
+            : ['355', '274', '319', '10024', '113355', '7181'];
+
+        const userProgressData = await batchFetchUserProgress(validUsers, trackedGames);
 
         const usersProgress = validUsers.map(username => {
             const userEntries = userProgressData.filter(p => p.username === username);
@@ -142,8 +151,9 @@ async function fetchLeaderboardData(force = false) {
                 }
             }
 
-            // Get the completion status for the MARCH game - UPDATED FOR MARCH
-            const completionStats = getGameCompletionStats(allGameAchievements, '113355');
+            // Use the appropriate game ID for the current month
+            const currentGameId = isMarchChallenge ? '113355' : challenge.gameId;
+            const completionStats = getGameCompletionStats(allGameAchievements, currentGameId);
 
             return {
                 username,
@@ -173,19 +183,26 @@ async function fetchLeaderboardData(force = false) {
 
 // Helper function to calculate game completion stats
 function getGameCompletionStats(achievements, gameId) {
+    // Filter achievements for the specific game
     const gameAchievements = achievements.filter(a => String(a.GameID) === gameId);
+    
+    // Calculate total and completed achievements
     const total = gameAchievements.length;
     const completed = gameAchievements.filter(ach => parseInt(ach.DateEarned, 10) > 0).length;
+
+    // Fallback for Mega Man X5 if no achievements found
+    const defaultTotal = gameId === '113355' ? 53 : 0;
 
     const hasBeatenGame = gameAchievements.some(ach => {
         const isWinCondition = (ach.Flags & 2) === 2;
         const isEarned = parseInt(ach.DateEarned, 10) > 0;
         return isWinCondition && isEarned;
     });
-
+    
+    // Return stats with fallback for total
     return {
-        completed,
-        total,
+        completed: completed || 0,
+        total: total || defaultTotal,
         percentage: total > 0 ? ((completed / total) * 100).toFixed(2) : '0.00',
         hasBeatenGame
     };
@@ -347,11 +364,3 @@ async function fetchAllRecentAchievements() {
         return [];
     }
 }
-
-module.exports = {
-    fetchLeaderboardData,
-    fetchAllRecentAchievements,
-    fetchUserProfile,
-    fetchHistoricalProgress,
-    fetchCompleteGameProgress
-};
