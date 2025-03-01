@@ -231,6 +231,9 @@ class LeaderboardCommand {
             // Check if the challenge's month matches current month
             const challengeMonth = currentChallenge?.startDate?.substring(0, 7);
             
+            // Variable to track if we updated the challenge
+            let challengeUpdated = false;
+            
             // If the months don't match and we have data for the current month, update it
             if (challengeMonth !== currentMonthKey && monthlyGames[currentMonthKey]) {
                 // Log that we're updating the challenge
@@ -273,11 +276,18 @@ class LeaderboardCommand {
                 
                 // Get the updated challenge from database
                 currentChallenge = await DataService.getCurrentChallenge();
+                challengeUpdated = true;
             }
 
-            const [leaderboardData] = await Promise.all([
-                DataService.getLeaderboard('monthly')
-            ]);
+            // Force a refresh of the leaderboard cache if we updated the challenge
+            let leaderboardData;
+            if (challengeUpdated) {
+                // Refresh the leaderboard data
+                await DataService.refreshLeaderboardCache();
+            }
+            
+            // Get the leaderboard data
+            leaderboardData = await DataService.getLeaderboard('monthly');
 
             const validUsers = await DataService.getValidUsers();
             const activeUsers = leaderboardData.filter(user =>
