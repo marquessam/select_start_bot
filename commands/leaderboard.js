@@ -46,6 +46,7 @@ function getLastDayOfMonth(date) {
 function getShadowGamePlatform(gameId) {
     const platformMap = {
         "8181": "Game Boy Advance", // Monster Rancher Advance 2
+        "7181": "Game Boy Advance", // Monster Rancher Advance 2
         "274": "SNES", // U.N. Squadron
         "10024": "N64" // Mario Tennis
     };
@@ -280,16 +281,32 @@ class LeaderboardCommand {
             }
 
             // Force a refresh of the leaderboard cache if we updated the challenge
-            let leaderboardData;
             if (challengeUpdated) {
                 // Refresh the leaderboard data
                 await DataService.refreshLeaderboardCache();
             }
             
             // Get the leaderboard data
-            leaderboardData = await DataService.getLeaderboard('monthly');
+            let leaderboardData = await DataService.getLeaderboard('monthly');
+            
+            // If we have no data at all, force a refresh
+            if (!leaderboardData || leaderboardData.length === 0) {
+                console.log("[LEADERBOARD] No leaderboard data found, forcing refresh...");
+                await DataService.refreshLeaderboardCache();
+                leaderboardData = await DataService.getLeaderboard('monthly');
+            }
 
             const validUsers = await DataService.getValidUsers();
+            
+            // Set total achievements for Mega Man X5 (even if no users have progress)
+            let totalAchievements = 53; // Mega Man X5 has 53 achievements
+            
+            // If we have data from users, get the real total
+            if (leaderboardData.length > 0 && leaderboardData[0].totalAchievements > 0) {
+                totalAchievements = leaderboardData[0].totalAchievements;
+            }
+
+            // Filter to only include users with progress
             const activeUsers = leaderboardData.filter(user =>
                 validUsers.includes(user.username.toLowerCase()) &&
                 (user.completedAchievements > 0 || parseFloat(user.completionPercentage) > 0)
@@ -309,8 +326,8 @@ class LeaderboardCommand {
                 .setColor('#32CD32')
                 .setTitle(`${monthName} Challenge Leaderboard`)
                 .setThumbnail(`https://media.retroachievements.org/Images/056204.png`)
-                .setDescription(`**Game**: ${currentChallenge?.gameName || 'Unknown'}\n` +
-                               `**Total Achievements**: ${activeUsers[0]?.totalAchievements || 0}\n` +
+                .setDescription(`**Game**: ${currentChallenge?.gameName || 'Mega Man X5'}\n` +
+                               `**Total Achievements**: ${totalAchievements}\n` +
                                `**Challenge Ends**: ${formatDate(endOfMonth)}\n` +
                                `**Time Remaining**: ${timeRemaining}`);
 
