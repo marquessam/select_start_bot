@@ -251,7 +251,7 @@ class UserStats {
             const processedUsers = [];
             const errors = [];
 
-            const data = await fetchLeaderboardData();
+            const data = await raAPI.fetchLeaderboardData(true);
             if (!data?.leaderboard) {
                 throw new Error('Failed to fetch leaderboard data');
             }
