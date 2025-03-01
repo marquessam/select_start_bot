@@ -2,6 +2,7 @@
 
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 const ErrorHandler = require('./utils/errorHandler');
+const raAPI = require('./raAPI.js');
 const { withTransaction } = require('./utils/transactions');
 const { pointsConfig, pointChecks } = require('./pointsConfig');
 const { fetchLeaderboardData } = require('./raAPI.js');
