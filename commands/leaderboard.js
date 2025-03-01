@@ -1,6 +1,7 @@
 // commands/leaderboard.js
-const TerminalEmbed = require('../utils/embedBuilder');
+const { EmbedBuilder } = require('discord.js');
 const DataService = require('../services/dataService');
+const { monthlyGames } = require('../monthlyGames');
 
 function formatDate(date) {
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 
@@ -33,6 +34,25 @@ function getTimeRemaining(endDate) {
     }
 }
 
+// Helper function to get the last day of the month
+function getLastDayOfMonth(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const lastDay = new Date(year, month, 0).getDate();
+    return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+}
+
+// Helper function to get platform for shadow games
+function getShadowGamePlatform(gameId) {
+    const platformMap = {
+        "8181": "Game Boy Advance", // Monster Rancher Advance 2
+        "274": "SNES", // U.N. Squadron
+        "10024": "N64" // Mario Tennis
+    };
+    
+    return platformMap[gameId] || "RetroAchievements";
+}
+
 class LeaderboardCommand {
     constructor() {
         this.name = 'leaderboard';
@@ -42,15 +62,17 @@ class LeaderboardCommand {
     async execute(message, args, { shadowGame, pointsManager }) {
         try {
             if (!args.length) {
-                await message.channel.send('```ansi\n\x1b[32m> Accessing leaderboard options...\x1b[0m\n```');
-
-                const embed = new TerminalEmbed()
-                    .setTerminalTitle('LEADERBOARD OPTIONS')
-                    .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[SELECT AN OPTION]\n')
-                    .addTerminalField('USAGE',
-                        '1. !leaderboard month - View monthly challenge leaderboard\n' +
-                        '2. !leaderboard year - View yearly challenge leaderboard')
-                    .setTerminalFooter();
+                const embed = new EmbedBuilder()
+                    .setColor('#32CD32')
+                    .setTitle('Leaderboard Options')
+                    .setDescription('Select an option:')
+                    .addFields({
+                        name: 'Usage',
+                        value: '1. `!leaderboard month` - View monthly challenge leaderboard\n' +
+                               '2. `!leaderboard year` - View yearly challenge leaderboard'
+                    })
+                    .setFooter({ text: `Requested by ${message.author.username}` })
+                    .setTimestamp();
 
                 await message.channel.send({ embeds: [embed] });
                 if (shadowGame?.tryShowError) await shadowGame.tryShowError(message);
@@ -65,18 +87,24 @@ class LeaderboardCommand {
                     await this.displayYearlyLeaderboard(message, shadowGame, pointsManager);
                     break;
                 default:
-                    await message.channel.send('```ansi\n\x1b[32m[ERROR] Invalid option\nUse !leaderboard to see available options\n[Ready for input]█\x1b[0m```');
+                    const errorEmbed = new EmbedBuilder()
+                        .setColor('#FF0000')
+                        .setDescription('**Error:** Invalid option. Use `!leaderboard` to see available options.')
+                        .setTimestamp();
+                    await message.channel.send({ embeds: [errorEmbed] });
             }
         } catch (error) {
             console.error('Leaderboard Command Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to process leaderboard command\n[Ready for input]█\x1b[0m```');
+            const errorEmbed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setDescription('**Error:** Failed to process leaderboard command.')
+                .setTimestamp();
+            await message.channel.send({ embeds: [errorEmbed] });
         }
     }
 
     async displayYearlyLeaderboard(message, shadowGame, pointsManager) {
         try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing yearly rankings...\x1b[0m\n```');
-
             const validUsers = await DataService.getValidUsers();
             const year = new Date().getFullYear().toString();
 
@@ -149,48 +177,106 @@ class LeaderboardCommand {
                 })
                 .map((user, index) => ({ ...user, rank: index + 1 }));
 
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('YEARLY RANKINGS')
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT STANDINGS]');
+            const embed = new EmbedBuilder()
+                .setColor('#32CD32')
+                .setTitle('Yearly Rankings')
+                .setDescription('Current year standings:');
 
-            // Split rankings into chunks of 5 users
+            // Split rankings into chunks of 10 users for better display
             const chunks = [];
-            for (let i = 0; i < rankedUsers.length; i += 5) {
-                chunks.push(rankedUsers.slice(i, i + 5));
+            for (let i = 0; i < rankedUsers.length; i += 10) {
+                chunks.push(rankedUsers.slice(i, i + 10));
             }
 
             chunks.forEach((chunk, index) => {
-                const fieldTitle = `RANKINGS ${index * 5 + 1}-${Math.min((index + 1) * 5, rankedUsers.length)}`;
+                const fieldTitle = `Rankings ${index * 10 + 1}-${Math.min((index + 1) * 10, rankedUsers.length)}`;
                 const fieldContent = chunk.map(user => {
                     const medals = ['🥇', '🥈', '🥉'];
                     const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
-                    return `${medal} #${user.rank} ${user.username}: ${user.totalPoints} points\n` +
-                           `   ┗ Games: ${user.gamesJoined} joined, ${user.gamesBeaten} beaten, ${user.gamesMastered} mastered`;
+                    return `${medal} **#${user.rank} ${user.username}**: ${user.totalPoints} points\n` +
+                           `Games: ${user.gamesJoined} joined, ${user.gamesBeaten} beaten, ${user.gamesMastered} mastered`;
                 }).join('\n\n');
 
-                embed.addTerminalField(fieldTitle, fieldContent);
+                embed.addFields({ name: fieldTitle, value: fieldContent });
             });
 
             if (rankedUsers.length === 0) {
-                embed.addTerminalField('STATUS', 'No rankings available');
+                embed.addFields({ name: 'Status', value: 'No rankings available' });
             }
 
-            embed.setTerminalFooter();
+            embed.setFooter({ text: `Requested by ${message.author.username}` })
+                .setTimestamp();
+
             await message.channel.send({ embeds: [embed] });
 
         } catch (error) {
             console.error('Yearly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve yearly leaderboard\n[Ready for input]█\x1b[0m```');
+            const errorEmbed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setDescription('**Error:** Failed to retrieve yearly leaderboard.')
+                .setTimestamp();
+            await message.channel.send({ embeds: [errorEmbed] });
         }
     }
 
     async displayMonthlyLeaderboard(message, shadowGame) {
         try {
-            await message.channel.send('```ansi\n\x1b[32m> Accessing monthly rankings...\x1b[0m\n```');
+            // Get current date and format as YYYY-MM
+            const today = new Date();
+            const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            
+            // Get current challenge
+            let currentChallenge = await DataService.getCurrentChallenge();
+            
+            // Check if the challenge's month matches current month
+            const challengeMonth = currentChallenge?.startDate?.substring(0, 7);
+            
+            // If the months don't match and we have data for the current month, update it
+            if (challengeMonth !== currentMonthKey && monthlyGames[currentMonthKey]) {
+                // Log that we're updating the challenge
+                console.log(`Leaderboard: Updating challenge from ${challengeMonth} to ${currentMonthKey}`);
+                
+                // Get the new monthly game data
+                const gameData = monthlyGames[currentMonthKey].monthlyGame;
+                
+                // Create challenge data object for database
+                const challengeData = {
+                    gameId: gameData.id,
+                    gameName: gameData.name,
+                    gameIcon: `https://media.retroachievements.org/Images/056204.png`, // Use the correct Mega Man X5 image
+                    startDate: `${currentMonthKey}-01`,
+                    endDate: getLastDayOfMonth(today),
+                    rules: [
+                        `Complete ${gameData.requireProgression ? 'all' : 'any'} progression achievements`,
+                        `Complete ${gameData.requireAllWinConditions ? 'all' : 'any'} win condition achievements`,
+                        gameData.allowMastery ? 'Mastery available for additional points' : 'No mastery bonus available'
+                    ]
+                };
+                
+                // Save the new challenge to database
+                await DataService.saveCurrentChallenge(challengeData);
+                
+                // Also update shadow game if it exists
+                if (monthlyGames[currentMonthKey].shadowGame) {
+                    const shadowData = monthlyGames[currentMonthKey].shadowGame;
+                    await DataService.saveShadowGame({
+                        active: true,
+                        revealed: false, // Initially hidden
+                        finalReward: {
+                            gameId: shadowData.id,
+                            gameName: shadowData.name,
+                            platform: getShadowGamePlatform(shadowData.id),
+                            points: 4 // Default points (1 for participation + 3 for completion)
+                        }
+                    });
+                }
+                
+                // Get the updated challenge from database
+                currentChallenge = await DataService.getCurrentChallenge();
+            }
 
-            const [leaderboardData, currentChallenge] = await Promise.all([
-                DataService.getLeaderboard('monthly'),
-                DataService.getCurrentChallenge()
+            const [leaderboardData] = await Promise.all([
+                DataService.getLeaderboard('monthly')
             ]);
 
             const validUsers = await DataService.getValidUsers();
@@ -209,47 +295,51 @@ class LeaderboardCommand {
             const monthName = new Date().toLocaleString('default', { month: 'long' });
             const timeRemaining = getTimeRemaining(endOfMonth);
 
-            const embed = new TerminalEmbed()
-                .setTerminalTitle('USER RANKINGS')
-                .setThumbnail(`https://retroachievements.org${currentChallenge?.gameIcon || ''}`)
-                .setTerminalDescription('[DATABASE ACCESS GRANTED]\n[DISPLAYING CURRENT RANKINGS]')
-                .addTerminalField(`${monthName.toUpperCase()} CHALLENGE`, 
-                    `GAME: ${currentChallenge?.gameName || 'Unknown'}\n` +
-                    `TOTAL ACHIEVEMENTS: ${activeUsers[0]?.totalAchievements || 0}\n` +
-                    `CHALLENGE ENDS: ${formatDate(endOfMonth)}\n` +
-                    `TIME REMAINING: ${timeRemaining}`
-                );
+            const embed = new EmbedBuilder()
+                .setColor('#32CD32')
+                .setTitle(`${monthName} Challenge Leaderboard`)
+                .setThumbnail(`https://media.retroachievements.org/Images/056204.png`)
+                .setDescription(`**Game**: ${currentChallenge?.gameName || 'Unknown'}\n` +
+                               `**Total Achievements**: ${activeUsers[0]?.totalAchievements || 0}\n` +
+                               `**Challenge Ends**: ${formatDate(endOfMonth)}\n` +
+                               `**Time Remaining**: ${timeRemaining}`);
 
-            // Split users into chunks of 5 for display
+            // Split users into chunks of 10 for better display
             const chunks = [];
-            for (let i = 0; i < rankedUsers.length; i += 5) {
-                chunks.push(rankedUsers.slice(i, i + 5));
+            for (let i = 0; i < rankedUsers.length; i += 10) {
+                chunks.push(rankedUsers.slice(i, i + 10));
             }
 
             chunks.forEach((chunk, index) => {
-                const startRank = index * 5 + 1;
-                const endRank = Math.min((index + 1) * 5, rankedUsers.length);
+                const startRank = index * 10 + 1;
+                const endRank = Math.min((index + 1) * 10, rankedUsers.length);
                 
                 const fieldContent = chunk.map(user => {
                     const medals = ['🥇', '🥈', '🥉'];
                     const medal = user.rank <= 3 ? medals[user.rank - 1] : '';
-                    return `${medal} #${user.rank} ${user.username}\n` +
-                           `   ┗ ${user.completedAchievements}/${user.totalAchievements} (${user.completionPercentage}%)`;
+                    return `${medal} **#${user.rank} ${user.username}**\n` +
+                           `${user.completedAchievements}/${user.totalAchievements} (${user.completionPercentage}%)`;
                 }).join('\n\n');
 
-                embed.addTerminalField(`RANKINGS ${startRank}-${endRank}`, fieldContent);
+                embed.addFields({ name: `Rankings ${startRank}-${endRank}`, value: fieldContent });
             });
 
             if (activeUsers.length === 0) {
-                embed.addTerminalField('STATUS', 'No active participants yet');
+                embed.addFields({ name: 'Status', value: 'No active participants yet' });
             }
 
-            embed.setTerminalFooter();
+            embed.setFooter({ text: `Requested by ${message.author.username}` })
+                .setTimestamp();
+
             await message.channel.send({ embeds: [embed] });
 
         } catch (error) {
             console.error('Monthly Leaderboard Error:', error);
-            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve monthly leaderboard\n[Ready for input]█\x1b[0m```');
+            const errorEmbed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setDescription('**Error:** Failed to retrieve monthly leaderboard.')
+                .setTimestamp();
+            await message.channel.send({ embeds: [errorEmbed] });
         }
     }
 
