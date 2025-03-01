@@ -58,8 +58,11 @@ module.exports = {
                 return;
             }
 
+            // Get current month name
+            const monthName = new Date().toLocaleString('default', { month: 'long' });
+
             const embed = new TerminalEmbed()
-                .setTerminalTitle('MONTHLY CHALLENGE RULES')
+                .setTerminalTitle(`${monthName.toUpperCase()} CHALLENGE RULES`)
                 .setURL(`https://retroachievements.org/game/${currentChallenge.gameId}`)
                 .setThumbnail(`https://retroachievements.org${currentChallenge.gameIcon}`)
                 .setTerminalDescription('[CURRENT CHALLENGE INFORMATION]')
@@ -71,9 +74,9 @@ module.exports = {
                     currentChallenge.rules.map(rule => `> ${rule}`).join('\n')
                 )
                 .addTerminalField('PLACEMENT REWARDS',
-                    `> 🥇 ${currentChallenge.points.first} pts\n` +
-                    `> 🥈 ${currentChallenge.points.second} pts\n` +
-                    `> 🥉 ${currentChallenge.points.third} pts`
+                    `> 🥇 ${currentChallenge.points?.first || 5} pts\n` +
+                    `> 🥈 ${currentChallenge.points?.second || 3} pts\n` +
+                    `> 🥉 ${currentChallenge.points?.third || 2} pts`
                 )
                 .addTerminalField('ACHIEVEMENT POINTS',
                     `- Participation: 1 point (earning any achievement)\n` +
@@ -91,57 +94,60 @@ module.exports = {
         }
     },
 
-   // In rules.js, update the displayShadowChallenge method:
-
-async displayShadowChallenge(message, shadowGame) {
-    try {
-        const shadowConfig = await database.getShadowGame();
-        
-        const embed = new TerminalEmbed()
-            .setTerminalTitle('SHADOW GAME RULES')
-            .setTerminalDescription(
-                '[SHADOW GAME INFORMATION]\n\n' +
-                'The shadow game is a special monthly bonus challenge ' +
-                'hidden within our community. Once discovered through ' +
-                'solving puzzles, it becomes available to all members as an ' +
-                'additional way to earn points alongside the main monthly challenge.'
-            )
-            .addTerminalField('HOW IT WORKS',
-                '1. A series of puzzles are hidden in the community\n' +
-                '2. Members work together to solve these puzzles\n' +
-                '3. Upon completion, a bonus game challenge is revealed\n' +
-                '4. All members can then participate for additional points'
-            );
-
-        if (!shadowConfig || !shadowConfig.active) {
-            embed.addTerminalField('STATUS', 'No active shadow game available.');
-        } else if (shadowConfig.triforceState?.power?.collected) {
-            embed.addTerminalField('CURRENT CHALLENGE',
-                `GAME: ${shadowConfig.finalReward.gameName} (SNES)\n` +
-                '\nAVAILABLE POINTS:\n' +
-                `• Participation: ${shadowConfig.finalReward.points.participation} point\n` +
-                `• Beaten: ${shadowConfig.finalReward.points.beaten} points\n\n` +
-                'This challenge can be completed alongside the monthly challenge.'
-            );
+    async displayShadowChallenge(message, shadowGame) {
+        try {
+            const shadowConfig = await database.getShadowGame();
             
-            if (shadowConfig.finalReward.gameId) {
-                embed.setURL(`https://retroachievements.org/game/${shadowConfig.finalReward.gameId}`);
-            }
-        } else {
-            embed.addTerminalField('STATUS', 'Current shadow game has not yet been discovered.');
-        }
+            const embed = new TerminalEmbed()
+                .setTerminalTitle('SHADOW GAME RULES')
+                .setTerminalDescription(
+                    '[SHADOW GAME INFORMATION]\n\n' +
+                    'The shadow game is a special monthly bonus challenge ' +
+                    'hidden within our community. Once discovered through ' +
+                    'solving puzzles, it becomes available to all members as an ' +
+                    'additional way to earn points alongside the main monthly challenge.'
+                )
+                .addTerminalField('HOW IT WORKS',
+                    '1. A series of puzzles are hidden in the community\n' +
+                    '2. Members work together to solve these puzzles\n' +
+                    '3. Upon completion, a bonus game challenge is revealed\n' +
+                    '4. All members can then participate for additional points'
+                );
 
-        embed.setTerminalFooter();
-        await message.channel.send({ embeds: [embed] });
-        
-        if (shadowGame?.tryShowError) {
-            await shadowGame.tryShowError(message);
+            if (!shadowConfig || !shadowConfig.active) {
+                embed.addTerminalField('STATUS', 'No active shadow game available.');
+            } else if (shadowConfig.revealed) {
+                embed.addTerminalField('CURRENT CHALLENGE',
+                    `GAME: ${shadowConfig.finalReward.gameName} (${shadowConfig.finalReward.platform})\n` +
+                    '\nAVAILABLE POINTS:\n' +
+                    `• Participation: ${shadowConfig.finalReward.points?.participation || 1} point\n` +
+                    `• Beaten: ${shadowConfig.finalReward.points?.beaten || 3} points\n\n` +
+                    'This challenge can be completed alongside the monthly challenge.'
+                );
+                
+                if (shadowConfig.finalReward.gameId) {
+                    embed.setURL(`https://retroachievements.org/game/${shadowConfig.finalReward.gameId}`);
+                }
+            } else {
+                embed.addTerminalField('STATUS',
+                    'A shadow game has been prepared for this month...\n' +
+                    'But it remains hidden in the darkness.\n\n' +
+                    'Try to identify it by using the `!shadowgame` command\n' +
+                    'followed by the name of the shadow game.'
+                );
+            }
+
+            embed.setTerminalFooter();
+            await message.channel.send({ embeds: [embed] });
+            
+            if (shadowGame?.tryShowError) {
+                await shadowGame.tryShowError(message);
+            }
+        } catch (error) {
+            console.error('Shadow Rules Error:', error);
+            await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve shadow game rules\n[Ready for input]█\x1b[0m```');
         }
-    } catch (error) {
-        console.error('Shadow Rules Error:', error);
-        await message.channel.send('```ansi\n\x1b[32m[ERROR] Failed to retrieve shadow game rules\n[Ready for input]█\x1b[0m```');
-    }
-},
+    },
 
     async displayPointsInfo(message, shadowGame) {
         const embed = new TerminalEmbed()
