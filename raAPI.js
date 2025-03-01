@@ -124,8 +124,8 @@ async function fetchLeaderboardData(force = false) {
         const validUsers = await database.getValidUsers();
         console.log(`[RA API] Tracking games for ${validUsers.length} users.`);
 
-        // Include all tracked games
-        const userProgressData = await batchFetchUserProgress(validUsers, ['355', '274', '319', '10024']);
+        // Include all tracked games - UPDATED FOR MARCH
+        const userProgressData = await batchFetchUserProgress(validUsers, ['113355', '7181', '355', '274', '319', '10024']);
 
         const usersProgress = validUsers.map(username => {
             const userEntries = userProgressData.filter(p => p.username === username);
@@ -142,8 +142,8 @@ async function fetchLeaderboardData(force = false) {
                 }
             }
 
-            // Get the completion status for the main challenge game (ALTTP)
-            const completionStats = getGameCompletionStats(allGameAchievements, '355');
+            // Get the completion status for the MARCH game - UPDATED FOR MARCH
+            const completionStats = getGameCompletionStats(allGameAchievements, '113355');
 
             return {
                 username,
