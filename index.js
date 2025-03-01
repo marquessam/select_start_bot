@@ -226,6 +226,11 @@ client.once('ready', async () => {
     try {
         console.log(`Logged in as ${client.user.tag}`);
         const initializedServices = await setupBot();
+        
+        // Make database available to commands via client
+        client.database = database;
+        console.log('Database attached to client for command access');
+        
     } catch (error) {
         console.error('Fatal initialization error:', error);
         process.exit(1);
