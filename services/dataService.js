@@ -46,8 +46,37 @@ class DataService {
         }
     }
 
+    static async refreshLeaderboardCache() {
+        if (!global.leaderboardCache) {
+            console.warn('[DATA SERVICE] LeaderboardCache not initialized, cannot refresh');
+            return [];
+        }
+
+        try {
+            console.log('[DATA SERVICE] Forcing leaderboard cache refresh');
+            // Force a refresh of the leaderboard data
+            await global.leaderboardCache.refreshLeaderboard();
+            return global.leaderboardCache.getMonthlyLeaderboard() || [];
+        } catch (error) {
+            console.error('[DATA SERVICE] Error refreshing leaderboard cache:', error);
+            return [];
+        }
+    }
+
     static async getCurrentChallenge() {
         return database.getCurrentChallenge();
+    }
+
+    static async saveCurrentChallenge(challengeData) {
+        return database.saveCurrentChallenge(challengeData);
+    }
+
+    static async saveShadowGame(shadowGameData) {
+        return database.saveShadowGame(shadowGameData);
+    }
+
+    static async getShadowGame() {
+        return database.getShadowGame();
     }
 
     static async getArcadeScores() {
