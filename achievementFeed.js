@@ -21,6 +21,13 @@ class AchievementFeed {
         this.urlCharacters = this.secretUrl.split('');
         this.revealedCharacters = new Set(); // Track which characters have been revealed
         this.characterRevealCount = 0;
+        this.lastRevealedIndex = undefined; // Track last revealed character index for sequence
+        this.services = null; // Will store service references
+    }
+
+    setServices(services) {
+        this.services = services;
+        console.log('[ACHIEVEMENT FEED] Services updated');
     }
 
     startPeriodicCheck() {
@@ -156,7 +163,7 @@ class AchievementFeed {
                 name: 'game_logo.png'
             };
 
-            if (gameId === '8181') { // Shadow Game - Monster Rancher Advance 2
+            if (gameId === '7181' || gameId === '8181') { // Shadow Game - Monster Rancher Advance 2
                 authorName = 'SHADOW GAME 🌘';
                 files = [logoFile];
                 authorIconUrl = 'attachment://game_logo.png';
@@ -195,6 +202,7 @@ class AchievementFeed {
                     // Start a new cycle
                     this.revealedCharacters.clear();
                     this.characterRevealCount = 0;
+                    this.lastRevealedIndex = undefined;
                 }
             }
 
@@ -205,15 +213,51 @@ class AchievementFeed {
                 
                 // If we have characters left to reveal
                 if (availableChars.length > 0) {
-                    // Pick a random character from the remaining ones
-                    const randomIndex = Math.floor(Math.random() * availableChars.length);
-                    const characterToReveal = availableChars[randomIndex];
+                    let characterToReveal;
+                    
+                    // 20% chance to reveal a sequential character if possible
+                    if (Math.random() < 0.2 && this.lastRevealedIndex !== undefined) {
+                        const nextIndex = this.lastRevealedIndex + 1;
+                        // Try to reveal the next character in sequence if available
+                        if (nextIndex < this.secretUrl.length && !this.revealedCharacters.has(this.urlCharacters[nextIndex])) {
+                            characterToReveal = this.urlCharacters[nextIndex];
+                            this.lastRevealedIndex = nextIndex;
+                        } else {
+                            // Fall back to random selection
+                            const randomIndex = Math.floor(Math.random() * availableChars.length);
+                            characterToReveal = availableChars[randomIndex];
+                            this.lastRevealedIndex = this.urlCharacters.indexOf(characterToReveal);
+                        }
+                    } else {
+                        // Random character selection
+                        const randomIndex = Math.floor(Math.random() * availableChars.length);
+                        characterToReveal = availableChars[randomIndex];
+                        this.lastRevealedIndex = this.urlCharacters.indexOf(characterToReveal);
+                    }
                     
                     // Mark this character as revealed
                     this.revealedCharacters.add(characterToReveal);
                     
                     // Choose a random position to insert the character
-                    const position = Math.floor(Math.random() * 4);
+                    // Create a weighted distribution favoring the description for longer texts
+                    const positionWeights = [
+                        1,  // game title
+                        1,  // earned text
+                        2,  // description (higher weight = more likely)
+                        1   // points text
+                    ];
+                    
+                    let position = 0;
+                    const weightSum = positionWeights.reduce((a, b) => a + b, 0);
+                    let randomValue = Math.random() * weightSum;
+                    
+                    for (let i = 0; i < positionWeights.length; i++) {
+                        randomValue -= positionWeights[i];
+                        if (randomValue <= 0) {
+                            position = i;
+                            break;
+                        }
+                    }
                     
                     switch (position) {
                         case 0: // Add to game title
@@ -264,32 +308,43 @@ class AchievementFeed {
         }
     }
 
-    // Helper method to insert a character randomly into a string
+    // Enhanced method to insert a character randomly into a string
     insertCharacterRandomly(text, character) {
         if (!text || text.length === 0) return text;
         
+        // Special handling for URL structural characters to make them more noticeable
+        const isSpecialChar = ['/', '.', ':', 'h', 't', 'p', 's'].includes(character);
+        
         // Different insertion methods
-        const insertionMethod = Math.floor(Math.random() * 5);
+        const insertionMethod = Math.floor(Math.random() * (isSpecialChar ? 3 : 5));
         
         switch (insertionMethod) {
             case 0: // Insert character with no space
                 const position = Math.floor(Math.random() * text.length);
                 return text.slice(0, position) + character + text.slice(position);
                 
-            case 1: // Replace a random character
-                const replacePos = Math.floor(Math.random() * text.length);
-                return text.slice(0, replacePos) + character + text.slice(replacePos + 1);
-                
-            case 2: // Add character with a space before it
-                const spacePos = text.lastIndexOf(' ');
-                if (spacePos === -1) {
-                    return text + ' ' + character;
+            case 1: // Add to beginning or end for special chars, more noticeable
+                if (isSpecialChar) {
+                    return Math.random() < 0.7 ? character + text : text + character;
                 } else {
-                    const insertAt = Math.floor(Math.random() * (spacePos + 1));
-                    return text.slice(0, insertAt) + ' ' + character + text.slice(insertAt);
+                    const replacePos = Math.floor(Math.random() * text.length);
+                    return text.slice(0, replacePos) + character + text.slice(replacePos + 1);
                 }
                 
-            case 3: // Insert inside a word
+            case 2: // Add character with extra space around it for special chars
+                if (isSpecialChar) {
+                    return text + ' ' + character + ' ';
+                } else {
+                    const spacePos = text.lastIndexOf(' ');
+                    if (spacePos === -1) {
+                        return text + ' ' + character;
+                    } else {
+                        const insertAt = Math.floor(Math.random() * (spacePos + 1));
+                        return text.slice(0, insertAt) + ' ' + character + text.slice(insertAt);
+                    }
+                }
+                
+            case 3: // Insert inside a word (for non-special chars)
                 const words = text.split(' ');
                 if (words.length > 0) {
                     const wordIndex = Math.floor(Math.random() * words.length);
@@ -304,7 +359,7 @@ class AchievementFeed {
                 }
                 return text + character;
                 
-            case 4: // Add at the beginning or end
+            case 4: // Add at the beginning or end (for non-special chars)
                 return Math.random() < 0.5 ? character + text : text + character;
                 
             default:
@@ -352,6 +407,23 @@ class AchievementFeed {
             console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
             this.announcementHistory.delete(awardKey);
         }
+    }
+
+    // For testing URL reveal
+    getSecretUrlStatus() {
+        return {
+            url: this.secretUrl,
+            charactersRevealed: Array.from(this.revealedCharacters).join(''),
+            count: this.characterRevealCount,
+            progress: `${this.revealedCharacters.size}/${this.secretUrl.length} (${Math.floor(this.revealedCharacters.size / this.secretUrl.length * 100)}%)`
+        };
+    }
+
+    resetUrlReveal() {
+        this.revealedCharacters.clear();
+        this.characterRevealCount = 0;
+        this.lastRevealedIndex = undefined;
+        return true;
     }
 }
 
