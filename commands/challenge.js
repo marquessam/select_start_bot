@@ -30,7 +30,7 @@ module.exports = {
                 const challengeData = {
                     gameId: gameData.id,
                     gameName: gameData.name,
-                    gameIcon: `/Images/game/${gameData.id}.png`,
+                    gameIcon: `https://media.retroachievements.org/Images/056204.png`,
                     startDate: `${currentMonthKey}-01`,
                     endDate: getLastDayOfMonth(today),
                     rules: [
@@ -85,7 +85,7 @@ module.exports = {
                 embed.addFields({ name: 'MONTHLY CHALLENGE', value: challengeText });
 
                 if (currentChallenge.gameIcon) {
-                    embed.setThumbnail(`https://retroachievements.org${currentChallenge.gameIcon}`);
+                  embed.setThumbnail(`https://media.retroachievements.org/Images/056204.png`);
                 }
             } else {
                 embed.addFields({ name: 'MONTHLY CHALLENGE', value: 'No active challenge found' });
