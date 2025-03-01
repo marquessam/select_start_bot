@@ -131,8 +131,8 @@ async function fetchLeaderboardData(force = false) {
         
         // Include all tracked games but prioritize the current month's games
         const trackedGames = isMarchChallenge 
-            ? ['113355', '7181', '355', '274', '319', '10024'] 
-            : ['355', '274', '319', '10024', '113355', '7181'];
+            ? ['11335', '7181', '355', '274', '319', '10024'] 
+            : ['355', '274', '319', '10024', '11335', '7181'];
 
         const userProgressData = await batchFetchUserProgress(validUsers, trackedGames);
 
@@ -152,7 +152,7 @@ async function fetchLeaderboardData(force = false) {
             }
 
             // Use the appropriate game ID for the current month
-            const currentGameId = isMarchChallenge ? '113355' : challenge.gameId;
+            const currentGameId = isMarchChallenge ? '11335' : challenge.gameId;
             const completionStats = getGameCompletionStats(allGameAchievements, currentGameId);
 
             return {
@@ -191,7 +191,7 @@ function getGameCompletionStats(achievements, gameId) {
     const completed = gameAchievements.filter(ach => parseInt(ach.DateEarned, 10) > 0).length;
 
     // Fallback for Mega Man X5 if no achievements found
-    const defaultTotal = gameId === '113355' ? 53 : 0;
+    const defaultTotal = gameId === '11335' ? 53 : 0;
 
     const hasBeatenGame = gameAchievements.some(ach => {
         const isWinCondition = (ach.Flags & 2) === 2;
