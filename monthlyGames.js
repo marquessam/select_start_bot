@@ -53,7 +53,7 @@ const monthlyGames = {
             allowMastery: true
         },
         shadowGame: {
-            id: "8181",
+            id: "7181",
             name: "Monster Rancher Advance 2",
             progression: [171381, 171382, 171383, 171384, 171385, 171386, 171387, 171388, 171389, 171390],
             winConditions: [171391],
