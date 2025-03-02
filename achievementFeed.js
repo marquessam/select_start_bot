@@ -16,18 +16,10 @@ class AchievementFeed {
         this._processingAchievements = false;
         this.isPaused = false;
         
-        // For the URL character reveal
+        // Simplified URL reveal mechanism
         this.secretUrl = "https://shadowgameboy.netlify.app/";
         this.urlCharacters = this.secretUrl.split('');
-        this.revealedCharacters = new Set(); // Track which characters have been revealed
-        this.characterRevealCount = 0;
-        this.lastRevealedIndex = undefined; // Track last revealed character index for sequence
-        this.services = null; // Will store service references
-        
-        // NEW: Keep track of URL reveal activity to prevent it from stopping
-        this.lastRevealTimestamp = Date.now();
-        this.revealActivityTimeout = 14 * 24 * 60 * 60 * 1000; // 14 days in milliseconds
-        this.charactersPerReveal = Math.floor(Math.random() * 3) + 1; // 1-3 characters at a time
+        this.revealIndex = 0; // Simple index to track where we are in the URL
     }
 
     setServices(services) {
@@ -196,113 +188,28 @@ class AchievementFeed {
             let description = achievement.Description || 'No description available';
             let pointsText = `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`;
 
-            // Check if we should reset the URL reveal mechanism if inactive for too long
-            const currentTime = Date.now();
-            if (currentTime - this.lastRevealTimestamp > this.revealActivityTimeout) {
-                console.log("[ACHIEVEMENT FEED] URL reveal reset due to inactivity");
-                this.resetUrlReveal();
-            }
+            // --------- SIMPLIFIED URL REVEAL LOGIC ---------
             
-            // Update the timestamp
-            this.lastRevealTimestamp = currentTime;
-
-            // Check if we should include characters from the URL
-            // If all characters have been revealed, reset and start over
-            if (this.revealedCharacters.size >= this.secretUrl.length) {
-                // Reset for a new cycle, but skip one achievement
-                if (this.characterRevealCount % (this.secretUrl.length + 1) === this.secretUrl.length) {
-                    // Skip this one (no character insertion)
-                    this.characterRevealCount++;
-                } else {
-                    // Start a new cycle
-                    this.revealedCharacters.clear();
-                    this.characterRevealCount = 0;
-                    this.lastRevealedIndex = undefined;
-                }
-            }
-
-            // Only add URL characters if we're not on the skip position
-            if (this.characterRevealCount % (this.secretUrl.length + 1) !== this.secretUrl.length) {
-                // Determine how many characters to reveal this time (1-3)
-                this.charactersPerReveal = Math.floor(Math.random() * 3) + 1;
+            // Add one character from the URL (simple incremental approach)
+            if (this.revealIndex < this.urlCharacters.length) {
+                // Always add the next character before the game title
+                let nextChar = this.urlCharacters[this.revealIndex];
+                gameTitle = nextChar + ' ' + gameTitle;
                 
-                // Add multiple characters
-                for (let i = 0; i < this.charactersPerReveal; i++) {
-                    // Get available characters that haven't been revealed yet
-                    const availableChars = this.urlCharacters.filter(char => !this.revealedCharacters.has(char));
-                    
-                    // If we have characters left to reveal
-                    if (availableChars.length > 0) {
-                        let characterToReveal;
-                        
-                        // 20% chance to reveal a sequential character if possible
-                        if (Math.random() < 0.2 && this.lastRevealedIndex !== undefined) {
-                            const nextIndex = this.lastRevealedIndex + 1;
-                            // Try to reveal the next character in sequence if available
-                            if (nextIndex < this.secretUrl.length && !this.revealedCharacters.has(this.urlCharacters[nextIndex])) {
-                                characterToReveal = this.urlCharacters[nextIndex];
-                                this.lastRevealedIndex = nextIndex;
-                            } else {
-                                // Fall back to random selection
-                                const randomIndex = Math.floor(Math.random() * availableChars.length);
-                                characterToReveal = availableChars[randomIndex];
-                                this.lastRevealedIndex = this.urlCharacters.indexOf(characterToReveal);
-                            }
-                        } else {
-                            // Random character selection
-                            const randomIndex = Math.floor(Math.random() * availableChars.length);
-                            characterToReveal = availableChars[randomIndex];
-                            this.lastRevealedIndex = this.urlCharacters.indexOf(characterToReveal);
-                        }
-                        
-                        // Mark this character as revealed
-                        this.revealedCharacters.add(characterToReveal);
-                        
-                        // Choose a random position to insert the character
-                        // Create a weighted distribution favoring the description for longer texts
-                        const positionWeights = [
-                            1,  // game title
-                            1,  // earned text
-                            2,  // description (higher weight = more likely)
-                            1   // points text
-                        ];
-                        
-                        let position = 0;
-                        const weightSum = positionWeights.reduce((a, b) => a + b, 0);
-                        let randomValue = Math.random() * weightSum;
-                        
-                        for (let i = 0; i < positionWeights.length; i++) {
-                            randomValue -= positionWeights[i];
-                            if (randomValue <= 0) {
-                                position = i;
-                                break;
-                            }
-                        }
-                        
-                        switch (position) {
-                            case 0: // Add to game title
-                                gameTitle = this.insertCharacterRandomly(gameTitle, characterToReveal);
-                                break;
-                            case 1: // Add to earned text
-                                earnedText = this.insertCharacterRandomly(earnedText, characterToReveal);
-                                break;
-                            case 2: // Add to description
-                                description = this.insertCharacterRandomly(description, characterToReveal);
-                                break;
-                            case 3: // Add to points text
-                                pointsText = this.insertCharacterRandomly(pointsText, characterToReveal);
-                                break;
-                        }
-                    }
-                }
+                // Increment index for next time
+                this.revealIndex++;
+                
+                // Log the URL reveal progress
+                const revealedChars = this.urlCharacters.slice(0, this.revealIndex).join('');
+                console.log(`[URL REVEAL] Added character: ${nextChar} - Progress: ${this.revealIndex}/${this.urlCharacters.length}`);
+                console.log(`[URL REVEAL] Current URL: ${revealedChars}`);
+            } else {
+                // Reset when we reach the end, but add a note to the log
+                console.log(`[URL REVEAL] URL fully revealed, resetting counter`);
+                this.revealIndex = 0;
             }
-            
-            // Increment the counter for tracking where we are in the URL reveal sequence
-            this.characterRevealCount++;
-            
-            // Log the URL reveal status for debugging
-            console.log(`[URL REVEAL] Progress: ${this.revealedCharacters.size}/${this.secretUrl.length} - Revealed: ${Array.from(this.revealedCharacters).join('')}`);
-            
+            // -----------------------------------------------
+
             const embed = new EmbedBuilder()
                 .setColor(color)
                 .setTitle(gameTitle)
@@ -329,65 +236,6 @@ class AchievementFeed {
 
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error sending notification:', error);
-        }
-    }
-
-    // Enhanced method to insert a character randomly into a string
-    insertCharacterRandomly(text, character) {
-        if (!text || text.length === 0) return text;
-        
-        // Special handling for URL structural characters to make them more noticeable
-        const isSpecialChar = ['/', '.', ':', 'h', 't', 'p', 's'].includes(character);
-        
-        // Different insertion methods
-        const insertionMethod = Math.floor(Math.random() * (isSpecialChar ? 3 : 5));
-        
-        switch (insertionMethod) {
-            case 0: // Insert character with no space
-                const position = Math.floor(Math.random() * text.length);
-                return text.slice(0, position) + character + text.slice(position);
-                
-            case 1: // Add to beginning or end for special chars, more noticeable
-                if (isSpecialChar) {
-                    return Math.random() < 0.7 ? character + text : text + character;
-                } else {
-                    const replacePos = Math.floor(Math.random() * text.length);
-                    return text.slice(0, replacePos) + character + text.slice(replacePos + 1);
-                }
-                
-            case 2: // Add character with extra space around it for special chars
-                if (isSpecialChar) {
-                    return text + ' ' + character + ' ';
-                } else {
-                    const spacePos = text.lastIndexOf(' ');
-                    if (spacePos === -1) {
-                        return text + ' ' + character;
-                    } else {
-                        const insertAt = Math.floor(Math.random() * (spacePos + 1));
-                        return text.slice(0, insertAt) + ' ' + character + text.slice(insertAt);
-                    }
-                }
-                
-            case 3: // Insert inside a word (for non-special chars)
-                const words = text.split(' ');
-                if (words.length > 0) {
-                    const wordIndex = Math.floor(Math.random() * words.length);
-                    const word = words[wordIndex];
-                    if (word.length > 2) {
-                        const charPos = Math.floor(Math.random() * (word.length - 1)) + 1;
-                        words[wordIndex] = word.slice(0, charPos) + character + word.slice(charPos);
-                    } else {
-                        words[wordIndex] = word + character;
-                    }
-                    return words.join(' ');
-                }
-                return text + character;
-                
-            case 4: // Add at the beginning or end (for non-special chars)
-                return Math.random() < 0.5 ? character + text : text + character;
-                
-            default:
-                return text + character;
         }
     }
 
@@ -435,19 +283,17 @@ class AchievementFeed {
 
     // For testing URL reveal
     getSecretUrlStatus() {
+        const revealedChars = this.urlCharacters.slice(0, this.revealIndex).join('');
         return {
             url: this.secretUrl,
-            charactersRevealed: Array.from(this.revealedCharacters).join(''),
-            count: this.characterRevealCount,
-            progress: `${this.revealedCharacters.size}/${this.secretUrl.length} (${Math.floor(this.revealedCharacters.size / this.secretUrl.length * 100)}%)`
+            charactersRevealed: revealedChars,
+            count: this.revealIndex,
+            progress: `${this.revealIndex}/${this.secretUrl.length} (${Math.floor(this.revealIndex / this.secretUrl.length * 100)}%)`
         };
     }
 
     resetUrlReveal() {
-        this.revealedCharacters.clear();
-        this.characterRevealCount = 0;
-        this.lastRevealedIndex = undefined;
-        this.lastRevealTimestamp = Date.now();
+        this.revealIndex = 0;
         console.log("[ACHIEVEMENT FEED] URL reveal mechanism has been reset");
         return true;
     }
