@@ -270,7 +270,7 @@ process.on('uncaughtException', (error) => {
 });
 process.on('unhandledRejection', (error) => {
     console.error('Unhandled Rejection:', error);
-});
+
 
 // Start Bot
 client.login(process.env.DISCORD_TOKEN);
