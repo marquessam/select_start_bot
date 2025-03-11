@@ -162,61 +162,80 @@ async function waitForUserStatsInitialization(userStats) {
 }
 
 async function coordinateUpdate(services, force = false) {
-    if (!force && services.leaderboardCache.hasInitialData) {
-        console.log('[UPDATE] Skipping redundant update, using cached data');
+    // Check if an update is already in progress
+    if (services._updating) {
+        console.log('[UPDATE] Update already in progress, skipping');
         return;
     }
-
-    // Add time-based throttling
-    const now = Date.now();
-    const lastUpdate = services?.leaderboardCache?.getLastUpdated() || 0;
     
-    if (!force && (now - lastUpdate) < 15 * 60 * 1000) { // 15 minutes minimum between updates
-        console.log('[UPDATE] Skipping update, last update was too recent');
-        return;
-    }
-
-    console.log('[UPDATE] Starting coordinated update...');
+    // Set updating flag to prevent recursive calls
+    services._updating = true;
     
-    if (!services?.leaderboardCache || !services?.userStats) {
-        console.log('[UPDATE] Required services not available');
-        return;
-    }
-
     try {
-        if (services.userStats.isInitializing || !services.userStats.initializationComplete) {
-            console.log('[UPDATE] Waiting for UserStats initialization...');
-            await waitForUserStatsInitialization(services.userStats);
-        }
-
-        const leaderboardData = await services.leaderboardCache.updateLeaderboards(force);
-        console.log('[UPDATE] Leaderboard data updated');
-
-        if (!leaderboardData?.leaderboard) {
-            console.log('[UPDATE] No leaderboard data available');
+        if (!force && services.leaderboardCache.hasInitialData) {
+            console.log('[UPDATE] Skipping redundant update, using cached data');
+            services._updating = false;
             return;
         }
 
-        // Only recheck points once per day unless forced
-        const lastPointsCheck = services.userStats.lastPointsCheck || 0;
-        if (force || (now - lastPointsCheck) > 24 * 60 * 60 * 1000) { // Once per day
-            await services.userStats.recheckAllPoints();
-            services.userStats.lastPointsCheck = now;
-            console.log('[UPDATE] Points checked and processed');
-        } else {
-            console.log('[UPDATE] Skipping points recheck, last check was too recent');
-        }
+        // Add time-based throttling
+        const now = Date.now();
+        const lastUpdate = services?.leaderboardCache?.getLastUpdated() || 0;
         
-        await services.userStats.saveStats();
-        console.log('[UPDATE] Stats saved');
+        if (!force && (now - lastUpdate) < 15 * 60 * 1000) { // 15 minutes minimum between updates
+            console.log('[UPDATE] Skipping update, last update was too recent');
+            services._updating = false;
+            return;
+        }
 
-        services.leaderboardCache.hasInitialData = true;
-        console.log('[UPDATE] Coordinated update complete');
-    } catch (error) {
-        console.error('[UPDATE] Error during coordinated update:', error);
+        console.log('[UPDATE] Starting coordinated update...');
+        
+        if (!services?.leaderboardCache || !services?.userStats) {
+            console.log('[UPDATE] Required services not available');
+            services._updating = false;
+            return;
+        }
+
+        try {
+            if (services.userStats.isInitializing || !services.userStats.initializationComplete) {
+                console.log('[UPDATE] Waiting for UserStats initialization...');
+                await waitForUserStatsInitialization(services.userStats);
+            }
+
+            const leaderboardData = await services.leaderboardCache.updateLeaderboards(force);
+            console.log('[UPDATE] Leaderboard data updated');
+
+            if (!leaderboardData?.leaderboard) {
+                console.log('[UPDATE] No leaderboard data available');
+                services._updating = false;
+                return;
+            }
+
+            // Pass the already fetched leaderboard data to recheckAllPoints
+            // Only recheck points once per day unless forced
+            const lastPointsCheck = services.userStats.lastPointsCheck || 0;
+            if (force || (now - lastPointsCheck) > 24 * 60 * 60 * 1000) { // Once per day
+                // IMPORTANT: Pass the already fetched leaderboard data to avoid another fetch
+                await services.userStats.recheckAllPoints(null, leaderboardData);
+                services.userStats.lastPointsCheck = now;
+                console.log('[UPDATE] Points checked and processed');
+            } else {
+                console.log('[UPDATE] Skipping points recheck, last check was too recent');
+            }
+            
+            await services.userStats.saveStats();
+            console.log('[UPDATE] Stats saved');
+
+            services.leaderboardCache.hasInitialData = true;
+            console.log('[UPDATE] Coordinated update complete');
+        } catch (error) {
+            console.error('[UPDATE] Error during coordinated update:', error);
+        }
+    } finally {
+        // Always clear the updating flag when done
+        services._updating = false;
     }
 }
-
 async function handleMessage(message, services) {
     if (message.author.bot || !services) return;
     
