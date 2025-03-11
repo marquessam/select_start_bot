@@ -167,6 +167,15 @@ async function coordinateUpdate(services, force = false) {
         return;
     }
 
+    // Add time-based throttling
+    const now = Date.now();
+    const lastUpdate = services?.leaderboardCache?.getLastUpdated() || 0;
+    
+    if (!force && (now - lastUpdate) < 15 * 60 * 1000) { // 15 minutes minimum between updates
+        console.log('[UPDATE] Skipping update, last update was too recent');
+        return;
+    }
+
     console.log('[UPDATE] Starting coordinated update...');
     
     if (!services?.leaderboardCache || !services?.userStats) {
@@ -188,8 +197,15 @@ async function coordinateUpdate(services, force = false) {
             return;
         }
 
-        await services.userStats.recheckAllPoints();
-        console.log('[UPDATE] Points checked and processed');
+        // Only recheck points once per day unless forced
+        const lastPointsCheck = services.userStats.lastPointsCheck || 0;
+        if (force || (now - lastPointsCheck) > 24 * 60 * 60 * 1000) { // Once per day
+            await services.userStats.recheckAllPoints();
+            services.userStats.lastPointsCheck = now;
+            console.log('[UPDATE] Points checked and processed');
+        } else {
+            console.log('[UPDATE] Skipping points recheck, last check was too recent');
+        }
         
         await services.userStats.saveStats();
         console.log('[UPDATE] Stats saved');
@@ -245,7 +261,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // Periodic Updates
-const UPDATE_INTERVAL = 10 * 60 * 1000; // 10 minutes
+const UPDATE_INTERVAL = 30 * 60 * 1000; // 30 minutes (increased from 10 minutes)
 setInterval(() => coordinateUpdate(services, true), UPDATE_INTERVAL);
 
 // Graceful Shutdown
@@ -270,7 +286,7 @@ process.on('uncaughtException', (error) => {
 });
 process.on('unhandledRejection', (error) => {
     console.error('Unhandled Rejection:', error);
-
+});
 
 // Start Bot
 client.login(process.env.DISCORD_TOKEN);
