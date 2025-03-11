@@ -7,7 +7,7 @@ class AchievementFeed {
     constructor(client) {
         this.client = client;
         this.feedChannel = process.env.ACHIEVEMENT_FEED_CHANNEL;
-        this.checkInterval = 5 * 60 * 1000; // Check every 5 minutes
+        this.checkInterval = 15 * 60 * 1000; // Check every 15 minutes (increased from 5 minutes)
         this.announcementHistory = new Set();
         this.announcementQueue = [];
         this.isProcessingQueue = false;
@@ -99,6 +99,17 @@ class AchievementFeed {
 
         this._processingAchievements = true;
         try {
+            // Get current monthly challenge ID first
+            const currentChallenge = await database.getCurrentChallenge();
+            const currentMonthGameId = currentChallenge?.gameId;
+            
+            if (!currentMonthGameId) {
+                console.log('[ACHIEVEMENT FEED] No current monthly challenge found, skipping check');
+                return;
+            }
+            
+            console.log(`[ACHIEVEMENT FEED] Checking achievements for current month game ID: ${currentMonthGameId}`);
+            
             const [allAchievements, storedTimestamps] = await Promise.all([
                 raAPI.fetchAllRecentAchievements(),
                 database.getLastAchievementTimestamps()
@@ -110,8 +121,16 @@ class AchievementFeed {
             for (const { username, achievements } of allAchievements) {
                 if (!achievements || achievements.length === 0) continue;
 
+                // Filter achievements to only include current monthly game and shadow game
+                const relevantAchievements = achievements.filter(a => 
+                    a.GameID == currentMonthGameId ||
+                    this.isForCurrentShadowGame(a.GameID)
+                );
+                
+                if (relevantAchievements.length === 0) continue;
+
                 const lastCheckedTime = storedTimestamps[username.toLowerCase()] || 0;
-                const newAchievements = achievements
+                const newAchievements = relevantAchievements
                     .filter(a => new Date(a.Date).getTime() > lastCheckedTime)
                     .sort((a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime());
 
@@ -121,7 +140,7 @@ class AchievementFeed {
 
                     for (const achievement of newAchievements) {
                         await this.sendAchievementNotification(channel, username, achievement);
-                        await new Promise(resolve => setTimeout(resolve, 500));
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Increased delay between notifications
                     }
                 }
             }
@@ -130,6 +149,18 @@ class AchievementFeed {
         } finally {
             this._processingAchievements = false;
         }
+    }
+
+    // Helper method to check if achievement is for current shadow game
+    isForCurrentShadowGame(gameId) {
+        // Get current shadow game ID from monthlyGames (for March 2025)
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const currentGames = require('./monthlyGames').monthlyGames[monthKey];
+        
+        if (!currentGames || !currentGames.shadowGame) return false;
+        
+        return gameId == currentGames.shadowGame.id;
     }
 
     async sendAchievementNotification(channel, username, achievement) {
