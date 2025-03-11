@@ -14,7 +14,7 @@ function delay(ms) {
 // ---------------------------------------
 const rateLimiter = {
     requests: new Map(),
-    cooldown: 1250, // Slightly increased cooldown to prevent rate limits
+    cooldown: 5000, // Increased from 1250ms to 5000ms (4x slower)
     queue: [],
     processing: false,
 
@@ -74,6 +74,10 @@ const cache = {
     userProfiles: new Map()
 };
 
+// Game progress cache
+const gameProgressCache = new Map();
+const GAME_PROGRESS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
 // ---------------------------------------
 // Fetch User Profile (Optimized with Cache)
 // ---------------------------------------
@@ -107,7 +111,7 @@ async function fetchUserProfile(username) {
 // Fetch Leaderboard Data (Caching Added)
 // ---------------------------------------
 async function fetchLeaderboardData(force = false) {
-    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+    const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes (increased from 5 minutes)
 
     if (!force && cache.leaderboard && (Date.now() - cache.leaderboardTimestamp) < CACHE_DURATION) {
         return cache.leaderboard;
@@ -124,16 +128,29 @@ async function fetchLeaderboardData(force = false) {
         const validUsers = await database.getValidUsers();
         console.log(`[RA API] Tracking games for ${validUsers.length} users.`);
 
-        // Make sure Mega Man X5 is the first game in the array for March
+        // Only track the current month's games instead of all games
         const month = new Date().getMonth() + 1;
         const year = new Date().getFullYear();
         const isMarchChallenge = month === 3 && year === 2025;
         
-        // Include all tracked games but prioritize the current month's games
-        const trackedGames = isMarchChallenge 
-            ? ['11335', '7181', '355', '274', '319', '10024'] 
-            : ['355', '274', '319', '10024', '11335', '7181'];
+        // Get only current month's games (monthly + shadow)
+        let trackedGames = [];
+        if (isMarchChallenge) {
+            trackedGames = ['11335', '7181']; // Just Mega Man X5 and Monster Rancher Advance 2
+        } else {
+            const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+            const monthConfig = require('./monthlyGames').monthlyGames[monthKey];
+            if (monthConfig) {
+                trackedGames = [
+                    monthConfig.monthlyGame.id,
+                    monthConfig.shadowGame.id
+                ].filter(Boolean);
+            } else {
+                trackedGames = [challenge.gameId]; // Fallback to current challenge only
+            }
+        }
 
+        console.log(`[RA API] Only tracking ${trackedGames.length} games: ${trackedGames.join(', ')}`);
         const userProgressData = await batchFetchUserProgress(validUsers, trackedGames);
 
         const usersProgress = validUsers.map(username => {
@@ -214,7 +231,7 @@ function getGameCompletionStats(achievements, gameId) {
 async function batchFetchUserProgress(usernames, gameIds) {
     const fetchResults = [];
     const CHUNK_SIZE = 1;
-    const CHUNK_DELAY_MS = 1500;
+    const CHUNK_DELAY_MS = 6000; // Increased from 1500ms to 6000ms (4x slower)
 
     for (let i = 0; i < usernames.length; i += CHUNK_SIZE) {
         const chunk = usernames.slice(i, i + CHUNK_SIZE);
@@ -251,6 +268,14 @@ async function batchFetchUserProgress(usernames, gameIds) {
 
 async function fetchCompleteGameProgress(username, gameId) {
     try {
+        // Check cache first
+        const cacheKey = `${username}-${gameId}`;
+        const cachedData = gameProgressCache.get(cacheKey);
+        
+        if (cachedData && (Date.now() - cachedData.timestamp) < GAME_PROGRESS_CACHE_TTL) {
+            return cachedData.data;
+        }
+
         const params = new URLSearchParams({
             z: process.env.RA_USERNAME,
             y: process.env.RA_API_KEY,
@@ -272,6 +297,12 @@ async function fetchCompleteGameProgress(username, gameId) {
             GameTitle: response.Title || ''
         }));
 
+        // Cache the result
+        gameProgressCache.set(cacheKey, {
+            data: achievements,
+            timestamp: Date.now()
+        });
+
         return achievements;
     } catch (error) {
         console.error(`[RA API] Error fetching complete progress for ${username}, game ${gameId}:`, error);
@@ -284,7 +315,7 @@ async function fetchHistoricalProgress(usernames, gameIds) {
         console.log('[RA API] Fetching historical progress...');
         
         const results = new Map();
-        const CHUNK_DELAY_MS = 1500;
+        const CHUNK_DELAY_MS = 6000; // Increased from 1500ms to 6000ms (4x slower)
 
         for (const username of usernames) {
             const userProgress = new Map();
@@ -326,10 +357,20 @@ async function fetchAllRecentAchievements() {
 
         const allAchievements = [];
         const CHUNK_SIZE = 1;
-        const CHUNK_DELAY_MS = 1500;
+        const CHUNK_DELAY_MS = 6000; // Increased from 1500ms to 6000ms (4x slower)
 
-        for (let i = 0; i < validUsers.length; i += CHUNK_SIZE) {
-            const chunk = validUsers.slice(i, i + CHUNK_SIZE);
+        // Get current month games
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const currentGames = require('./monthlyGames').monthlyGames[monthKey];
+        
+        // Limit to processing fewer users (only active ones)
+        // This can be adjusted based on your needs
+        const activeUsers = await getActiveUsers(validUsers, 20); // Get top 20 active users
+        console.log(`[RA API] Limiting achievement checks to ${activeUsers.length} active users`);
+
+        for (let i = 0; i < activeUsers.length; i += CHUNK_SIZE) {
+            const chunk = activeUsers.slice(i, i + CHUNK_SIZE);
 
             const chunkPromises = chunk.map(async username => {
                 try {
@@ -337,7 +378,7 @@ async function fetchAllRecentAchievements() {
                         z: process.env.RA_USERNAME,
                         y: process.env.RA_API_KEY,
                         u: username,
-                        c: 50
+                        c: 20  // Reduced from 50 to 20 recent achievements
                     });
 
                     const url = `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`;
@@ -353,7 +394,7 @@ async function fetchAllRecentAchievements() {
             const chunkResults = await Promise.all(chunkPromises);
             allAchievements.push(...chunkResults);
 
-            if (i + CHUNK_SIZE < validUsers.length) {
+            if (i + CHUNK_SIZE < activeUsers.length) {
                 await delay(CHUNK_DELAY_MS);
             }
         }
@@ -362,6 +403,19 @@ async function fetchAllRecentAchievements() {
     } catch (error) {
         console.error('[RA API] Error in fetchAllRecentAchievements:', error);
         return [];
+    }
+}
+
+// Helper function to get most active users
+async function getActiveUsers(validUsers, limit = 20) {
+    try {
+        // This could be replaced with actual logic to determine
+        // which users are most active in the challenge
+        // For now, we'll just return the first 'limit' users
+        return validUsers.slice(0, limit);
+    } catch (error) {
+        console.error('[RA API] Error getting active users:', error);
+        return validUsers.slice(0, 10); // Fallback to first 10 users
     }
 }
 
