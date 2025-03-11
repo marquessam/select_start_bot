@@ -246,59 +246,50 @@ class UserStats {
     //  Points Management
     // =======================
 
-    async recheckAllPoints(guild) {
-        try {
-            const users = await this.getAllUsers();
-            const processedUsers = [];
-            const errors = [];
+    async recheckAllPoints(guild = null, existingData = null) {
+    try {
+        const users = await this.getAllUsers();
+        const processedUsers = [];
+        const errors = [];
 
-            const data = await raAPI.fetchLeaderboardData(true);
-            if (!data?.leaderboard) {
-                throw new Error('Failed to fetch leaderboard data');
-            }
-
-            for (const username of users) {
-                try {
-                    // If guild is provided, try to fetch the Discord member
-                    let member = null;
-                    if (guild) {
-                        try {
-                            const guildMembers = await guild.members.fetch();
-                            member = guildMembers.find(m =>
-                                m.displayName.toLowerCase() === username.toLowerCase()
-                            );
-                        } catch (e) {
-                            console.warn(`Could not find Discord member for ${username}:`, e);
-                        }
-                    }
-
-                    // Pull user progress from the fetched leaderboard data
-                    const userProgress = data.leaderboard.find(
-                        u => u.username.toLowerCase() === username.toLowerCase()
-                    );
-
-                    if (userProgress) {
-                        // Check and apply all achievement-based points
-                        await this.processAchievementPoints(username, userProgress);
-                        processedUsers.push(username);
-                    }
-                } catch (error) {
-                    console.error(`Error processing ${username}:`, error);
-                    errors.push({ username, error: error.message });
-                }
-            }
-
-            // Force a leaderboard update
-            if (global.leaderboardCache) {
-                await global.leaderboardCache.updateLeaderboards(true);
-            }
-
-            return { processed: processedUsers, errors };
-        } catch (error) {
-            console.error('Error in recheckAllPoints:', error);
-            throw error;
+        // Use existing data if provided, otherwise fetch new data
+        let data;
+        if (existingData) {
+            console.log('[USER STATS] Using provided leaderboard data for points check');
+            data = existingData;
+        } else {
+            console.log('[USER STATS] Fetching new leaderboard data for points check');
+            data = await raAPI.fetchLeaderboardData(true);
         }
+        
+        if (!data?.leaderboard) {
+            throw new Error('Failed to get leaderboard data for points check');
+        }
+
+        for (const username of users) {
+            try {
+                // Pull user progress from the fetched leaderboard data
+                const userProgress = data.leaderboard.find(
+                    u => u.username.toLowerCase() === username.toLowerCase()
+                );
+
+                if (userProgress) {
+                    // Check and apply all achievement-based points
+                    await this.processAchievementPoints(username, userProgress);
+                    processedUsers.push(username);
+                }
+            } catch (error) {
+                console.error(`Error processing ${username}:`, error);
+                errors.push({ username, error: error.message });
+            }
+        }
+
+        return { processed: processedUsers, errors };
+    } catch (error) {
+        console.error('Error in recheckAllPoints:', error);
+        throw error;
     }
+}
 
    async processAchievementPoints(username, userProgress) {
         const userStats = this.cache.stats.users[username];
