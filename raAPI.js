@@ -406,13 +406,52 @@ async function fetchAllRecentAchievements() {
     }
 }
 
-// Helper function to get most active users
+// Helper function to get most active users based on leaderboard data
 async function getActiveUsers(validUsers, limit = 20) {
     try {
-        // This could be replaced with actual logic to determine
-        // which users are most active in the challenge
-        // For now, we'll just return the first 'limit' users
-        return validUsers.slice(0, limit);
+        // First, try to get the current leaderboard data from cache
+        const leaderboardData = cache.leaderboard?.leaderboard || [];
+        
+        if (leaderboardData.length > 0) {
+            // Filter users who have made progress in the current monthly challenge
+            const activeUsers = leaderboardData
+                .filter(user => 
+                    // User has some completion percentage
+                    parseFloat(user.completionPercentage) > 0 ||
+                    // Or has unlocked at least one achievement
+                    user.completedAchievements > 0
+                )
+                .map(user => user.username);
+            
+            // If we have active users, return them (up to the limit)
+            if (activeUsers.length > 0) {
+                console.log(`[RA API] Found ${activeUsers.length} active users from leaderboard data`);
+                return activeUsers.slice(0, limit);
+            }
+        }
+        
+        // If we can't determine activity from leaderboard, try recent timestamps
+        try {
+            const timestamps = await database.getLastAchievementTimestamps();
+            
+            // Sort users by recency of their last achievement
+            const sortedUsers = Object.entries(timestamps)
+                .filter(([username]) => validUsers.includes(username.toLowerCase()))
+                .sort(([, timeA], [, timeB]) => timeB - timeA)
+                .map(([username]) => username);
+            
+            if (sortedUsers.length > 0) {
+                console.log(`[RA API] Found ${sortedUsers.length} users with recent activity`);
+                return sortedUsers.slice(0, limit);
+            }
+        } catch (error) {
+            console.error('[RA API] Error getting timestamps:', error);
+        }
+
+        // Fallback to random sampling if we still have no active users
+        const shuffledUsers = [...validUsers].sort(() => 0.5 - Math.random());
+        console.log(`[RA API] Using random sampling of ${limit} users from ${validUsers.length} total users`);
+        return shuffledUsers.slice(0, limit);
     } catch (error) {
         console.error('[RA API] Error getting active users:', error);
         return validUsers.slice(0, 10); // Fallback to first 10 users
