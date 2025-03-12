@@ -7,7 +7,7 @@ class AchievementFeed {
     constructor(client) {
         this.client = client;
         this.feedChannel = process.env.ACHIEVEMENT_FEED_CHANNEL;
-        this.checkInterval = 15 * 60 * 1000; // Check every 15 minutes
+        this.checkInterval = 10 * 60 * 1000; // Check every 5 minutes
         this.announcementHistory = new Set();
         this.announcementQueue = [];
         this.isProcessingQueue = false;
@@ -74,6 +74,8 @@ class AchievementFeed {
         this.isProcessingQueue = true;
         try {
             const channel = await this.client.channels.fetch(this.feedChannel);
+            console.log(`[ACHIEVEMENT FEED] Processing announcement queue with ${this.announcementQueue.length} items`);
+            
             while (this.announcementQueue.length > 0) {
                 const messageOptions = this.announcementQueue.shift();
                 await channel.send(messageOptions);
@@ -94,22 +96,14 @@ class AchievementFeed {
 
         this._processingAchievements = true;
         try {
-            // Get current monthly challenge ID - but don't require it for processing
-            const currentChallenge = await database.getCurrentChallenge();
-            const currentMonthGameId = currentChallenge?.gameId;
-            
-            if (currentMonthGameId) {
-                console.log(`[ACHIEVEMENT FEED] Current monthly game ID: ${currentMonthGameId}`);
-            } else {
-                console.log('[ACHIEVEMENT FEED] No current monthly challenge found, will still check all achievements');
-            }
-            
-            console.log('[ACHIEVEMENT FEED] Checking recent achievements for all users');
+            console.log('[ACHIEVEMENT FEED] Checking recent achievements...');
             
             const [allAchievements, storedTimestamps] = await Promise.all([
                 raAPI.fetchAllRecentAchievements(),
                 database.getLastAchievementTimestamps()
             ]);
+            
+            console.log(`[ACHIEVEMENT FEED] Got achievements data for ${allAchievements.length} users`);
             
             const channel = await this.client.channels.fetch(this.feedChannel);
             if (!channel) throw new Error('Achievement feed channel not found');
@@ -117,16 +111,15 @@ class AchievementFeed {
             for (const { username, achievements } of allAchievements) {
                 if (!achievements || achievements.length === 0) continue;
 
-                // No longer filtering by game ID - announce all achievements
-                // Just keep track of achievements we haven't seen before
-                const relevantAchievements = achievements;
-                
-                if (relevantAchievements.length === 0) continue;
-
+                console.log(`[ACHIEVEMENT FEED] Processing user ${username} with ${achievements.length} achievements`);
                 const lastCheckedTime = storedTimestamps[username.toLowerCase()] || 0;
-                const newAchievements = relevantAchievements
+                console.log(`[ACHIEVEMENT FEED] Last checked time for ${username}: ${new Date(lastCheckedTime).toISOString()}`);
+                
+                const newAchievements = achievements
                     .filter(a => new Date(a.Date).getTime() > lastCheckedTime)
                     .sort((a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime());
+
+                console.log(`[ACHIEVEMENT FEED] Found ${newAchievements.length} new achievements for ${username} after timestamp filtering`);
 
                 if (newAchievements.length > 0) {
                     const latestTime = new Date(newAchievements[newAchievements.length - 1].Date).getTime();
@@ -134,7 +127,7 @@ class AchievementFeed {
 
                     for (const achievement of newAchievements) {
                         await this.sendAchievementNotification(channel, username, achievement);
-                        await new Promise(resolve => setTimeout(resolve, 1000)); // Delay between notifications
+                        await new Promise(resolve => setTimeout(resolve, 500));
                     }
                 }
             }
@@ -145,46 +138,6 @@ class AchievementFeed {
         }
     }
 
-    // Helper method to get current monthly game ID
-    async getCurrentMonthlyGameId() {
-        // First try to get it from the database
-        const currentChallenge = await database.getCurrentChallenge();
-        if (currentChallenge?.gameId) {
-            return currentChallenge.gameId;
-        }
-        
-        // Fallback to configuration
-        const now = new Date();
-        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        const monthlyGames = require('./monthlyGames').monthlyGames;
-        const currentGames = monthlyGames[monthKey];
-        
-        return currentGames?.monthlyGame?.id || null;
-    }
-    
-    // Helper method to get current shadow game ID
-    async getCurrentShadowGameId() {
-        // First try to get from database
-        const shadowGame = await database.getShadowGame();
-        if (shadowGame?.finalReward?.gameId) {
-            return shadowGame.finalReward.gameId;
-        }
-        
-        // Fallback to configuration
-        const now = new Date();
-        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        const monthlyGames = require('./monthlyGames').monthlyGames;
-        const currentGames = monthlyGames[monthKey];
-        
-        return currentGames?.shadowGame?.id || null;
-    }
-    
-    // Helper method to check if achievement is for current shadow game
-    async isForCurrentShadowGame(gameId) {
-        const shadowGameId = await this.getCurrentShadowGameId();
-        return shadowGameId && String(gameId) === String(shadowGameId);
-    }
-
     async sendAchievementNotification(channel, username, achievement) {
         try {
             if (!channel || !username || !achievement) return;
@@ -192,7 +145,7 @@ class AchievementFeed {
             const achievementKey = `${username}-${achievement.ID}-${achievement.GameTitle}-${achievement.Title}`;
             if (this.announcementHistory.has(achievementKey)) return;
 
-            console.log(`[ACHIEVEMENT FEED] Processing achievement: ${username} - ${achievement.GameTitle} - ${achievement.Title}`);
+            console.log(`[ACHIEVEMENT FEED] Attempting to announce achievement: ${username} - ${achievement.GameTitle} - ${achievement.Title}`);
 
             const badgeUrl = achievement.BadgeName
                 ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
@@ -205,11 +158,9 @@ class AchievementFeed {
             let authorName = '';
             let authorIconUrl = '';
             let files = [];
-            let color = '#00FF00';  // Default green color for regular games
-            
+            let color = '#00FF00';  // Default color
+
             const gameId = String(achievement.GameID); // Ensure string comparison
-            const currentMonthGameId = String(await this.getCurrentMonthlyGameId());
-            const currentShadowGameId = String(await this.getCurrentShadowGameId());
 
             // Add the logo file for special games
             const logoFile = { 
@@ -217,23 +168,26 @@ class AchievementFeed {
                 name: 'game_logo.png'
             };
 
-            // Now check if this is a monthly or shadow game achievement
             if (gameId === '7181' || gameId === '8181') { // Shadow Game - Monster Rancher Advance 2
                 authorName = 'SHADOW GAME 🌘';
                 files = [logoFile];
                 authorIconUrl = 'attachment://game_logo.png';
                 color = '#FFD700';  // Gold color
-            } else if (gameId === currentMonthGameId || 
-                       gameId === '355' || gameId === '319' || gameId === '11335') { // Monthly Challenge
+            } else if (gameId === '355') { // Monthly Challenge - ALTTP
                 authorName = 'MONTHLY CHALLENGE 🏆';
                 files = [logoFile];
                 authorIconUrl = 'attachment://game_logo.png';
                 color = '#00BFFF';  // Blue color
-            } else if (gameId === currentShadowGameId) { // Current Shadow Game
-                authorName = 'SHADOW GAME 🌘';
+            } else if (gameId === '319') { // Chrono Trigger
+                authorName = 'MONTHLY CHALLENGE 🏆';
                 files = [logoFile];
                 authorIconUrl = 'attachment://game_logo.png';
-                color = '#FFD700';  // Gold color
+                color = '#00BFFF';  // Blue color
+            } else if (gameId === '11335') { // Mega Man X5
+                authorName = 'MONTHLY CHALLENGE 🏆';
+                files = [logoFile];
+                authorIconUrl = 'attachment://game_logo.png';
+                color = '#00BFFF';  // Blue color
             }
 
             // Base elements for the achievement notification
@@ -257,6 +211,7 @@ class AchievementFeed {
                 embed.setAuthor({ name: authorName, iconURL: authorIconUrl });
             }
 
+            console.log(`[ACHIEVEMENT FEED] Queueing announcement for: ${username} - ${achievement.GameTitle}`);
             await this.queueAnnouncement({ embeds: [embed], files });
             this.announcementHistory.add(achievementKey);
 
@@ -310,6 +265,26 @@ class AchievementFeed {
         } catch (error) {
             console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
             this.announcementHistory.delete(awardKey);
+        }
+    }
+
+    // Create a method to test achievements (useful for debugging)
+    async testAnnouncement() {
+        try {
+            const channel = await this.client.channels.fetch(this.feedChannel);
+            if (!channel) throw new Error('Achievement feed channel not found');
+            
+            const testEmbed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('Achievement Feed Test')
+                .setDescription('This is a test message to verify the achievement feed is working.')
+                .setTimestamp();
+            
+            await channel.send({ embeds: [testEmbed] });
+            return true;
+        } catch (error) {
+            console.error('[ACHIEVEMENT FEED] Error sending test announcement:', error);
+            return false;
         }
     }
 }
