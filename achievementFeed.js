@@ -7,7 +7,7 @@ class AchievementFeed {
     constructor(client) {
         this.client = client;
         this.feedChannel = process.env.ACHIEVEMENT_FEED_CHANNEL;
-        this.checkInterval = 10 * 60 * 1000; // Check every 5 minutes
+        this.checkInterval = 10 * 60 * 1000; // Check every 10 minutes
         this.announcementHistory = new Set();
         this.announcementQueue = [];
         this.isProcessingQueue = false;
