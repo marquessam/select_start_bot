@@ -7,7 +7,7 @@ class AchievementFeed {
     constructor(client) {
         this.client = client;
         this.feedChannel = process.env.ACHIEVEMENT_FEED_CHANNEL;
-        this.checkInterval = 15 * 60 * 1000; // Check every 15 minutes (increased from 5 minutes)
+        this.checkInterval = 15 * 60 * 1000; // Check every 15 minutes
         this.announcementHistory = new Set();
         this.announcementQueue = [];
         this.isProcessingQueue = false;
@@ -15,11 +15,6 @@ class AchievementFeed {
         this.initializationComplete = false;
         this._processingAchievements = false;
         this.isPaused = false;
-        
-        // Simplified URL reveal mechanism
-        this.secretUrl = "https://shadowgameboy.netlify.app/";
-        this.urlCharacters = this.secretUrl.split('');
-        this.revealIndex = 0; // Simple index to track where we are in the URL
     }
 
     setServices(services) {
@@ -123,7 +118,7 @@ class AchievementFeed {
 
                 // Filter achievements to only include current monthly game and shadow game
                 const relevantAchievements = achievements.filter(a => 
-                    a.GameID == currentMonthGameId ||
+                    String(a.GameID) === String(currentMonthGameId) ||
                     this.isForCurrentShadowGame(a.GameID)
                 );
                 
@@ -140,7 +135,7 @@ class AchievementFeed {
 
                     for (const achievement of newAchievements) {
                         await this.sendAchievementNotification(channel, username, achievement);
-                        await new Promise(resolve => setTimeout(resolve, 1000)); // Increased delay between notifications
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Delay between notifications
                     }
                 }
             }
@@ -153,14 +148,15 @@ class AchievementFeed {
 
     // Helper method to check if achievement is for current shadow game
     isForCurrentShadowGame(gameId) {
-        // Get current shadow game ID from monthlyGames (for March 2025)
+        // Get current shadow game ID from monthlyGames
         const now = new Date();
         const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        const currentGames = require('./monthlyGames').monthlyGames[monthKey];
+        const monthlyGames = require('./monthlyGames').monthlyGames;
+        const currentGames = monthlyGames[monthKey];
         
         if (!currentGames || !currentGames.shadowGame) return false;
         
-        return gameId == currentGames.shadowGame.id;
+        return String(gameId) === String(currentGames.shadowGame.id);
     }
 
     async sendAchievementNotification(channel, username, achievement) {
@@ -218,28 +214,6 @@ class AchievementFeed {
             let earnedText = `earned ${achievement.Title}`;
             let description = achievement.Description || 'No description available';
             let pointsText = `Points: ${achievement.Points} • ${new Date(achievement.Date).toLocaleTimeString()}`;
-
-            // --------- SIMPLIFIED URL REVEAL LOGIC ---------
-            
-            // Add one character from the URL (simple incremental approach)
-            if (this.revealIndex < this.urlCharacters.length) {
-                // Always add the next character before the game title
-                let nextChar = this.urlCharacters[this.revealIndex];
-                gameTitle = nextChar + ' ' + gameTitle;
-                
-                // Increment index for next time
-                this.revealIndex++;
-                
-                // Log the URL reveal progress
-                const revealedChars = this.urlCharacters.slice(0, this.revealIndex).join('');
-                console.log(`[URL REVEAL] Added character: ${nextChar} - Progress: ${this.revealIndex}/${this.urlCharacters.length}`);
-                console.log(`[URL REVEAL] Current URL: ${revealedChars}`);
-            } else {
-                // Reset when we reach the end, but add a note to the log
-                console.log(`[URL REVEAL] URL fully revealed, resetting counter`);
-                this.revealIndex = 0;
-            }
-            // -----------------------------------------------
 
             const embed = new EmbedBuilder()
                 .setColor(color)
@@ -310,23 +284,6 @@ class AchievementFeed {
             console.error('[ACHIEVEMENT FEED] Error announcing points award:', error);
             this.announcementHistory.delete(awardKey);
         }
-    }
-
-    // For testing URL reveal
-    getSecretUrlStatus() {
-        const revealedChars = this.urlCharacters.slice(0, this.revealIndex).join('');
-        return {
-            url: this.secretUrl,
-            charactersRevealed: revealedChars,
-            count: this.revealIndex,
-            progress: `${this.revealIndex}/${this.secretUrl.length} (${Math.floor(this.revealIndex / this.secretUrl.length * 100)}%)`
-        };
-    }
-
-    resetUrlReveal() {
-        this.revealIndex = 0;
-        console.log("[ACHIEVEMENT FEED] URL reveal mechanism has been reset");
-        return true;
     }
 }
 
