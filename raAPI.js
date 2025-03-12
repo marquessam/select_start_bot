@@ -355,22 +355,21 @@ async function fetchAllRecentAchievements() {
             return [];
         }
 
-        const allAchievements = [];
+        // Check all users instead of limiting to just the top active ones
+        // Set a reasonable upper limit to prevent overloading
+        const USER_LIMIT = 50; // Increased from 20
+        const ACHIEVEMENTS_PER_USER = 25; // Increased from 20
         const CHUNK_SIZE = 1;
-        const CHUNK_DELAY_MS = 6000; // Increased from 1500ms to 6000ms (4x slower)
+        const CHUNK_DELAY_MS = 6000; // 6 seconds between requests to respect rate limits
 
-        // Get current month games
-        const now = new Date();
-        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        const currentGames = require('./monthlyGames').monthlyGames[monthKey];
-        
-        // Limit to processing fewer users (only active ones)
-        // This can be adjusted based on your needs
-        const activeUsers = await getActiveUsers(validUsers, 20); // Get top 20 active users
-        console.log(`[RA API] Limiting achievement checks to ${activeUsers.length} active users`);
+        // Use all users up to the limit
+        const usersToCheck = validUsers.slice(0, USER_LIMIT);
+        console.log(`[RA API] Checking recent achievements for ${usersToCheck.length} users`);
 
-        for (let i = 0; i < activeUsers.length; i += CHUNK_SIZE) {
-            const chunk = activeUsers.slice(i, i + CHUNK_SIZE);
+        const allAchievements = [];
+
+        for (let i = 0; i < usersToCheck.length; i += CHUNK_SIZE) {
+            const chunk = usersToCheck.slice(i, i + CHUNK_SIZE);
 
             const chunkPromises = chunk.map(async username => {
                 try {
@@ -378,13 +377,20 @@ async function fetchAllRecentAchievements() {
                         z: process.env.RA_USERNAME,
                         y: process.env.RA_API_KEY,
                         u: username,
-                        c: 20  // Reduced from 50 to 20 recent achievements
+                        c: ACHIEVEMENTS_PER_USER  // Increased number of recent achievements to fetch
                     });
 
                     const url = `https://retroachievements.org/API/API_GetUserRecentAchievements.php?${params}`;
                     const recentData = await rateLimiter.makeRequest(url);
 
-                    return { username, achievements: Array.isArray(recentData) ? recentData : [] };
+                    // Add detailed logging
+                    if (Array.isArray(recentData) && recentData.length > 0) {
+                        console.log(`[RA API] Found ${recentData.length} recent achievements for ${username}`);
+                    }
+
+                    // Make sure we have an array even if the API returns something unexpected
+                    const achievements = Array.isArray(recentData) ? recentData : [];
+                    return { username, achievements };
                 } catch (error) {
                     console.error(`[RA API] Error fetching achievements for ${username}:`, error);
                     return { username, achievements: [] };
@@ -394,10 +400,14 @@ async function fetchAllRecentAchievements() {
             const chunkResults = await Promise.all(chunkPromises);
             allAchievements.push(...chunkResults);
 
-            if (i + CHUNK_SIZE < activeUsers.length) {
+            if (i + CHUNK_SIZE < usersToCheck.length) {
                 await delay(CHUNK_DELAY_MS);
             }
         }
+
+        // Log the total number of achievements found
+        const totalAchievements = allAchievements.reduce((total, user) => total + user.achievements.length, 0);
+        console.log(`[RA API] Found a total of ${totalAchievements} recent achievements across ${allAchievements.length} users`);
 
         return allAchievements.length > 0 ? allAchievements : [];
     } catch (error) {
