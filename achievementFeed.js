@@ -94,16 +94,17 @@ class AchievementFeed {
 
         this._processingAchievements = true;
         try {
-            // Get current monthly challenge ID first
+            // Get current monthly challenge ID - but don't require it for processing
             const currentChallenge = await database.getCurrentChallenge();
             const currentMonthGameId = currentChallenge?.gameId;
             
-            if (!currentMonthGameId) {
-                console.log('[ACHIEVEMENT FEED] No current monthly challenge found, skipping check');
-                return;
+            if (currentMonthGameId) {
+                console.log(`[ACHIEVEMENT FEED] Current monthly game ID: ${currentMonthGameId}`);
+            } else {
+                console.log('[ACHIEVEMENT FEED] No current monthly challenge found, will still check all achievements');
             }
             
-            console.log(`[ACHIEVEMENT FEED] Checking achievements for current month game ID: ${currentMonthGameId}`);
+            console.log('[ACHIEVEMENT FEED] Checking recent achievements for all users');
             
             const [allAchievements, storedTimestamps] = await Promise.all([
                 raAPI.fetchAllRecentAchievements(),
@@ -116,11 +117,9 @@ class AchievementFeed {
             for (const { username, achievements } of allAchievements) {
                 if (!achievements || achievements.length === 0) continue;
 
-                // Filter achievements to only include current monthly game and shadow game
-                const relevantAchievements = achievements.filter(a => 
-                    String(a.GameID) === String(currentMonthGameId) ||
-                    this.isForCurrentShadowGame(a.GameID)
-                );
+                // No longer filtering by game ID - announce all achievements
+                // Just keep track of achievements we haven't seen before
+                const relevantAchievements = achievements;
                 
                 if (relevantAchievements.length === 0) continue;
 
@@ -146,17 +145,44 @@ class AchievementFeed {
         }
     }
 
-    // Helper method to check if achievement is for current shadow game
-    isForCurrentShadowGame(gameId) {
-        // Get current shadow game ID from monthlyGames
+    // Helper method to get current monthly game ID
+    async getCurrentMonthlyGameId() {
+        // First try to get it from the database
+        const currentChallenge = await database.getCurrentChallenge();
+        if (currentChallenge?.gameId) {
+            return currentChallenge.gameId;
+        }
+        
+        // Fallback to configuration
         const now = new Date();
         const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         const monthlyGames = require('./monthlyGames').monthlyGames;
         const currentGames = monthlyGames[monthKey];
         
-        if (!currentGames || !currentGames.shadowGame) return false;
+        return currentGames?.monthlyGame?.id || null;
+    }
+    
+    // Helper method to get current shadow game ID
+    async getCurrentShadowGameId() {
+        // First try to get from database
+        const shadowGame = await database.getShadowGame();
+        if (shadowGame?.finalReward?.gameId) {
+            return shadowGame.finalReward.gameId;
+        }
         
-        return String(gameId) === String(currentGames.shadowGame.id);
+        // Fallback to configuration
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const monthlyGames = require('./monthlyGames').monthlyGames;
+        const currentGames = monthlyGames[monthKey];
+        
+        return currentGames?.shadowGame?.id || null;
+    }
+    
+    // Helper method to check if achievement is for current shadow game
+    async isForCurrentShadowGame(gameId) {
+        const shadowGameId = await this.getCurrentShadowGameId();
+        return shadowGameId && String(gameId) === String(shadowGameId);
     }
 
     async sendAchievementNotification(channel, username, achievement) {
@@ -165,6 +191,8 @@ class AchievementFeed {
 
             const achievementKey = `${username}-${achievement.ID}-${achievement.GameTitle}-${achievement.Title}`;
             if (this.announcementHistory.has(achievementKey)) return;
+
+            console.log(`[ACHIEVEMENT FEED] Processing achievement: ${username} - ${achievement.GameTitle} - ${achievement.Title}`);
 
             const badgeUrl = achievement.BadgeName
                 ? `https://media.retroachievements.org/Badge/${achievement.BadgeName}.png`
@@ -177,9 +205,11 @@ class AchievementFeed {
             let authorName = '';
             let authorIconUrl = '';
             let files = [];
-            let color = '#00FF00';  // Default color
-
+            let color = '#00FF00';  // Default green color for regular games
+            
             const gameId = String(achievement.GameID); // Ensure string comparison
+            const currentMonthGameId = String(await this.getCurrentMonthlyGameId());
+            const currentShadowGameId = String(await this.getCurrentShadowGameId());
 
             // Add the logo file for special games
             const logoFile = { 
@@ -187,26 +217,23 @@ class AchievementFeed {
                 name: 'game_logo.png'
             };
 
+            // Now check if this is a monthly or shadow game achievement
             if (gameId === '7181' || gameId === '8181') { // Shadow Game - Monster Rancher Advance 2
                 authorName = 'SHADOW GAME 🌘';
                 files = [logoFile];
                 authorIconUrl = 'attachment://game_logo.png';
                 color = '#FFD700';  // Gold color
-            } else if (gameId === '355') { // Monthly Challenge - ALTTP
+            } else if (gameId === currentMonthGameId || 
+                       gameId === '355' || gameId === '319' || gameId === '11335') { // Monthly Challenge
                 authorName = 'MONTHLY CHALLENGE 🏆';
                 files = [logoFile];
                 authorIconUrl = 'attachment://game_logo.png';
                 color = '#00BFFF';  // Blue color
-            } else if (gameId === '319') { // Chrono Trigger
-                authorName = 'MONTHLY CHALLENGE 🏆';
+            } else if (gameId === currentShadowGameId) { // Current Shadow Game
+                authorName = 'SHADOW GAME 🌘';
                 files = [logoFile];
                 authorIconUrl = 'attachment://game_logo.png';
-                color = '#00BFFF';  // Blue color
-            } else if (gameId === '11335') { // Mega Man X5
-                authorName = 'MONTHLY CHALLENGE 🏆';
-                files = [logoFile];
-                authorIconUrl = 'attachment://game_logo.png';
-                color = '#00BFFF';  // Blue color
+                color = '#FFD700';  // Gold color
             }
 
             // Base elements for the achievement notification
